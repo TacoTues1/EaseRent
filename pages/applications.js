@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function ApplicationsPage() {
   const router = useRouter()
@@ -99,12 +100,30 @@ export default function ApplicationsPage() {
         query = query.eq('status', filter)
       }
 
-      const { data, error } = await query
+      const { data: appsData, error } = await query
 
       if (error) {
         console.error('Error loading applications:', error)
+        setApplications([])
       } else {
-        setApplications(data || [])
+        // Load bookings for each application
+        const appsWithBookings = await Promise.all(
+          (appsData || []).map(async (app) => {
+            const { data: bookings } = await supabase
+              .from('bookings')
+              .select('*')
+              .eq('application_id', app.id)
+              .order('booking_date', { ascending: false })
+              .limit(1)
+            
+            return {
+              ...app,
+              hasBooking: bookings && bookings.length > 0,
+              latestBooking: bookings?.[0] || null
+            }
+          })
+        )
+        setApplications(appsWithBookings)
       }
     }
 
@@ -134,9 +153,10 @@ export default function ApplicationsPage() {
         })
       }
 
+      toast.success(`Application ${newStatus}`)
       loadApplications()
     } else {
-      alert('Failed to update application status')
+      toast.error('Failed to update application status')
     }
   }
 
@@ -161,6 +181,7 @@ export default function ApplicationsPage() {
       console.log('Application deleted successfully')
       setShowDeleteModal(false)
       setApplicationToDelete(null)
+      toast.success('Application deleted successfully')
       loadApplications()
     } else {
       console.error('Error deleting application:', error)
@@ -177,7 +198,7 @@ export default function ApplicationsPage() {
         errorMessage += '\n\nDetails: ' + error.details
       }
       
-      alert(errorMessage)
+      toast.error(errorMessage)
     }
   }
 
@@ -255,7 +276,7 @@ export default function ApplicationsPage() {
         link: '/applications'
       })
 
-      alert('Viewing scheduled successfully! The landlord has been notified.')
+      toast.success('Viewing scheduled successfully! The landlord has been notified.')
       closeBookingModal()
       loadApplications()
     } catch (err) {
@@ -273,7 +294,7 @@ export default function ApplicationsPage() {
         errorMessage += '\n\nDetails: ' + err.details
       }
       
-      alert(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setSubmittingBooking(false)
     }
@@ -295,6 +316,7 @@ export default function ApplicationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <Toaster position="top-right" />
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-2">
@@ -446,15 +468,26 @@ export default function ApplicationsPage() {
                     )}
 
                     {profile.role === 'tenant' && app.status === 'accepted' && (
-                      <button
-                        onClick={() => openBookingModal(app)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        Schedule Viewing
-                      </button>
+                      <>
+                        {app.hasBooking ? (
+                          <div className="text-sm text-gray-600 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Viewing scheduled for {new Date(app.latestBooking.booking_date).toLocaleString()}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => openBookingModal(app)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            Schedule Viewing
+                          </button>
+                        )}
+                      </>
                     )}
 
                     {/* Delete button - hidden for accepted applications */}

@@ -171,7 +171,7 @@ export default function Home() {
               }}
               className="px-6 py-3 bg-white/10 backdrop-blur-sm text-white rounded-lg font-semibold hover:bg-white/20 transition border border-white/30 text-sm"
             >
-              Sign In
+              Sign up
             </button>
           </div>
         </div>
@@ -488,7 +488,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl overflow-hidden hover:scale-105 transition-transform">
               <div className="aspect-video bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
                 <svg className="w-20 h-20 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
@@ -533,7 +533,7 @@ export default function Home() {
                 </p>
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -720,7 +720,7 @@ export default function Home() {
                       }}
                       className="px-4 py-2.5 border-2 border-gray-900 text-gray-900 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all"
                     >
-                      Sign In
+                      Sign up
                     </button>
                   </div>
                 </div>

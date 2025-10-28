@@ -9,7 +9,7 @@ export default function NewProperty() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
   const [imageUrls, setImageUrls] = useState([''])
-  const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadingImages, setUploadingImages] = useState({})
 
   const [formData, setFormData] = useState({
     title: '',
@@ -93,7 +93,7 @@ export default function NewProperty() {
       return
     }
 
-    setUploadingImages(true)
+    setUploadingImages(prev => ({ ...prev, [index]: true }))
     try {
       // Create unique filename
       const fileExt = file.name.split('.').pop()
@@ -128,7 +128,7 @@ export default function NewProperty() {
       console.error('Upload error:', error)
       setMessage(error.message || 'Error uploading image')
     } finally {
-      setUploadingImages(false)
+      setUploadingImages(prev => ({ ...prev, [index]: false }))
     }
   }
 
@@ -363,26 +363,16 @@ export default function NewProperty() {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => handleImageUpload(e, index)}
-                          disabled={uploadingImages}
+                          disabled={uploadingImages[index]}
                         />
                       </label>
-                      {uploadingImages && (
+                      {uploadingImages[index] && (
                         <span className="text-xs text-gray-500">Uploading...</span>
                       )}
+                      {url && !uploadingImages[index] && (
+                        <span className="text-xs text-green-600">✓ Uploaded</span>
+                      )}
                     </div>
-                    
-                    {url && (
-                      <div className="mt-2">
-                        <img 
-                          src={url} 
-                          alt={`Preview ${index + 1}`} 
-                          className="h-20 w-20 object-cover rounded border"
-                          onError={(e) => {
-                            e.target.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -393,7 +383,7 @@ export default function NewProperty() {
             </p>
           </div>
 
-          <div className="flex items-center">
+          {/* <div className="flex items-center">
             <input
               type="checkbox"
               name="available"
@@ -403,7 +393,7 @@ export default function NewProperty() {
               onChange={handleChange}
             />
             <label htmlFor="available" className="text-sm">Available for rent</label>
-          </div>
+          </div> */}
 
           <div className="flex gap-2">
             <button

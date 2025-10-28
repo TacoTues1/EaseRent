@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import { useRouter } from 'next/router'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function EditProperty() {
   const router = useRouter()
@@ -10,7 +11,8 @@ export default function EditProperty() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
   const [imageUrls, setImageUrls] = useState([''])
-  const [uploadingImages, setUploadingImages] = useState(false)
+  const [uploadingImages, setUploadingImages] = useState({})
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -138,7 +140,7 @@ export default function EditProperty() {
       return
     }
 
-    setUploadingImages(true)
+    setUploadingImages(prev => ({ ...prev, [index]: true }))
     try {
       const fileExt = file.name.split('.').pop()
       const fileName = `${session.user.id}/${Date.now()}.${fileExt}`
@@ -168,7 +170,7 @@ export default function EditProperty() {
       console.error('Upload error:', error)
       setMessage(error.message || 'Error uploading image')
     } finally {
-      setUploadingImages(false)
+      setUploadingImages(prev => ({ ...prev, [index]: false }))
     }
   }
 
@@ -200,10 +202,7 @@ export default function EditProperty() {
   }
 
   async function handleDelete() {
-    if (!confirm('Are you sure you want to delete this property? This action cannot be undone.')) {
-      return
-    }
-
+    setShowDeleteConfirm(false)
     setLoading(true)
     const { error } = await supabase
       .from('properties')
@@ -211,10 +210,10 @@ export default function EditProperty() {
       .eq('id', id)
 
     if (error) {
-      setMessage('Error deleting property: ' + error.message)
+      toast.error('Error deleting property: ' + error.message)
       setLoading(false)
     } else {
-      setMessage('Property deleted successfully!')
+      toast.success('Property deleted successfully!')
       setTimeout(() => router.push('/properties'), 1500)
     }
   }
@@ -234,6 +233,7 @@ export default function EditProperty() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <Toaster position="top-right" />
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         {message && (
@@ -435,33 +435,23 @@ export default function EditProperty() {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => handleImageUpload(e, index)}
-                          disabled={uploadingImages}
+                          disabled={uploadingImages[index]}
                         />
                       </label>
-                      {uploadingImages && (
+                      {uploadingImages[index] && (
                         <span className="text-xs text-gray-500">Uploading...</span>
                       )}
+                      {url && !uploadingImages[index] && (
+                        <span className="text-xs text-green-600">✓ Uploaded</span>
+                      )}
                     </div>
-                    
-                    {url && (
-                      <div className="mt-2">
-                        <img 
-                          src={url} 
-                          alt={`Preview ${index + 1}`} 
-                          className="h-20 w-20 object-cover rounded border"
-                          onError={(e) => {
-                            e.target.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center">
+          {/* <div className="flex items-center">
             <input
               type="checkbox"
               name="available"
@@ -471,7 +461,7 @@ export default function EditProperty() {
               onChange={handleChange}
             />
             <label htmlFor="available" className="text-sm">Available for rent</label>
-          </div>
+          </div> */}
 
           <div className="flex gap-2 pt-4 border-t">
             <button
@@ -488,14 +478,35 @@ export default function EditProperty() {
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={loading}
-              className="px-6 py-2 bg-red-600 text-white rounded disabled:opacity-50 hover:bg-red-700 ml-auto"
-            >
-              Delete Property
-            </button>
+            {showDeleteConfirm ? (
+              <div className="ml-auto flex items-center gap-2 bg-red-50 px-3 py-2 rounded border border-red-200">
+                <span className="text-sm text-gray-700">Delete this property?</span>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={loading}
+                  className="px-3 py-1 bg-red-600 text-white rounded disabled:opacity-50 hover:bg-red-700 text-sm font-medium"
+                >
+                  Yes, Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={loading}
+                className="px-6 py-2 bg-red-600 text-white rounded disabled:opacity-50 hover:bg-red-700 ml-auto"
+              >
+                Delete Property
+              </button>
+            )}
           </div>
         </form>
       </div>

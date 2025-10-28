@@ -5,6 +5,12 @@ html, body, #__next {
 }
 
 body {
-  background-color: #f9fafb; /* tailwind bg-gray-50 */
-  color: #111827; /* tailwind text-gray-900 */
+  background-color: #ffffff;
+  color: #000000;
+}
+
+/* Remove all transitions and animations globally */
+* {
+  transition: none !important;
+  animation: none !important;
 }

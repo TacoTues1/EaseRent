@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function MaintenancePage() {
   const router = useRouter()
@@ -155,7 +156,7 @@ export default function MaintenancePage() {
 
     setResponseText('')
     setSelectedRequest(null)
-    alert('Response sent to tenant!')
+    toast.success('Response sent to tenant!')
   }
 
   async function handleSubmit(e) {
@@ -192,6 +193,7 @@ export default function MaintenancePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      <Toaster position="top-right" />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
