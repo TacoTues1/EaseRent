@@ -1,0 +1,55 @@
+<!-- Simple HTML to generate favicon PNG -->
+<!-- This file can be opened in a browser to create the favicon manually -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Generate Favicon</title>
+</head>
+<body>
+  <canvas id="canvas32" width="32" height="32"></canvas>
+  <canvas id="canvas16" width="16" height="16"></canvas>
+  <canvas id="canvas180" width="180" height="180"></canvas>
+  
+  <script>
+    // Draw 32x32
+    const ctx32 = document.getElementById('canvas32').getContext('2d');
+    ctx32.fillStyle = '#2563EB';
+    ctx32.fillRect(0, 0, 32, 32);
+    ctx32.fillStyle = 'white';
+    ctx32.font = 'bold 24px Arial';
+    ctx32.textAlign = 'center';
+    ctx32.textBaseline = 'middle';
+    ctx32.fillText('E', 16, 18);
+    
+    // Draw 16x16
+    const ctx16 = document.getElementById('canvas16').getContext('2d');
+    ctx16.fillStyle = '#2563EB';
+    ctx16.fillRect(0, 0, 16, 16);
+    ctx16.fillStyle = 'white';
+    ctx16.font = 'bold 12px Arial';
+    ctx16.textAlign = 'center';
+    ctx16.textBaseline = 'middle';
+    ctx16.fillText('E', 8, 9);
+    
+    // Draw 180x180
+    const ctx180 = document.getElementById('canvas180').getContext('2d');
+    ctx180.fillStyle = '#2563EB';
+    ctx180.fillRect(0, 0, 180, 180);
+    ctx180.fillStyle = 'white';
+    ctx180.font = 'bold 120px Arial';
+    ctx180.textAlign = 'center';
+    ctx180.textBaseline = 'middle';
+    ctx180.fillText('E', 90, 100);
+    
+    console.log('Right-click each canvas and "Save image as..." to create the favicon files');
+  </script>
+  
+  <p>Right-click each canvas above and save as:</p>
+  <ul>
+    <li>First canvas → favicon-32x32.png</li>
+    <li>Second canvas → favicon-16x16.png</li>
+    <li>Third canvas → apple-touch-icon.png</li>
+  </ul>
+</body>
+</html>

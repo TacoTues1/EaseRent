@@ -1,0 +1,130 @@
+╔═══════════════════════════════════════════════════════════════════════╗
+║                    🚨 BUCKET NOT FOUND ERROR                          ║
+║                         QUICK FIX GUIDE                               ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+ERROR MESSAGE:
+  "StorageApiError: Bucket not found"
+  POST .../property-images/... 400 (Bad Request)
+
+CAUSE:
+  The 'property-images' storage bucket doesn't exist in Supabase yet.
+
+═══════════════════════════════════════════════════════════════════════
+
+✅ SOLUTION - 3 STEPS (Takes 3 Minutes)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1: CREATE BUCKET (1 minute)                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. Open: https://supabase.com/dashboard
+2. Select project: zyyrarvawwqpnolukuav
+3. Left sidebar → Click "Storage"
+4. Click "Create a new bucket" (green button)
+5. Settings:
+   ┌────────────────────────────────────┐
+   │ Name: property-images              │
+   │ Public bucket: [✓] CHECKED         │ ← IMPORTANT!
+   │ File size limit: 50MB (default)    │
+   │ Allowed MIME types: (leave empty)  │
+   └────────────────────────────────────┘
+6. Click "Create bucket"
+
+✓ You should see "property-images" in the bucket list
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 2: ADD POLICIES (2 minutes)                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+A) Allow Authenticated Users to Upload:
+   1. Click "property-images" bucket
+   2. Click "Policies" tab
+   3. Click "New Policy"
+   4. Click "For full customization"
+   5. Fill in:
+      ┌────────────────────────────────────────────────────────┐
+      │ Policy name: Allow authenticated uploads               │
+      │ Allowed operation: INSERT                              │
+      │ Target roles: authenticated                            │
+      │                                                        │
+      │ Policy definition (SQL):                               │
+      │ (bucket_id = 'property-images'::text)                  │
+      │ AND ((storage.foldername(name))[1] =                   │
+      │      (auth.uid())::text)                               │
+      └────────────────────────────────────────────────────────┘
+   6. Click "Save policy"
+
+B) Allow Public to Read Images:
+   1. Click "New Policy" again
+   2. Click "For full customization"
+   3. Fill in:
+      ┌────────────────────────────────────────────────────────┐
+      │ Policy name: Public read access                        │
+      │ Allowed operation: SELECT                              │
+      │ Target roles: public                                   │
+      │                                                        │
+      │ Policy definition (SQL):                               │
+      │ (bucket_id = 'property-images'::text)                  │
+      └────────────────────────────────────────────────────────┘
+   4. Click "Save policy"
+
+✓ You should see 2 policies listed
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 3: TEST (30 seconds)                                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. Refresh browser: http://localhost:3000
+2. Go to "Add Property"
+3. Try uploading an image
+4. ✅ Should work now!
+
+═══════════════════════════════════════════════════════════════════════
+
+🎯 ALTERNATIVE: USE IMAGE URLS (No Setup Needed!)
+
+If you want to skip the Storage setup for now, just paste image URLs:
+
+1. Go to Add Property form
+2. In "Property Images" section
+3. Paste any of these URLs:
+
+   https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200
+   https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=1200
+   https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200
+
+4. ✅ Works immediately!
+
+═══════════════════════════════════════════════════════════════════════
+
+📋 VERIFICATION CHECKLIST:
+
+After setup, verify:
+  ☐ Bucket "property-images" exists in Storage
+  ☐ Bucket has "Public" badge
+  ☐ 2 policies visible under Policies tab
+  ☐ Can upload image without error
+  ☐ Image preview appears after upload
+
+═══════════════════════════════════════════════════════════════════════
+
+🔍 TROUBLESHOOTING:
+
+Issue: Still getting "Bucket not found"
+  → Bucket name must be exactly: property-images (lowercase, with dash)
+  → Clear browser cache: Ctrl+Shift+R
+
+Issue: Upload works but "Access Denied"
+  → Check "Public bucket" was checked when creating
+  → Verify both policies are created and enabled
+
+Issue: Can't see uploaded images
+  → Check the "Public read access" policy exists
+  → Try opening the image URL directly in browser
+
+═══════════════════════════════════════════════════════════════════════
+
+Need more details? See: IMAGE_UPLOAD_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════════
