@@ -192,7 +192,7 @@ export default function MaintenancePage() {
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white p-6">
       <Toaster position="top-right" />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
@@ -200,7 +200,7 @@ export default function MaintenancePage() {
             <h1 className="text-2xl font-bold">
               {profile?.role === 'landlord' ? 'Maintenance Requests' : 'My Maintenance Requests'}
             </h1>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-black">
               {profile?.role === 'landlord' 
                 ? 'Manage maintenance requests from your tenants' 
                 : 'Submit and track your maintenance requests'}
@@ -209,7 +209,7 @@ export default function MaintenancePage() {
           {profile?.role === 'tenant' && (
             <button
               onClick={() => setShowForm(!showForm)}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-black text-white hover:bg-black"
             >
               {showForm ? 'Cancel' : '+ New Request'}
             </button>
@@ -217,20 +217,20 @@ export default function MaintenancePage() {
         </div>
 
         {showForm && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="bg-white border-2 border-black p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Submit Maintenance Request</h2>
             {properties.length === 0 ? (
-              <div className="p-6 text-center bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="p-6 text-center bg-white border-2 border-black">
                 <svg className="mx-auto h-12 w-12 text-yellow-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <h3 className="text-lg font-semibold text-yellow-800 mb-2">No Approved Applications</h3>
+                <h3 className="text-lg font-semibold text-black mb-2">No Approved Applications</h3>
                 <p className="text-sm text-yellow-700 mb-3">
                   You can only submit maintenance requests for properties where your application has been accepted.
                 </p>
                 <button
                   onClick={() => router.push('/applications')}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition"
+                  className="px-4 py-2 bg-black text-white hover:bg-black"
                 >
                   View My Applications
                 </button>
@@ -242,7 +242,7 @@ export default function MaintenancePage() {
                   <select
                     name="property_id"
                     required
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full border-2 px-3 py-2"
                     value={formData.property_id}
                     onChange={e => setFormData({ ...formData, property_id: e.target.value })}
                   >
@@ -258,7 +258,7 @@ export default function MaintenancePage() {
                   <input
                     type="text"
                     required
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full border-2 px-3 py-2"
                     value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                   />
@@ -269,7 +269,7 @@ export default function MaintenancePage() {
                   <textarea
                     rows="4"
                     required
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full border-2 px-3 py-2"
                     value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                   />
@@ -278,7 +278,7 @@ export default function MaintenancePage() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Priority</label>
                   <select
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full border-2 px-3 py-2"
                     value={formData.priority}
                     onChange={e => setFormData({ ...formData, priority: e.target.value })}
                   >
@@ -288,7 +288,7 @@ export default function MaintenancePage() {
                   </select>
                 </div>
 
-                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded">
+                <button type="submit" className="px-6 py-2 bg-black text-white">
                   Submit Request
                 </button>
               </form>
@@ -296,17 +296,17 @@ export default function MaintenancePage() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow">
+        <div className="bg-white border-2 border-black">
           {loading ? (
-            <p className="p-6 text-gray-500">Loading...</p>
+            <p className="p-6 text-black">Loading...</p>
           ) : requests.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-500 mb-2">
+              <p className="text-black mb-2">
                 {profile?.role === 'landlord' 
                   ? 'No maintenance requests yet' 
                   : 'No maintenance requests yet.'}
               </p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-black">
                 {profile?.role === 'landlord' 
                   ? 'Requests from your tenants will appear here' 
                   : 'Submit a request if you need maintenance'}
@@ -319,34 +319,34 @@ export default function MaintenancePage() {
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1">
                       <h3 className="font-semibold">{req.title}</h3>
-                      <p className="text-sm text-gray-600">{req.properties?.title}</p>
+                      <p className="text-sm text-black">{req.properties?.title}</p>
                       {profile?.role === 'landlord' && req.tenant_profile && (
-                        <p className="text-sm text-blue-600">
+                        <p className="text-sm text-black">
                           Tenant: {req.tenant_profile.full_name}
                         </p>
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        req.status === 'open' ? 'bg-yellow-100 text-yellow-700' :
-                        req.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                        req.status === 'resolved' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-700'
+                      <span className={`px-2 py-1 text-xs font-semibold ${
+                        req.status === 'open' ? 'bg-white text-yellow-700' :
+                        req.status === 'in_progress' ? 'bg-white text-black' :
+                        req.status === 'resolved' ? 'bg-black text-white' :
+                        'bg-white text-black'
                       }`}>
                         {req.status.replace('_', ' ')}
                       </span>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        req.priority === 'high' ? 'bg-red-100 text-red-700' :
-                        req.priority === 'low' ? 'bg-gray-100 text-gray-700' :
+                      <span className={`px-2 py-1 text-xs font-semibold ${
+                        req.priority === 'high' ? 'bg-white text-black' :
+                        req.priority === 'low' ? 'bg-white text-black' :
                         'bg-orange-100 text-orange-700'
                       }`}>
                         {req.priority}
                       </span>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-700 mb-3">{req.description}</p>
+                  <p className="text-sm text-black mb-3">{req.description}</p>
                   <div className="flex justify-between items-center">
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-black">
                       Created: {new Date(req.created_at).toLocaleDateString()}
                       {req.resolved_at && ` • Resolved: ${new Date(req.resolved_at).toLocaleDateString()}`}
                     </p>
@@ -358,7 +358,7 @@ export default function MaintenancePage() {
                             {req.status === 'open' && (
                               <button
                                 onClick={() => updateRequestStatus(req.id, 'in_progress')}
-                                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                className="px-3 py-1 text-xs bg-black text-white hover:bg-black"
                               >
                                 Start Working
                               </button>
@@ -366,14 +366,14 @@ export default function MaintenancePage() {
                             {req.status === 'in_progress' && (
                               <button
                                 onClick={() => updateRequestStatus(req.id, 'resolved')}
-                                className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                className="px-3 py-1 text-xs bg-black text-white"
                               >
                                 Mark Resolved
                               </button>
                             )}
                             <button
                               onClick={() => setSelectedRequest(req.id)}
-                              className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
+                              className="px-3 py-1 text-xs bg-black text-white hover:bg-black"
                             >
                               Send Response
                             </button>
@@ -385,7 +385,7 @@ export default function MaintenancePage() {
 
                   {/* Response Form for Landlord */}
                   {profile?.role === 'landlord' && selectedRequest === req.id && (
-                    <div className="mt-4 p-4 bg-gray-50 rounded border border-gray-200">
+                    <div className="mt-4 p-4 bg-white border-2 border-black">
                       <label className="block text-sm font-medium mb-2">
                         Send response to tenant:
                       </label>
@@ -393,13 +393,13 @@ export default function MaintenancePage() {
                         value={responseText}
                         onChange={(e) => setResponseText(e.target.value)}
                         placeholder="Type your response..."
-                        className="w-full border rounded px-3 py-2 mb-2"
+                        className="w-full border-2 px-3 py-2 mb-2"
                         rows="3"
                       />
                       <div className="flex gap-2">
                         <button
                           onClick={() => addResponse(req.id)}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                          className="px-4 py-2 bg-black text-white hover:bg-black text-sm"
                         >
                           Send Response
                         </button>
@@ -408,7 +408,7 @@ export default function MaintenancePage() {
                             setSelectedRequest(null)
                             setResponseText('')
                           }}
-                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-sm"
+                          className="px-4 py-2 bg-white text-black text-sm"
                         >
                           Cancel
                         </button>

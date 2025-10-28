@@ -85,37 +85,37 @@ export default function Settings() {
 
   if (!session || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="inline-block animate-spin h-12 w-12 border-b-2 border-black"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-white shadow">
+      <div className="bg-white border-2 border-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-sm text-gray-600">Manage your account and profile information</p>
+          <h1 className="text-2xl font-bold text-black">Settings</h1>
+          <p className="text-sm text-black">Manage your account and profile information</p>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Profile Information Card */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Profile Information</h2>
+        <div className="bg-white border-2 border-black overflow-hidden mb-6">
+          <div className="px-6 py-4 bg-white border-b border-black">
+            <h2 className="text-lg font-semibold text-black">Profile Information</h2>
           </div>
           
           <form onSubmit={handleUpdateProfile} className="p-6">
             {/* Success/Error Message */}
             {message.text && (
-              <div className={`mb-4 p-3 rounded-lg ${
+              <div className={`mb-4 p-3 ${
                 message.type === 'success' 
-                  ? 'bg-green-50 text-green-800 border border-green-200' 
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                  ? 'bg-black text-white border-2 border-black' 
+                  : 'bg-white text-black border-2 border-black'
               }`}>
                 {message.text}
               </div>
@@ -123,21 +123,21 @@ export default function Settings() {
 
             {/* Email (Read-only) */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Email Address
               </label>
               <input
                 type="email"
                 value={session.user.email}
                 disabled
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                className="w-full px-4 py-2 border-2 border-black bg-white text-black cursor-not-allowed"
               />
-              <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+              <p className="text-xs text-black mt-1">Email cannot be changed</p>
             </div>
 
             {/* Full Name */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Full Name
               </label>
               <input
@@ -145,39 +145,39 @@ export default function Settings() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border-2 border-black focus:outline-none"
                 placeholder="Enter your full name"
               />
             </div>
 
             {/* Phone */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Phone Number
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border-2 border-black focus:outline-none"
                 placeholder="Enter your phone number"
               />
             </div>
 
             {/* Role (Read-only) */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-black mb-2">
                 Account Type
               </label>
               <div className="flex items-center">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                <span className={`px-3 py-1 text-sm font-medium ${
                   profile.role === 'landlord' 
-                    ? 'bg-blue-100 text-blue-800' 
-                    : 'bg-green-100 text-green-800'
+                    ? 'bg-white text-black' 
+                    : 'bg-black text-white'
                 }`}>
                   {profile.role === 'landlord' ? '🏢 Landlord' : '🏠 Tenant'}
                 </span>
-                <span className="ml-3 text-xs text-gray-500">Account type cannot be changed</span>
+                <span className="ml-3 text-xs text-black">Account type cannot be changed</span>
               </div>
             </div>
 
@@ -186,14 +186,14 @@ export default function Settings() {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="flex-1 bg-black text-white py-2 px-4 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
               <button
                 type="button"
                 onClick={() => router.push('/dashboard')}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                className="px-6 py-2 border-2 border-black text-black font-medium"
               >
                 Cancel
               </button>
@@ -202,9 +202,9 @@ export default function Settings() {
         </div>
 
         {/* Account Actions Card */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Account Actions</h2>
+        <div className="bg-white border-2 border-black overflow-hidden">
+          <div className="px-6 py-4 bg-white border-b border-black">
+            <h2 className="text-lg font-semibold text-black">Account Actions</h2>
           </div>
           
           <div className="p-6">
@@ -212,20 +212,20 @@ export default function Settings() {
               {/* Sign Out */}
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-gray-900">Sign Out</div>
-                  <div className="text-sm text-gray-600">Sign out of your account</div>
+                  <div className="font-medium text-black">Sign Out</div>
+                  <div className="text-sm text-black">Sign out of your account</div>
                 </div>
                 <button
                   onClick={handleSignOut}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition font-medium"
+                  className="px-4 py-2 bg-black text-white hover:bg-black font-medium"
                 >
                   Sign Out
                 </button>
               </div>
 
               {/* Account Info */}
-              <div className="pt-4 border-t border-gray-200">
-                <div className="text-sm text-gray-600">
+              <div className="pt-4 border-t border-black">
+                <div className="text-sm text-black">
                   <div className="mb-2">
                     <span className="font-medium">Account Created:</span>{' '}
                     {new Date(profile.created_at).toLocaleDateString('en-US', {
@@ -236,7 +236,7 @@ export default function Settings() {
                   </div>
                   <div>
                     <span className="font-medium">User ID:</span>{' '}
-                    <code className="text-xs bg-gray-100 px-2 py-1 rounded">{session.user.id}</code>
+                    <code className="text-xs bg-white px-2 py-1">{session.user.id}</code>
                   </div>
                 </div>
               </div>

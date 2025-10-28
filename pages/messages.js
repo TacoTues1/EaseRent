@@ -449,20 +449,20 @@ export default function Messages() {
 
   if (!session || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="inline-block animate-spin h-12 w-12 border-b-2 border-black"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <Toaster position="top-right" />
       {/* Header */}
-      <div className="bg-white shadow">
+      <div className="bg-white border-2 border-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-          <p className="text-sm text-gray-600">
+          <h1 className="text-2xl font-bold text-black">Messages</h1>
+          <p className="text-sm text-black">
             {profile.role === 'landlord' 
               ? 'Chat with your tenants' 
               : 'Chat with landlords about properties'}
@@ -472,18 +472,18 @@ export default function Messages() {
 
       {/* Chat Interface */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden" style={{ height: 'calc(100vh - 250px)' }}>
+        <div className="bg-white border-2 border-black overflow-hidden" style={{ height: 'calc(100vh - 250px)' }}>
           <div className="flex h-full">
             {/* Conversations List */}
-            <div className="w-1/3 border-r border-gray-200 overflow-y-auto">
-              <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                <h2 className="font-semibold text-gray-900">
+            <div className="w-1/3 border-r border-black overflow-y-auto">
+              <div className="p-4 border-b border-black bg-white flex justify-between items-center">
+                <h2 className="font-semibold text-black">
                   {showNewConversation ? 'Start New Chat' : 'Conversations'}
                 </h2>
                 {!showNewConversation && (
                   <button
                     onClick={() => setShowNewConversation(true)}
-                    className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    className="text-black text-sm font-medium"
                   >
                     + New
                   </button>
@@ -494,7 +494,7 @@ export default function Messages() {
                       setShowNewConversation(false)
                       setSearchQuery('')
                     }}
-                    className="text-gray-600 hover:text-gray-700 text-sm"
+                    className="text-black text-sm"
                   >
                     Cancel
                   </button>
@@ -503,17 +503,17 @@ export default function Messages() {
 
               {/* Search bar for new conversations */}
               {showNewConversation && (
-                <div className="p-3 border-b border-gray-200">
+                <div className="p-3 border-b border-black">
                   <div className="relative">
                     <input
                       type="text"
                       placeholder="Search users by name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="w-full px-3 py-2 pl-10 border-2 border-black focus:outline-none text-sm"
                     />
                     <svg 
-                      className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" 
+                      className="absolute left-3 top-2.5 w-5 h-5 text-black" 
                       fill="none" 
                       stroke="currentColor" 
                       viewBox="0 0 24 24"
@@ -526,13 +526,13 @@ export default function Messages() {
 
               {loading ? (
                 <div className="flex items-center justify-center p-8">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
                 </div>
               ) : showNewConversation ? (
                 // Show all users list with search
                 <div>
                   {filteredUsers.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">
+                    <div className="p-8 text-center text-black">
                       {searchQuery ? (
                         <div>
                           <p className="mb-2">No users found matching your search</p>
@@ -542,7 +542,7 @@ export default function Messages() {
                         <div>
                           <p className="mb-2">No other users registered yet</p>
                           <p className="text-xs mb-4">You need at least one other user to start chatting</p>
-                          <div className="text-xs bg-blue-50 text-blue-700 p-3 rounded">
+                          <div className="text-xs bg-white text-black p-3">
                             💡 Tip: Create another account or ask someone to register to test the chat feature!
                           </div>
                         </div>
@@ -553,19 +553,19 @@ export default function Messages() {
                       <div
                         key={user.id}
                         onClick={() => startNewConversation(user)}
-                        className="p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition"
+                        className="p-4 border-b border-gray-100 cursor-pointer"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <div className="font-semibold text-sm text-gray-900">{user.full_name}</div>
+                            <div className="font-semibold text-sm text-black">{user.full_name}</div>
                             {user.phone && (
-                              <div className="text-xs text-gray-600 mt-1">📱 {user.phone}</div>
+                              <div className="text-xs text-black mt-1">📱 {user.phone}</div>
                             )}
                           </div>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          <span className={`px-2 py-1 text-xs font-medium ${
                             user.role === 'landlord' 
-                              ? 'bg-blue-100 text-blue-700' 
-                              : 'bg-green-100 text-green-700'
+                              ? 'bg-white text-black' 
+                              : 'bg-black text-white'
                           }`}>
                             {user.role}
                           </span>
@@ -575,7 +575,7 @@ export default function Messages() {
                   )}
                 </div>
               ) : conversations.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
+                <div className="p-8 text-center text-black">
                   <p className="mb-2">No conversations yet</p>
                   <p className="text-sm">
                     Click "+ New" to start chatting with any user
@@ -593,16 +593,16 @@ export default function Messages() {
                           setSelectedConversation(conv)
                           setShowNewConversation(false)
                         }}
-                        className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition ${
-                          selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
+                        className={`p-4 border-b border-gray-100 cursor-pointer ${
+                          selectedConversation?.id === conv.id ? 'bg-white' : ''
                         }`}
                       >
-                        <div className="font-semibold text-sm text-gray-900">{otherPerson}</div>
-                        <div className="text-xs text-gray-600 mt-1">
+                        <div className="font-semibold text-sm text-black">{otherPerson}</div>
+                        <div className="text-xs text-black mt-1">
                           {conv.other_user?.role === 'landlord' ? '🏠 Landlord' : '👤 Tenant'}
                         </div>
                         {conv.property && (
-                          <div className="text-xs text-gray-500 mt-1">{conv.property?.title}</div>
+                          <div className="text-xs text-black mt-1">{conv.property?.title}</div>
                         )}
                       </div>
                     )
@@ -616,29 +616,29 @@ export default function Messages() {
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                  <div className="p-4 border-b border-black bg-white flex justify-between items-center">
                     <div>
-                      <div className="font-semibold text-gray-900">
+                      <div className="font-semibold text-black">
                         {profile.role === 'landlord' 
                           ? selectedConversation.tenant_profile?.full_name 
                           : selectedConversation.landlord_profile?.full_name}
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-black">
                         {selectedConversation.property?.title}
                       </div>
                     </div>
                     {deleteConfirmId === selectedConversation.id ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-700 mr-2">Delete conversation?</span>
+                        <span className="text-sm text-black mr-2">Delete conversation?</span>
                         <button
                           onClick={() => deleteConversation(selectedConversation.id)}
-                          className="text-white bg-red-600 hover:bg-red-700 text-xs font-medium px-3 py-1 rounded transition"
+                          className="text-white bg-black text-xs font-medium px-3 py-1"
                         >
                           Yes, Delete
                         </button>
                         <button
                           onClick={() => setDeleteConfirmId(null)}
-                          className="text-gray-700 bg-gray-200 hover:bg-gray-300 text-xs font-medium px-3 py-1 rounded transition"
+                          className="text-black bg-white text-xs font-medium px-3 py-1"
                         >
                           Cancel
                         </button>
@@ -646,7 +646,7 @@ export default function Messages() {
                     ) : (
                       <button
                         onClick={() => confirmDeleteConversation(selectedConversation.id)}
-                        className="text-red-600 hover:text-red-700 text-sm font-medium px-3 py-1 rounded hover:bg-red-50 transition"
+                        className="text-black text-sm font-medium px-3 py-1"
                         title="Delete conversation"
                       >
                         Delete
@@ -661,13 +661,13 @@ export default function Messages() {
                       
                       return (
                         <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                          <div className={`max-w-xs lg:max-w-md px-4 py-2 ${
                             isOwn 
-                              ? 'bg-blue-600 text-white' 
-                              : 'bg-gray-200 text-gray-900'
+                              ? 'bg-black text-white' 
+                              : 'bg-white text-black'
                           }`}>
                             <div className="text-sm">{msg.message}</div>
-                            <div className={`text-xs mt-1 ${isOwn ? 'text-blue-100' : 'text-gray-500'}`}>
+                            <div className={`text-xs mt-1 ${isOwn ? 'text-white' : 'text-black'}`}>
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
@@ -677,7 +677,7 @@ export default function Messages() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="p-4 border-t border-gray-200 bg-white">
+                  <div className="p-4 border-t border-black bg-white">
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -685,12 +685,12 @@ export default function Messages() {
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                         placeholder="Type a message..."
-                        className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 border-2 border-black px-4 py-2 focus:outline-none"
                       />
                       <button
                         onClick={sendMessage}
                         disabled={!newMessage.trim()}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Send
                       </button>
@@ -698,7 +698,7 @@ export default function Messages() {
                   </div>
                 </>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-gray-500">
+                <div className="flex-1 flex items-center justify-center text-black">
                   Select a conversation to start chatting
                 </div>
               )}

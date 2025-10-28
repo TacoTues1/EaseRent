@@ -164,7 +164,7 @@ export default function NewProperty() {
   if (profile.role !== 'landlord') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="p-6 bg-red-50 text-red-800 rounded shadow max-w-md text-center">
+        <div className="p-6 bg-white text-black border-2 border-black max-w-md text-center">
           <h2 className="text-xl font-bold mb-2">Access Denied</h2>
           <p>Only landlords can add properties.</p>
           <p className="mt-4 text-sm">Redirecting to dashboard...</p>
@@ -174,21 +174,21 @@ export default function NewProperty() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+    <div className="min-h-screen bg-white p-6">
+      <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
         <h1 className="text-2xl font-bold mb-4">Add New Property</h1>
         {message && (
-          <div className={`mb-4 p-3 rounded ${
+          <div className={`mb-4 p-3 border-2 ${
             message.includes('Error') || message.includes('error') || message.includes('denied')
-              ? 'bg-red-50 text-red-800 border border-red-200'
+              ? 'bg-white text-black border-black'
               : message.includes('successfully') || message.includes('complete')
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-blue-50 text-blue-800 border border-blue-200'
+              ? 'bg-black text-white border-black'
+              : 'bg-white text-black border-black'
           }`}>
             <div className="font-medium">{message}</div>
             {message.includes('Storage bucket not set up') && (
               <div className="mt-2 text-sm">
-                <strong>Quick fix:</strong> See <code className="bg-red-100 px-1 rounded">BUCKET_ERROR_FIX.txt</code> for setup instructions (takes 3 minutes).
+                <strong>Quick fix:</strong> See <code className="bg-white border border-black px-1">BUCKET_ERROR_FIX.txt</code> for setup instructions (takes 3 minutes).
               </div>
             )}
           </div>
@@ -201,7 +201,7 @@ export default function NewProperty() {
               type="text"
               name="title"
               required
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 border-black px-3 py-2"
               value={formData.title}
               onChange={handleChange}
             />
@@ -212,7 +212,7 @@ export default function NewProperty() {
             <textarea
               name="description"
               rows="4"
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 border-black px-3 py-2"
               value={formData.description}
               onChange={handleChange}
             />
@@ -225,7 +225,7 @@ export default function NewProperty() {
                 type="text"
                 name="address"
                 required
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.address}
                 onChange={handleChange}
               />
@@ -236,7 +236,7 @@ export default function NewProperty() {
                 type="text"
                 name="city"
                 required
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.city}
                 onChange={handleChange}
               />
@@ -249,7 +249,7 @@ export default function NewProperty() {
               <input
                 type="text"
                 name="state"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.state}
                 onChange={handleChange}
               />
@@ -259,7 +259,7 @@ export default function NewProperty() {
               <input
                 type="text"
                 name="zip"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.zip}
                 onChange={handleChange}
               />
@@ -275,7 +275,7 @@ export default function NewProperty() {
                 required
                 min="0"
                 step="0.01"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.price}
                 onChange={handleChange}
               />
@@ -286,7 +286,7 @@ export default function NewProperty() {
                 type="number"
                 name="bedrooms"
                 min="0"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.bedrooms}
                 onChange={handleChange}
               />
@@ -298,7 +298,7 @@ export default function NewProperty() {
                 name="bathrooms"
                 min="0"
                 step="0.5"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 border-black px-3 py-2"
                 value={formData.bathrooms}
                 onChange={handleChange}
               />
@@ -311,20 +311,20 @@ export default function NewProperty() {
               type="number"
               name="area_sqft"
               min="0"
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 border-black px-3 py-2"
               value={formData.area_sqft}
               onChange={handleChange}
             />
           </div>
 
           {/* Image Upload Section */}
-          <div className="border-t pt-4">
+          <div className="border-t-2 border-black pt-4">
             <div className="flex justify-between items-center mb-3">
               <label className="block text-sm font-medium">Property Images</label>
               <button
                 type="button"
                 onClick={addImageUrlField}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                className="text-sm text-black font-medium"
               >
                 + Add Image
               </button>
@@ -338,7 +338,7 @@ export default function NewProperty() {
                       <input
                         type="url"
                         placeholder="Paste image URL or upload file below"
-                        className="flex-1 border rounded px-3 py-2 text-sm"
+                        className="flex-1 border-2 border-black px-3 py-2 text-sm"
                         value={url}
                         onChange={(e) => handleImageUrlChange(index, e.target.value)}
                       />
@@ -346,7 +346,7 @@ export default function NewProperty() {
                         <button
                           type="button"
                           onClick={() => removeImageUrlField(index)}
-                          className="px-3 py-2 text-red-600 hover:bg-red-50 rounded border border-red-200"
+                          className="px-3 py-2 text-black bg-white border-2 border-black"
                         >
                           ×
                         </button>
@@ -355,7 +355,7 @@ export default function NewProperty() {
                     
                     <div className="flex gap-2 items-center">
                       <label className="cursor-pointer">
-                        <span className="text-xs text-blue-600 hover:text-blue-700 underline">
+                        <span className="text-xs text-black underline">
                           Upload from computer
                         </span>
                         <input
@@ -367,10 +367,10 @@ export default function NewProperty() {
                         />
                       </label>
                       {uploadingImages[index] && (
-                        <span className="text-xs text-gray-500">Uploading...</span>
+                        <span className="text-xs text-black">Uploading...</span>
                       )}
                       {url && !uploadingImages[index] && (
-                        <span className="text-xs text-green-600">✓ Uploaded</span>
+                        <span className="text-xs text-black">✓ Uploaded</span>
                       )}
                     </div>
                   </div>
@@ -378,7 +378,7 @@ export default function NewProperty() {
               ))}
             </div>
             
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-black">
               Add up to 10 images. You can paste URLs or upload from your computer (max 5MB per image).
             </p>
           </div>
@@ -399,14 +399,14 @@ export default function NewProperty() {
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+              className="px-6 py-2 bg-black text-white border-2 border-black disabled:opacity-50"
             >
               {loading ? 'Creating...' : 'Create Property'}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-2 bg-gray-200 text-gray-700 rounded"
+              className="px-6 py-2 bg-white text-black border-2 border-black"
             >
               Cancel
             </button>

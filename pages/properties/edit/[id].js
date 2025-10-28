@@ -223,7 +223,7 @@ export default function EditProperty() {
   if (profile.role !== 'landlord') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="p-6 bg-red-50 text-red-800 rounded shadow max-w-md text-center">
+        <div className="p-6 bg-white text-black border-2 border-black max-w-md text-center">
           <h2 className="text-xl font-bold mb-2">Access Denied</h2>
           <p>Only landlords can edit properties.</p>
         </div>
@@ -232,17 +232,17 @@ export default function EditProperty() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white p-6">
       <Toaster position="top-right" />
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+      <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         {message && (
-          <div className={`mb-4 p-3 rounded ${
+          <div className={`mb-4 p-3 ${
             message.includes('Error') || message.includes('error') || message.includes('denied')
-              ? 'bg-red-50 text-red-800 border border-red-200'
+              ? 'bg-white text-black border-2 border-black'
               : message.includes('successfully') || message.includes('complete')
-              ? 'bg-green-50 text-green-800 border border-green-200'
-              : 'bg-blue-50 text-blue-800 border border-blue-200'
+              ? 'bg-black text-white border-2 border-black'
+              : 'bg-white text-black border-2 border-black'
           }`}>
             <div className="font-medium">{message}</div>
           </div>
@@ -255,7 +255,7 @@ export default function EditProperty() {
               type="text"
               name="title"
               required
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 px-3 py-2"
               value={formData.title}
               onChange={handleChange}
             />
@@ -266,7 +266,7 @@ export default function EditProperty() {
             <textarea
               name="description"
               rows="4"
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 px-3 py-2"
               value={formData.description}
               onChange={handleChange}
             />
@@ -279,7 +279,7 @@ export default function EditProperty() {
                 type="text"
                 name="address"
                 required
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.address}
                 onChange={handleChange}
               />
@@ -290,7 +290,7 @@ export default function EditProperty() {
                 type="text"
                 name="city"
                 required
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.city}
                 onChange={handleChange}
               />
@@ -303,7 +303,7 @@ export default function EditProperty() {
               <input
                 type="text"
                 name="state"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.state}
                 onChange={handleChange}
               />
@@ -313,7 +313,7 @@ export default function EditProperty() {
               <input
                 type="text"
                 name="zip"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.zip}
                 onChange={handleChange}
               />
@@ -329,7 +329,7 @@ export default function EditProperty() {
                 required
                 min="0"
                 step="0.01"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.price}
                 onChange={handleChange}
               />
@@ -340,7 +340,7 @@ export default function EditProperty() {
                 type="number"
                 name="bedrooms"
                 min="0"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.bedrooms}
                 onChange={handleChange}
               />
@@ -352,7 +352,7 @@ export default function EditProperty() {
                 name="bathrooms"
                 min="0"
                 step="0.5"
-                className="w-full border rounded px-3 py-2"
+                className="w-full border-2 px-3 py-2"
                 value={formData.bathrooms}
                 onChange={handleChange}
               />
@@ -365,25 +365,25 @@ export default function EditProperty() {
               type="number"
               name="area_sqft"
               min="0"
-              className="w-full border rounded px-3 py-2"
+              className="w-full border-2 px-3 py-2"
               value={formData.area_sqft}
               onChange={handleChange}
             />
           </div>
 
           {/* Availability Toggle */}
-          <div className="flex items-center gap-3 p-4 bg-gray-50 rounded border border-gray-200">
+          <div className="flex items-center gap-3 p-4 bg-white border-2 border-black">
             <input
               type="checkbox"
               id="available"
               name="available"
               checked={formData.available}
               onChange={(e) => setFormData({ ...formData, available: e.target.checked })}
-              className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              className="w-5 h-5 text-black"
             />
             <label htmlFor="available" className="text-sm font-medium cursor-pointer">
               Property is available for rent
-              <span className="block text-xs text-gray-600 font-normal mt-1">
+              <span className="block text-xs text-black font-normal mt-1">
                 {formData.available ? '✓ This property will be visible to tenants' : '✗ This property will be hidden from tenants'}
               </span>
             </label>
@@ -396,7 +396,7 @@ export default function EditProperty() {
               <button
                 type="button"
                 onClick={addImageUrlField}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                className="text-sm text-black font-medium"
               >
                 + Add Image
               </button>
@@ -410,7 +410,7 @@ export default function EditProperty() {
                       <input
                         type="url"
                         placeholder="Paste image URL or upload file below"
-                        className="flex-1 border rounded px-3 py-2 text-sm"
+                        className="flex-1 border-2 px-3 py-2 text-sm"
                         value={url}
                         onChange={(e) => handleImageUrlChange(index, e.target.value)}
                       />
@@ -418,7 +418,7 @@ export default function EditProperty() {
                         <button
                           type="button"
                           onClick={() => removeImageUrlField(index)}
-                          className="px-3 py-2 text-red-600 hover:bg-red-50 rounded border border-red-200"
+                          className="px-3 py-2 text-black border-2 border-black"
                         >
                           ×
                         </button>
@@ -427,7 +427,7 @@ export default function EditProperty() {
                     
                     <div className="flex gap-2 items-center">
                       <label className="cursor-pointer">
-                        <span className="text-xs text-blue-600 hover:text-blue-700 underline">
+                        <span className="text-xs text-black underline">
                           Upload from computer
                         </span>
                         <input
@@ -439,10 +439,10 @@ export default function EditProperty() {
                         />
                       </label>
                       {uploadingImages[index] && (
-                        <span className="text-xs text-gray-500">Uploading...</span>
+                        <span className="text-xs text-black">Uploading...</span>
                       )}
                       {url && !uploadingImages[index] && (
-                        <span className="text-xs text-green-600">✓ Uploaded</span>
+                        <span className="text-xs text-white">✓ Uploaded</span>
                       )}
                     </div>
                   </div>
@@ -467,32 +467,32 @@ export default function EditProperty() {
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700"
+              className="px-6 py-2 bg-black text-white disabled:opacity-50 hover:bg-black"
             >
               {loading ? 'Updating...' : 'Update Property'}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              className="px-6 py-2 bg-white text-black"
             >
               Cancel
             </button>
             {showDeleteConfirm ? (
-              <div className="ml-auto flex items-center gap-2 bg-red-50 px-3 py-2 rounded border border-red-200">
-                <span className="text-sm text-gray-700">Delete this property?</span>
+              <div className="ml-auto flex items-center gap-2 bg-white px-3 py-2 border-2 border-black">
+                <span className="text-sm text-black">Delete this property?</span>
                 <button
                   type="button"
                   onClick={handleDelete}
                   disabled={loading}
-                  className="px-3 py-1 bg-red-600 text-white rounded disabled:opacity-50 hover:bg-red-700 text-sm font-medium"
+                  className="px-3 py-1 bg-black text-white disabled:opacity-50 text-sm font-medium"
                 >
                   Yes, Delete
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-sm font-medium"
+                  className="px-3 py-1 bg-white text-black text-sm font-medium"
                 >
                   Cancel
                 </button>
@@ -502,7 +502,7 @@ export default function EditProperty() {
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={loading}
-                className="px-6 py-2 bg-red-600 text-white rounded disabled:opacity-50 hover:bg-red-700 ml-auto"
+                className="px-6 py-2 bg-black text-white disabled:opacity-50 ml-auto"
               >
                 Delete Property
               </button>

@@ -142,13 +142,13 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter(n => !n.read).length
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white p-6">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold">Notifications</h1>
             {unreadCount > 0 && (
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-black">
                 You have {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
               </p>
             )}
@@ -156,27 +156,27 @@ export default function NotificationsPage() {
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="px-4 py-2 text-sm text-blue-600 hover:text-blue-800"
+              className="px-4 py-2 text-sm text-black"
             >
               Mark all as read
             </button>
           )}
         </div>
 
-        <div className="bg-white rounded-lg shadow divide-y">
+        <div className="bg-white border-2 border-black divide-y">
           {loading ? (
-            <p className="p-6 text-gray-500">Loading notifications...</p>
+            <p className="p-6 text-black">Loading notifications...</p>
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-500 mb-2">No notifications yet</p>
-              <p className="text-sm text-gray-400">We'll notify you when something important happens</p>
+              <p className="text-black mb-2">No notifications yet</p>
+              <p className="text-sm text-black">We'll notify you when something important happens</p>
             </div>
           ) : (
             notifications.map(notif => (
               <div
                 key={notif.id}
-                className={`p-4 hover:bg-gray-50 transition cursor-pointer ${
-                  !notif.read ? 'bg-blue-50' : ''
+                className={`p-4 cursor-pointer ${
+                  !notif.read ? 'bg-white' : ''
                 }`}
                 onClick={() => handleNotificationClick(notif)}
               >
@@ -184,29 +184,29 @@ export default function NotificationsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs uppercase font-semibold ${
-                        notif.type === 'payment' ? 'text-green-600' :
+                        notif.type === 'payment' ? 'text-white' :
                         notif.type === 'maintenance' ? 'text-orange-600' :
-                        notif.type === 'application' ? 'text-blue-600' :
+                        notif.type === 'application' ? 'text-black' :
                         notif.type === 'message' ? 'text-purple-600' :
-                        'text-gray-600'
+                        'text-black'
                       }`}>
                         {notif.type || 'General'}
                       </span>
                       {!notif.read && (
-                        <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+                        <span className="w-2 h-2 bg-black"></span>
                       )}
                     </div>
-                    <p className="text-gray-900 mb-1">{notif.message}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-black mb-1">{notif.message}</p>
+                    <p className="text-xs text-black">
                       {new Date(notif.created_at).toLocaleString()}
                     </p>
-                    <p className="text-xs text-blue-600 mt-1 hover:underline">
+                    <p className="text-xs text-black mt-1 hover:underline">
                       Click to view →
                     </p>
                   </div>
                   <button
                     onClick={(e) => deleteNotification(notif.id, e)}
-                    className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    className="flex-shrink-0 p-2 text-black-colors"
                     title="Delete notification"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,21 +223,21 @@ export default function NotificationsPage() {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0  backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Notification</h3>
-            <p className="text-gray-600 mb-6">
+          <div className="bg-white border-2 border-black max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-black mb-2">Delete Notification</h3>
+            <p className="text-black mb-6">
               Are you sure you want to delete this notification? This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={cancelDelete}
-                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                className="px-4 py-2 text-black bg-white-colors font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors font-medium"
+                className="px-4 py-2 text-white bg-black-colors font-medium"
               >
                 Delete
               </button>

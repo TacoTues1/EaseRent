@@ -108,7 +108,7 @@ export default function Navbar() {
   if (!session) {
     return (
       <>
-        <nav className="bg-white border-b-2 border-black">
+        <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex items-center">
@@ -149,7 +149,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-white border-b-2 border-black">
+    <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-8">
@@ -267,12 +267,12 @@ export default function Navbar() {
               <>
                 {/* Backdrop */}
                 <div 
-                  className="fixed inset-0 z-10" 
+                  className="fixed inset-0 z-40" 
                   onClick={() => setShowDropdown(false)}
                 />
                 
                 {/* Dropdown Content */}
-                <div className="absolute right-0 mt-2 w-56 bg-white border-2 border-black py-2 z-20">
+                <div className="absolute right-0 mt-2 w-56 bg-white border-2 border-black py-2 z-50">
                   {/* User Info */}
                   <div className="px-4 py-3 border-b-2 border-black">
                     <div className="font-medium text-black">{profile?.full_name || 'User'}</div>

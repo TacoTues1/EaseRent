@@ -101,10 +101,10 @@ export default function PropertyDetail() {
   const isLandlord = profile?.role === 'landlord'
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-lg shadow overflow-hidden">
+    <div className="min-h-screen bg-white p-6">
+      <div className="max-w-4xl mx-auto bg-white border-2 border-black overflow-hidden">
         {/* Image Slider */}
-        <div className="relative h-96 bg-gray-200">
+        <div className="relative h-96 bg-white">
           <img 
             src={propertyImages[currentImageIndex]} 
             alt={property.title}
@@ -119,13 +119,13 @@ export default function PropertyDetail() {
             <>
               <button
                 onClick={() => setCurrentImageIndex((currentImageIndex - 1 + propertyImages.length) % propertyImages.length)}
-                className="absolute left-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75"
+                className="absolute left-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 hover:bg-opacity-75"
               >
                 ←
               </button>
               <button
                 onClick={() => setCurrentImageIndex((currentImageIndex + 1) % propertyImages.length)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75"
+                className="absolute right-4 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 hover:bg-opacity-75"
               >
                 →
               </button>
@@ -136,7 +136,7 @@ export default function PropertyDetail() {
                   <button
                     key={index}
                     onClick={() => setCurrentImageIndex(index)}
-                    className={`w-2 h-2 rounded-full ${index === currentImageIndex ? 'bg-white' : 'bg-white bg-opacity-50'}`}
+                    className={`w-2 h-2 ${index === currentImageIndex ? 'bg-white' : 'bg-white bg-opacity-50'}`}
                   />
                 ))}
               </div>
@@ -144,7 +144,7 @@ export default function PropertyDetail() {
           )}
           
           {isOwner && (
-            <div className="absolute top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded">
+            <div className="absolute top-4 right-4 bg-black text-white px-4 py-2">
               Your Property
             </div>
           )}
@@ -154,12 +154,12 @@ export default function PropertyDetail() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <h1 className="text-3xl font-bold mb-2">{property.title}</h1>
-              <p className="text-gray-600">{property.address}, {property.city}, {property.state} {property.zip}</p>
+              <p className="text-black">{property.address}, {property.city}, {property.state} {property.zip}</p>
             </div>
             {isOwner && (
               <Link 
                 href={`/properties/edit/${property.id}`}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                className="px-4 py-2 bg-white text-black"
               >
                 Edit Property
               </Link>
@@ -167,32 +167,32 @@ export default function PropertyDetail() {
           </div>
 
           <div className="mb-4">
-            <span className="text-3xl font-bold text-blue-600">₱{Number(property.price).toLocaleString()}</span>
-            <span className="text-gray-600"> / month</span>
+            <span className="text-3xl font-bold text-black">₱{Number(property.price).toLocaleString()}</span>
+            <span className="text-black"> / month</span>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6 text-center">
-            <div className="p-4 bg-gray-50 rounded">
+            <div className="p-4 bg-white">
               <div className="text-2xl font-bold">{property.bedrooms}</div>
-              <div className="text-sm text-gray-600">Bedrooms</div>
+              <div className="text-sm text-black">Bedrooms</div>
             </div>
-            <div className="p-4 bg-gray-50 rounded">
+            <div className="p-4 bg-white">
               <div className="text-2xl font-bold">{property.bathrooms}</div>
-              <div className="text-sm text-gray-600">Bathrooms</div>
+              <div className="text-sm text-black">Bathrooms</div>
             </div>
-            <div className="p-4 bg-gray-50 rounded">
+            <div className="p-4 bg-white">
               <div className="text-2xl font-bold">{property.area_sqft}</div>
-              <div className="text-sm text-gray-600">Sqft</div>
+              <div className="text-sm text-black">Sqft</div>
             </div>
           </div>
 
           <div className="mb-6">
             <h2 className="text-xl font-semibold mb-2">Description</h2>
-            <p className="text-gray-700">{property.description || 'No description provided.'}</p>
+            <p className="text-black">{property.description || 'No description provided.'}</p>
           </div>
 
           <div className="mb-6">
-            <span className={`px-3 py-1 rounded text-sm ${property.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            <span className={`px-3 py-1 text-sm ${property.available ? 'bg-black text-white' : 'bg-white text-black'}`}>
               {property.available ? 'Available' : 'Not Available'}
             </span>
           </div>
@@ -202,8 +202,8 @@ export default function PropertyDetail() {
             <div className="border-t pt-6">
               <h2 className="text-xl font-semibold mb-4">Apply for this property</h2>
               {message && (
-                <div className={`mb-4 p-3 rounded ${
-                  message.includes('Error') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'
+                <div className={`mb-4 p-3 ${
+                  message.includes('Error') ? 'bg-white text-black' : 'bg-black text-white'
                 }`}>
                   {message}
                 </div>
@@ -212,7 +212,7 @@ export default function PropertyDetail() {
                 <div>
                   <label className="block text-sm font-medium mb-1">Message to landlord</label>
                   <textarea
-                    className="w-full border rounded px-3 py-2"
+                    className="w-full border-2 px-3 py-2"
                     rows="4"
                     value={applicationMessage}
                     onChange={e => setApplicationMessage(e.target.value)}
@@ -223,7 +223,7 @@ export default function PropertyDetail() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-6 py-2 bg-blue-600 text-white rounded disabled:opacity-50 hover:bg-blue-700"
+                  className="px-6 py-2 bg-black text-white disabled:opacity-50 hover:bg-black"
                 >
                   {submitting ? 'Submitting...' : 'Submit Application'}
                 </button>
@@ -234,7 +234,7 @@ export default function PropertyDetail() {
           {/* Message for landlords */}
           {isLandlord && !isOwner && (
             <div className="border-t pt-6">
-              <div className="p-4 bg-blue-50 text-blue-800 rounded">
+              <div className="p-4 bg-white text-black">
                 <strong>Note:</strong> As a landlord, you cannot apply to properties. Only tenants can submit applications.
               </div>
             </div>
@@ -243,7 +243,7 @@ export default function PropertyDetail() {
           {/* Message for property owners */}
           {isOwner && (
             <div className="border-t pt-6">
-              <div className="p-4 bg-gray-50 text-gray-700 rounded">
+              <div className="p-4 bg-white text-black">
                 <strong>This is your property.</strong> You can edit details or view applications from tenants in your dashboard.
               </div>
             </div>

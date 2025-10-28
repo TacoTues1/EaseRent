@@ -344,7 +344,7 @@ export default function PaymentsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white p-6">
       <Toaster 
         position="top-right"
         toastOptions={{
@@ -353,18 +353,19 @@ export default function PaymentsPage() {
             background: '#fff',
             color: '#363636',
             padding: '16px',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            borderRadius: '0px',
+            boxShadow: 'none',
+            border: '2px solid #000',
           },
           success: {
             iconTheme: {
-              primary: '#10b981',
+              primary: '#000',
               secondary: '#fff',
             },
           },
           error: {
             iconTheme: {
-              primary: '#ef4444',
+              primary: '#000',
               secondary: '#fff',
             },
           },
@@ -376,7 +377,7 @@ export default function PaymentsPage() {
           {userRole === 'landlord' && (
             <button
               onClick={() => setShowForm(!showForm)}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              className="px-4 py-2 bg-black text-white hover:bg-black font-medium"
             >
               {showForm ? 'Cancel' : 'Send Bill to Tenant'}
             </button>
@@ -385,16 +386,16 @@ export default function PaymentsPage() {
 
         {userRole === 'landlord' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-sm text-gray-600 mb-1">Total Income</div>
+            <div className="bg-white border-2 border-black p-6">
+              <div className="text-sm text-black mb-1">Total Income</div>
               <div className="text-3xl font-bold text-black-600">₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-sm text-gray-600 mb-1">Total Payments</div>
+            <div className="bg-white border-2 border-black p-6">
+              <div className="text-sm text-black mb-1">Total Payments</div>
               <div className="text-3xl font-bold text-black-600">{payments.length}</div>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-sm text-gray-600 mb-1">Avg Payment</div>
+            <div className="bg-white border-2 border-black p-6">
+              <div className="text-sm text-black mb-1">Avg Payment</div>
               <div className="text-3xl font-bold text-black-600">
                 ₱{payments.length > 0 ? (totalIncome / payments.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
               </div>
@@ -403,11 +404,11 @@ export default function PaymentsPage() {
         )}
 
         {showForm && userRole === 'landlord' && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="bg-white border-2 border-black p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Send Payment Request to Tenant</h2>
             
             {approvedApplications.length === 0 ? (
-              <div className="text-gray-600 text-sm bg-yellow-50 border border-yellow-200 rounded p-4">
+              <div className="text-black text-sm bg-white border-2 border-black p-4">
                 <p className="font-medium">No approved applications found.</p>
                 <p>Payment requests can only be sent to tenants with approved applications.</p>
               </div>
@@ -417,7 +418,7 @@ export default function PaymentsPage() {
                   <label className="block text-sm font-medium mb-1">Select Approved Application *</label>
                   <select
                     required
-                    className="w-full border border-gray-300 rounded px-3 py-2"
+                    className="w-full border-2 border-black px-3 py-2"
                     value={formData.application_id}
                     onChange={e => {
                       const selectedApp = approvedApplications.find(app => app.id === e.target.value)
@@ -438,11 +439,11 @@ export default function PaymentsPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">Only approved tenant applications are shown</p>
+                  <p className="text-xs text-black mt-1">Only approved tenant applications are shown</p>
                 </div>
 
                 <div className="border-t pt-4">
-                  <h3 className="text-sm font-semibold mb-3 text-gray-700">Payment Details</h3>
+                  <h3 className="text-sm font-semibold mb-3 text-black">Payment Details</h3>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -452,7 +453,7 @@ export default function PaymentsPage() {
                         required
                         min="0"
                         step="0.01"
-                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        className="w-full border-2 border-black px-3 py-2"
                         placeholder="0.00"
                         value={formData.amount}
                         onChange={e => setFormData({ ...formData, amount: e.target.value })}
@@ -465,7 +466,7 @@ export default function PaymentsPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        className="w-full border-2 border-black px-3 py-2"
                         placeholder="0.00"
                         value={formData.water_bill}
                         onChange={e => setFormData({ ...formData, water_bill: e.target.value })}
@@ -478,7 +479,7 @@ export default function PaymentsPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        className="w-full border-2 border-black px-3 py-2"
                         placeholder="0.00"
                         value={formData.electrical_bill}
                         onChange={e => setFormData({ ...formData, electrical_bill: e.target.value })}
@@ -491,7 +492,7 @@ export default function PaymentsPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        className="w-full border-2 border-black px-3 py-2"
                         placeholder="0.00"
                         value={formData.other_bills}
                         onChange={e => setFormData({ ...formData, other_bills: e.target.value })}
@@ -502,7 +503,7 @@ export default function PaymentsPage() {
                   <div className="mt-4">
                     <label className="block text-sm font-medium mb-1">Bills Description (optional)</label>
                     <textarea
-                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      className="w-full border-2 border-black px-3 py-2"
                       rows="2"
                       placeholder="E.g., Internet, cable, parking, etc."
                       value={formData.bills_description}
@@ -515,17 +516,17 @@ export default function PaymentsPage() {
                     <input
                       type="date"
                       required
-                      className="w-full border border-gray-300 rounded px-3 py-2"
+                      className="w-full border-2 border-black px-3 py-2"
                       value={formData.due_date}
                       onChange={e => setFormData({ ...formData, due_date: e.target.value })}
                     />
                   </div>
 
                   {/* Total calculation */}
-                  <div className="mt-4 bg-gray-50 rounded p-3 border border-gray-200">
+                  <div className="mt-4 bg-white p-3 border-2 border-black">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700">Total Amount:</span>
-                      <span className="text-xl font-bold text-blue-600">
+                      <span className="text-sm font-medium text-black">Total Amount:</span>
+                      <span className="text-xl font-bold text-black">
                         ₱{(
                           (parseFloat(formData.amount) || 0) +
                           (parseFloat(formData.water_bill) || 0) +
@@ -540,7 +541,7 @@ export default function PaymentsPage() {
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="submit" 
-                    className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium flex items-center gap-2"
+                    className="px-6 py-2 bg-black text-white hover:bg-black font-medium flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -550,7 +551,7 @@ export default function PaymentsPage() {
                   <button 
                     type="button"
                     onClick={() => setShowForm(false)}
-                    className="px-6 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
+                    className="px-6 py-2 bg-white text-black font-medium"
                   >
                     Cancel
                   </button>
@@ -561,16 +562,16 @@ export default function PaymentsPage() {
         )}
 
         {/* Payment Requests / Bills Section */}
-        <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-900">
+        <div className="bg-white border-2 border-black overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-black bg-white">
+            <h2 className="text-lg font-semibold text-black">
               {userRole === 'landlord' ? 'Sent Bills' : 'Your Bills to Pay'}
             </h2>
           </div>
           {loading ? (
-            <p className="p-6 text-gray-500">Loading...</p>
+            <p className="p-6 text-black">Loading...</p>
           ) : paymentRequests.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
+            <div className="p-6 text-center text-black">
               {userRole === 'landlord' 
                 ? "No bills sent yet. Click 'Send Bill to Tenant' to create a payment request."
                 : "No bills received yet. Your landlord hasn't sent you any payment requests."}
@@ -578,18 +579,18 @@ export default function PaymentsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-white">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Property</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Property</th>
                     {userRole === 'landlord' ? (
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tenant</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Tenant</th>
                     ) : (
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Landlord</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Landlord</th>
                     )}
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Amount</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Due Date</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Amount</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Due Date</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -602,11 +603,11 @@ export default function PaymentsPage() {
                     const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
 
                     return (
-                      <tr key={request.id} className={`hover:bg-gray-50 ${isPastDue ? 'bg-red-50' : ''}`}>
+                      <tr key={request.id} className={`hover:bg-white ${isPastDue ? 'bg-white' : ''}`}>
                         <td className="px-4 py-3 text-sm">
                           <div>{request.properties?.title || 'N/A'}</div>
                           {request.properties?.address && (
-                            <div className="text-xs text-gray-500">{request.properties.address}</div>
+                            <div className="text-xs text-black">{request.properties.address}</div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">
@@ -615,36 +616,36 @@ export default function PaymentsPage() {
                             : request.landlord_profile?.full_name || 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          <div className="font-bold text-blue-600">
+                          <div className="font-bold text-black">
                             ₱{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </div>
-                          <div className="text-xs text-gray-600 mt-1 space-y-0.5">
+                          <div className="text-xs text-black mt-1 space-y-0.5">
                             <div>Rent: ₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                             {water > 0 && <div>Water: ₱{water.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
                             {electrical > 0 && <div>Electric: ₱{electrical.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
                             {other > 0 && <div>Other: ₱{other.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
                           </div>
                           {request.bills_description && (
-                            <div className="text-xs text-gray-500 italic mt-1">{request.bills_description}</div>
+                            <div className="text-xs text-black italic mt-1">{request.bills_description}</div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">
                           {request.due_date ? (
-                            <div className={isPastDue ? 'text-red-600 font-medium' : ''}>
+                            <div className={isPastDue ? 'text-black font-medium' : ''}>
                               {new Date(request.due_date).toLocaleDateString()}
                               {isPastDue && <div className="text-xs">OVERDUE</div>}
                             </div>
                           ) : (
-                            <span className="text-gray-400">No due date</span>
+                            <span className="text-black">No due date</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            request.status === 'paid' ? 'bg-green-100 text-green-700' :
-                            request.status === 'pending_confirmation' ? 'bg-blue-100 text-blue-700' :
-                            request.status === 'cancelled' ? 'bg-gray-100 text-gray-700' :
-                            isPastDue ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
+                          <span className={`px-2 py-1 text-xs font-medium ${
+                            request.status === 'paid' ? 'bg-black text-white' :
+                            request.status === 'pending_confirmation' ? 'bg-white text-black' :
+                            request.status === 'cancelled' ? 'bg-white text-black' :
+                            isPastDue ? 'bg-white text-black' :
+                            'bg-white text-yellow-700'
                           }`}>
                             {request.status === 'paid' ? 'Paid' :
                              request.status === 'pending_confirmation' ? 'Awaiting Confirmation' :
@@ -656,26 +657,26 @@ export default function PaymentsPage() {
                           {userRole === 'tenant' && request.status === 'pending' && (
                             <button
                               onClick={() => handlePayBill(request)}
-                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium"
+                              className="px-3 py-1 bg-black text-white hover:bg-black text-xs font-medium"
                             >
                               Pay Now
                             </button>
                           )}
                           {userRole === 'tenant' && request.status === 'pending_confirmation' && (
-                            <span className="text-xs text-blue-600 font-medium">Waiting for landlord confirmation</span>
+                            <span className="text-xs text-black font-medium">Waiting for landlord confirmation</span>
                           )}
                           {userRole === 'landlord' && request.status === 'pending' && (
                             cancelBillId === request.id ? (
                               <div className="flex gap-1">
                                 <button
                                   onClick={() => handleCancelBill(request.id)}
-                                  className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium"
+                                  className="px-2 py-1 bg-black text-white text-xs font-medium"
                                 >
                                   Yes
                                 </button>
                                 <button
                                   onClick={() => setCancelBillId(null)}
-                                  className="px-2 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-xs font-medium"
+                                  className="px-2 py-1 bg-white text-black text-xs font-medium"
                                 >
                                   No
                                 </button>
@@ -683,7 +684,7 @@ export default function PaymentsPage() {
                             ) : (
                               <button
                                 onClick={() => setCancelBillId(request.id)}
-                                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs font-medium"
+                                className="px-3 py-1 bg-black text-white text-xs font-medium"
                               >
                                 Cancel
                               </button>
@@ -694,13 +695,13 @@ export default function PaymentsPage() {
                               <div className="flex gap-1">
                                 <button
                                   onClick={() => confirmPayment(request.id)}
-                                  className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-medium"
+                                  className="px-2 py-1 bg-black text-white text-xs font-medium"
                                 >
                                   Yes
                                 </button>
                                 <button
                                   onClick={() => setConfirmPaymentId(null)}
-                                  className="px-2 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-xs font-medium"
+                                  className="px-2 py-1 bg-white text-black text-xs font-medium"
                                 >
                                   No
                                 </button>
@@ -708,7 +709,7 @@ export default function PaymentsPage() {
                             ) : (
                               <button
                                 onClick={() => setConfirmPaymentId(request.id)}
-                                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-medium"
+                                className="px-3 py-1 bg-black text-white text-xs font-medium"
                               >
                                 Confirm Payment
                               </button>
@@ -725,20 +726,20 @@ export default function PaymentsPage() {
         </div>
 
         {/* Payment History */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-lg font-semibold text-gray-900">Payment History</h2>
+        <div className="bg-white border-2 border-black overflow-hidden">
+          <div className="px-6 py-4 border-b border-black bg-white">
+            <h2 className="text-lg font-semibold text-black">Payment History</h2>
           </div>
           {loading ? (
-            <p className="p-6 text-gray-500">Loading...</p>
+            <p className="p-6 text-black">Loading...</p>
           ) : payments.length === 0 ? (
             <div className="p-6">
               <div className="text-center py-8">
-                <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="mx-auto h-12 w-12 text-black mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No payment records yet</h3>
-                <p className="text-gray-500 text-sm mb-4">
+                <h3 className="text-lg font-medium text-black mb-2">No payment records yet</h3>
+                <p className="text-black text-sm mb-4">
                   {userRole === 'landlord' 
                     ? approvedApplications.length > 0
                       ? `You have ${approvedApplications.length} approved application(s). Click "Record Payment" above to create your first payment record when a tenant pays.`
@@ -748,7 +749,7 @@ export default function PaymentsPage() {
                 {/* {userRole === 'landlord' && approvedApplications.length > 0 && (
                   <button
                     onClick={() => setShowForm(true)}
-                    className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                    className="inline-flex items-center px-4 py-2 bg-black text-white hover:bg-black text-sm font-medium"
                   >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -761,18 +762,18 @@ export default function PaymentsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50">
+                <thead className="bg-white">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Property</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Property</th>
                     {userRole === 'landlord' && (
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Tenant</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Tenant</th>
                     )}
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Rent</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Bills</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Total</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Method</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Date</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Rent</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Bills</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Total</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Method</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-black">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -785,7 +786,7 @@ export default function PaymentsPage() {
                     const grandTotal = rent + totalBills
 
                     return (
-                      <tr key={payment.id} className="hover:bg-gray-50">
+                      <tr key={payment.id} className="hover:bg-white">
                         <td className="px-4 py-3 text-sm">{payment.properties?.title || 'N/A'}</td>
                         {userRole === 'landlord' && (
                           <td className="px-4 py-3 text-sm">{payment.profiles?.full_name || 'N/A'}</td>
@@ -797,40 +798,40 @@ export default function PaymentsPage() {
                           {totalBills > 0 ? (
                             <div className="space-y-1">
                               {water > 0 && (
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-black">
                                   Water: ₱{water.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                               )}
                               {electrical > 0 && (
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-black">
                                   Electric: ₱{electrical.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                               )}
                               {other > 0 && (
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-black">
                                   Other: ₱{other.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                               )}
                               {payment.bills_description && (
-                                <div className="text-xs text-gray-500 italic mt-1">
+                                <div className="text-xs text-black italic mt-1">
                                   {payment.bills_description}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <span className="text-gray-400 text-xs">No bills</span>
+                            <span className="text-black text-xs">No bills</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm font-bold text-blue-600">
+                        <td className="px-4 py-3 text-sm font-bold text-black">
                           ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="px-4 py-3 text-sm capitalize">{payment.method?.replace('_', ' ')}</td>
                         <td className="px-4 py-3 text-sm">
-                          <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-700">
+                          <span className="px-2 py-1 text-xs bg-black text-white">
                             {payment.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        <td className="px-4 py-3 text-sm text-black whitespace-nowrap">
                           {new Date(payment.paid_at).toLocaleDateString()}
                         </td>
                       </tr>
@@ -845,15 +846,15 @@ export default function PaymentsPage() {
         {/* Payment Modal for Tenants */}
         {showPaymentModal && selectedBill && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="bg-white border-2 border-black max-w-md w-full p-6">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-gray-900">Pay Bill</h3>
+                <h3 className="text-xl font-bold text-black">Pay Bill</h3>
                 <button
                   onClick={() => {
                     setShowPaymentModal(false)
                     setSelectedBill(null)
                   }}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-black"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -863,48 +864,48 @@ export default function PaymentsPage() {
 
               <div className="space-y-4">
                 {/* Property Info */}
-                <div className="bg-gray-50 rounded p-4">
-                  <div className="text-sm font-medium text-gray-700 mb-2">Property</div>
-                  <div className="font-semibold text-gray-900">{selectedBill.properties?.title}</div>
+                <div className="bg-white p-4">
+                  <div className="text-sm font-medium text-black mb-2">Property</div>
+                  <div className="font-semibold text-black">{selectedBill.properties?.title}</div>
                   {selectedBill.properties?.address && (
-                    <div className="text-xs text-gray-600 mt-1">{selectedBill.properties.address}</div>
+                    <div className="text-xs text-black mt-1">{selectedBill.properties.address}</div>
                   )}
                 </div>
 
                 {/* Bill Breakdown */}
-                <div className="border border-gray-200 rounded p-4">
-                  <div className="text-sm font-medium text-gray-700 mb-3">Bill Breakdown</div>
+                <div className="border-2 border-black p-4">
+                  <div className="text-sm font-medium text-black mb-3">Bill Breakdown</div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Rent:</span>
+                      <span className="text-black">Rent:</span>
                       <span className="font-medium">₱{parseFloat(selectedBill.rent_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                     </div>
                     {parseFloat(selectedBill.water_bill || 0) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Water Bill:</span>
+                        <span className="text-black">Water Bill:</span>
                         <span className="font-medium">₱{parseFloat(selectedBill.water_bill).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )}
                     {parseFloat(selectedBill.electrical_bill || 0) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Electrical Bill:</span>
+                        <span className="text-black">Electrical Bill:</span>
                         <span className="font-medium">₱{parseFloat(selectedBill.electrical_bill).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )}
                     {parseFloat(selectedBill.other_bills || 0) > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Other Bills:</span>
+                        <span className="text-black">Other Bills:</span>
                         <span className="font-medium">₱{parseFloat(selectedBill.other_bills).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )}
                     {selectedBill.bills_description && (
-                      <div className="text-xs text-gray-500 italic mt-2 pt-2 border-t">
+                      <div className="text-xs text-black italic mt-2 pt-2 border-t">
                         {selectedBill.bills_description}
                       </div>
                     )}
-                    <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-300">
+                    <div className="flex justify-between text-base font-bold pt-2 border-t border-black">
                       <span>Total Amount:</span>
-                      <span className="text-blue-600">
+                      <span className="text-black">
                         ₱{(
                           parseFloat(selectedBill.rent_amount || 0) +
                           parseFloat(selectedBill.water_bill || 0) +
@@ -918,14 +919,14 @@ export default function PaymentsPage() {
 
                 {/* Due Date */}
                 {selectedBill.due_date && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                  <div className="bg-white border-2 border-black p-3">
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div className="text-sm">
-                        <span className="font-medium text-gray-700">Due Date: </span>
-                        <span className="text-gray-900">{new Date(selectedBill.due_date).toLocaleDateString()}</span>
+                        <span className="font-medium text-black">Due Date: </span>
+                        <span className="text-black">{new Date(selectedBill.due_date).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
@@ -933,27 +934,27 @@ export default function PaymentsPage() {
 
                 {/* Payment Method */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                  <div className="bg-gray-50 border border-gray-300 rounded px-4 py-3">
+                  <label className="block text-sm font-medium text-black mb-2">Payment Method</label>
+                  <div className="bg-white border-2 border-black px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                       <div>
-                        <div className="font-semibold text-gray-900">Cash Payment</div>
-                        <div className="text-xs text-gray-600">Pay directly to your landlord</div>
+                        <div className="font-semibold text-black">Cash Payment</div>
+                        <div className="text-xs text-black">Pay directly to your landlord</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Important Note */}
-                <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <div className="bg-white border-2 border-black p-3">
                   <div className="flex gap-2">
-                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-black flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <div className="text-xs text-blue-800">
+                    <div className="text-xs text-black">
                       <p className="font-medium mb-1">Important:</p>
                       <p>After submitting, your landlord will verify the payment before it's marked as paid. Please ensure you've handed over the cash payment.</p>
                     </div>
@@ -964,7 +965,7 @@ export default function PaymentsPage() {
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={submitPayment}
-                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-black text-white hover:bg-black font-medium flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -976,7 +977,7 @@ export default function PaymentsPage() {
                       setShowPaymentModal(false)
                       setSelectedBill(null)
                     }}
-                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
+                    className="px-6 py-3 bg-white text-black font-medium"
                   >
                     Cancel
                   </button>
