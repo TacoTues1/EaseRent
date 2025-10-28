@@ -42,14 +42,35 @@ export default function Navbar() {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
       
-      if (error) {
+      if (error && error.code !== 'PGRST116') {
         console.error('Error loading profile:', error)
         return
       }
       
-      if (data) setProfile(data)
+      if (data) {
+        setProfile(data)
+      } else {
+        // Profile doesn't exist (e.g., Google sign-in user), create one
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User',
+            role: 'tenant' // Default role for new users
+          })
+          .select()
+          .single()
+        
+        if (insertError) {
+          console.error('Error creating profile:', insertError)
+        } else if (newProfile) {
+          setProfile(newProfile)
+        }
+      }
     } catch (err) {
       console.error('Network error loading profile:', err)
     }

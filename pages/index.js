@@ -136,7 +136,7 @@ export default function Home() {
       <div className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
         {/* Decorative shapes */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-20 -right-20 w-40 h-40 bg-white opacity-10 rounded-full blur-3xl"></div>
+          <div className="absolute -top-20 -right-20 w-40 h-40 bg-white opacity-10 rounded-full   -3xl"></div>
           <div className="absolute top-32 -left-10 w-48 h-48 bg-gray-400 opacity-10 rounded-full blur-3xl"></div>
         </div>
         

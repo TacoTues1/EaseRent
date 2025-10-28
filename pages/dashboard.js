@@ -61,7 +61,23 @@ export default function Dashboard() {
       .eq('id', userId)
       .single()
     
-    if (data) setProfile(data)
+    if (data) {
+      setProfile(data)
+    } else {
+      // Profile doesn't exist (e.g., Google sign-in user), create one
+      const user = session?.user || (await supabase.auth.getUser()).data.user
+      const { data: newProfile, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User',
+          role: 'tenant' // Default role for new users
+        })
+        .select()
+        .single()
+      
+      if (newProfile) setProfile(newProfile)
+    }
   }
 
   async function loadProperties() {
@@ -354,7 +370,7 @@ export default function Dashboard() {
                         onClick={() => handlePropertyAction(property.id)}
                         className="flex-1 bg-gradient-to-r from-gray-900 to-gray-700 text-white py-3 px-4 rounded-xl text-sm font-semibold hover:from-black hover:to-gray-800 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-[1.02]"
                       >
-                        {profile.role === 'landlord' ? '✏️ Edit' : '👁️ View'}
+                        {profile.role === 'landlord' ? 'Edit' : 'View'}
                       </button>
                       {profile.role === 'landlord' && (
                         <button
@@ -366,7 +382,7 @@ export default function Dashboard() {
                           }`}
                           title={property.available ? 'Hide from tenants' : 'Show to tenants'}
                         >
-                          {property.available ? '👁️‍🗨️ Hide' : '👁️ Show'}
+                          {property.available ? 'Hide' : 'Show'}
                         </button>
                       )}
                       {profile.role === 'tenant' && property.available && (
@@ -374,7 +390,7 @@ export default function Dashboard() {
                           onClick={() => router.push(`/properties/${property.id}`)}
                           className="flex-1 bg-gradient-to-r from-gray-900 to-gray-700 text-white py-3 px-4 rounded-xl text-sm font-semibold hover:from-black hover:to-gray-800 transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-[1.02]"
                         >
-                          📝 Apply
+                        Apply
                         </button>
                       )}
                     </div>

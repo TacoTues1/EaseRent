@@ -10,6 +10,14 @@ export default function ApplicationsPage() {
   const [applications, setApplications] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all') // all, pending, accepted, rejected
+  const [showBookingModal, setShowBookingModal] = useState(false)
+  const [selectedApplication, setSelectedApplication] = useState(null)
+  const [bookingDate, setBookingDate] = useState('')
+  const [bookingTime, setBookingTime] = useState('')
+  const [bookingNotes, setBookingNotes] = useState('')
+  const [submittingBooking, setSubmittingBooking] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [applicationToDelete, setApplicationToDelete] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -130,6 +138,151 @@ export default function ApplicationsPage() {
     } else {
       alert('Failed to update application status')
     }
+  }
+
+  async function deleteApplication(applicationId) {
+    setApplicationToDelete(applicationId)
+    setShowDeleteModal(true)
+  }
+
+  async function confirmDelete() {
+    if (!applicationToDelete) return
+
+    console.log('Attempting to delete application:', applicationToDelete)
+    console.log('Current user:', session.user.id)
+    console.log('User role:', profile.role)
+
+    const { error } = await supabase
+      .from('applications')
+      .delete()
+      .eq('id', applicationToDelete)
+
+    if (!error) {
+      console.log('Application deleted successfully')
+      setShowDeleteModal(false)
+      setApplicationToDelete(null)
+      loadApplications()
+    } else {
+      console.error('Error deleting application:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
+      
+      let errorMessage = 'Failed to delete application. '
+      if (error.message) {
+        errorMessage += error.message
+      }
+      if (error.hint) {
+        errorMessage += '\n\nHint: ' + error.hint
+      }
+      if (error.details) {
+        errorMessage += '\n\nDetails: ' + error.details
+      }
+      
+      alert(errorMessage)
+    }
+  }
+
+  function cancelDelete() {
+    setShowDeleteModal(false)
+    setApplicationToDelete(null)
+  }
+
+  function openBookingModal(application) {
+    setSelectedApplication(application)
+    setShowBookingModal(true)
+    setBookingDate('')
+    setBookingTime('')
+    setBookingNotes('')
+  }
+
+  function closeBookingModal() {
+    setShowBookingModal(false)
+    setSelectedApplication(null)
+    setBookingDate('')
+    setBookingTime('')
+    setBookingNotes('')
+  }
+
+  async function submitBooking(e) {
+    e.preventDefault()
+    setSubmittingBooking(true)
+
+    try {
+      // Combine date and time
+      const bookingDateTime = new Date(`${bookingDate}T${bookingTime}`)
+
+      console.log('Submitting booking with data:', {
+        property_id: selectedApplication.property_id,
+        tenant: session.user.id,
+        landlord: selectedApplication.property.landlord,
+        application_id: selectedApplication.id,
+        start_time: bookingDateTime.toISOString(),
+        booking_date: bookingDateTime.toISOString(),
+        notes: bookingNotes,
+        status: 'scheduled'
+      })
+
+      // Create booking
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .insert({
+          property_id: selectedApplication.property_id,
+          tenant: session.user.id,
+          landlord: selectedApplication.property.landlord,
+          application_id: selectedApplication.id,
+          start_time: bookingDateTime.toISOString(),
+          booking_date: bookingDateTime.toISOString(),
+          notes: bookingNotes,
+          status: 'scheduled'
+        })
+        .select()
+        .single()
+
+      if (bookingError) {
+        console.error('Booking error details:', bookingError)
+        throw bookingError
+      }
+
+      console.log('Booking created successfully:', booking)
+
+      // Send notification to landlord
+      const notificationMessage = `${profile.full_name} has scheduled a viewing for ${selectedApplication.property?.title} on ${new Date(bookingDateTime).toLocaleString()}`
+      
+      await createNotification({
+        recipient: selectedApplication.property.landlord,
+        actor: session.user.id,
+        type: 'booking',
+        message: notificationMessage,
+        link: '/applications'
+      })
+
+      alert('Viewing scheduled successfully! The landlord has been notified.')
+      closeBookingModal()
+      loadApplications()
+    } catch (err) {
+      console.error('Error creating booking:', err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
+      
+      let errorMessage = 'Failed to schedule viewing. '
+      if (err.message) {
+        errorMessage += err.message
+      }
+      if (err.hint) {
+        errorMessage += '\n\nHint: ' + err.hint
+      }
+      if (err.details) {
+        errorMessage += '\n\nDetails: ' + err.details
+      }
+      
+      alert(errorMessage)
+    } finally {
+      setSubmittingBooking(false)
+    }
+  }
+
+  // Get minimum date (today)
+  const getMinDate = () => {
+    const today = new Date()
+    return today.toISOString().split('T')[0]
   }
 
   if (!session || !profile) {
@@ -274,28 +427,177 @@ export default function ApplicationsPage() {
                     Applied: {new Date(app.submitted_at).toLocaleDateString()}
                   </p>
 
-                  {profile.role === 'landlord' && app.status === 'pending' && (
-                    <div className="flex gap-2">
+                  <div className="flex gap-2">
+                    {profile.role === 'landlord' && app.status === 'pending' && (
+                      <>
+                        <button
+                          onClick={() => updateApplicationStatus(app.id, 'accepted')}
+                          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => updateApplicationStatus(app.id, 'rejected')}
+                          className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+
+                    {profile.role === 'tenant' && app.status === 'accepted' && (
                       <button
-                        onClick={() => updateApplicationStatus(app.id, 'accepted')}
-                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                        onClick={() => openBookingModal(app)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
                       >
-                        Accept
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Schedule Viewing
                       </button>
+                    )}
+
+                    {/* Delete button - hidden for accepted applications */}
+                    {app.status !== 'accepted' && (
                       <button
-                        onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium"
+                        onClick={() => deleteApplication(app.id)}
+                        className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 text-sm font-medium flex items-center gap-2"
+                        title="Delete application"
                       >
-                        Reject
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
+
+      {/* Booking Modal */}
+      {showBookingModal && selectedApplication && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Schedule Property Viewing</h3>
+              <button
+                onClick={closeBookingModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded">
+              <p className="font-medium text-gray-900">{selectedApplication.property?.title}</p>
+              <p className="text-sm text-gray-600">{selectedApplication.property?.address}, {selectedApplication.property?.city}</p>
+            </div>
+
+            <form onSubmit={submitBooking} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Preferred Date *
+                </label>
+                <input
+                  type="date"
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  min={getMinDate()}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Preferred Time *
+                </label>
+                <input
+                  type="time"
+                  value={bookingTime}
+                  onChange={(e) => setBookingTime(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Additional Notes (Optional)
+                </label>
+                <textarea
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Any specific requirements or questions..."
+                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeBookingModal}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingBooking}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {submittingBooking ? 'Scheduling...' : 'Schedule Viewing'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mr-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Delete Application</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete this application? All associated data will be permanently removed.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={cancelDelete}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

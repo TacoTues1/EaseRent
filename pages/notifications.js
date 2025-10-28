@@ -7,6 +7,7 @@ export default function NotificationsPage() {
   const [session, setSession] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
+  const [deleteConfirm, setDeleteConfirm] = useState(null) // { id: notificationId }
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -110,6 +111,32 @@ export default function NotificationsPage() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   }
 
+  async function deleteNotification(id, e) {
+    e.stopPropagation() // Prevent triggering the notification click
+    
+    // Show confirmation modal
+    setDeleteConfirm({ id })
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) return
+    
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', deleteConfirm.id)
+    
+    if (!error) {
+      setNotifications(prev => prev.filter(n => n.id !== deleteConfirm.id))
+    }
+    
+    setDeleteConfirm(null)
+  }
+
+  function cancelDelete() {
+    setDeleteConfirm(null)
+  }
+
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -153,7 +180,7 @@ export default function NotificationsPage() {
                 }`}
                 onClick={() => handleNotificationClick(notif)}
               >
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs uppercase font-semibold ${
@@ -177,12 +204,47 @@ export default function NotificationsPage() {
                       Click to view →
                     </p>
                   </div>
+                  <button
+                    onClick={(e) => deleteNotification(notif.id, e)}
+                    className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete notification"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0  backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Notification</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this notification? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors font-medium"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
