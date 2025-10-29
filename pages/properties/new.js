@@ -153,7 +153,7 @@ export default function NewProperty() {
       setMessage('Error creating property: ' + error.message)
     } else {
       setMessage('Property created successfully!')
-      setTimeout(() => router.push('/properties'), 1500)
+      setTimeout(() => router.push('/dashboard'), 1500)
     }
     setLoading(false)
   }

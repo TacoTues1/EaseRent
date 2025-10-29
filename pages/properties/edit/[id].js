@@ -71,14 +71,14 @@ export default function EditProperty() {
     
     if (error) {
       setMessage('Property not found')
-      setTimeout(() => router.push('/properties'), 2000)
+      setTimeout(() => router.push('/dashboard'), 2000)
       return
     }
 
     // Check if user owns this property
     if (data.landlord !== session.user.id) {
       setMessage('You can only edit your own properties')
-      setTimeout(() => router.push('/properties'), 2000)
+      setTimeout(() => router.push('/dashboard'), 2000)
       return
     }
 
@@ -214,7 +214,7 @@ export default function EditProperty() {
       setLoading(false)
     } else {
       toast.success('Property deleted successfully!')
-      setTimeout(() => router.push('/properties'), 1500)
+      setTimeout(() => router.push('/dashboard'), 1500)
     }
   }
 
@@ -233,7 +233,31 @@ export default function EditProperty() {
 
   return (
     <div className="min-h-screen bg-white p-6">
-      <Toaster position="top-right" />
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#000',
+            padding: '16px',
+            borderRadius: '0px',
+            border: '2px solid #000',
+          },
+          success: {
+            iconTheme: {
+              primary: '#000',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#000',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
       <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         {message && (
