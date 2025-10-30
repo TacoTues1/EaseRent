@@ -431,7 +431,7 @@ export default function Home() {
             <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-gradient-to-b from-gray-900 to-gray-600 hidden md:block"></div>
             
             <div className="space-y-8">
-              <div className="relative flex items-center md:justify-start">
+              {/* <div className="relative flex items-center md:justify-start">
                 <div className="md:w-1/2 md:pr-8 text-right">
                   <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-5 rounded-xl shadow-lg">
                     <div className="text-xl font-bold text-gray-900 mb-1">2020</div>
@@ -442,22 +442,23 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-900 rounded-full border-4 border-white shadow-lg"></div>
-              </div>
+              </div> */}
 
               <div className="relative flex items-center md:justify-end">
                 <div className="md:w-1/2 md:pl-8">
                   <div className="bg-gradient-to-br from-gray-200 to-gray-300 p-5 rounded-xl shadow-lg">
-                    <div className="text-xl font-bold text-gray-800 mb-1">2022</div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Platform Launch</h3>
+                    <div className="text-xl font-bold text-gray-800 mb-1">2024</div>
+                    {/* <h3 className="text-lg font-bold text-gray-900 mb-2">Platform Launch</h3> */}
                     <p className="text-gray-600 text-sm">
-                      Launched platform connecting landlords and tenants
+                      {/* Launched platform connecting landlords and tenants */}
+                      Alejobayot
                     </p>
                   </div>
                 </div>
                 <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-700 rounded-full border-4 border-white shadow-lg"></div>
               </div>
 
-              <div className="relative flex items-center md:justify-start">
+              {/* <div className="relative flex items-center md:justify-start">
                 <div className="md:w-1/2 md:pr-8 text-right">
                   <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-5 rounded-xl shadow-lg">
                     <div className="text-xl font-bold text-gray-900 mb-1">2025</div>
@@ -468,7 +469,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-600 rounded-full border-4 border-white shadow-lg"></div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
