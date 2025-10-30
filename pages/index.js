@@ -54,8 +54,6 @@ export default function Home() {
       .order('created_at', { ascending: false })
       .limit(6)
     
-    console.log('Featured properties loaded:', data) // Debug
-    if (error) console.error('Error loading properties:', error)
     setProperties(data || [])
     setLoading(false)
   }
