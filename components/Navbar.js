@@ -13,6 +13,7 @@ export default function Navbar() {
   const [authMode, setAuthMode] = useState('signin') // 'signin' or 'signup'
   const [showDropdown, setShowDropdown] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -35,6 +36,31 @@ export default function Navbar() {
       authListener.subscription.unsubscribe()
     }
   }, [])
+
+  // Update underline position on route change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const updateUnderline = () => {
+        const activeLink = document.querySelector('.nav-link.active')
+        if (activeLink) {
+          const parent = activeLink.parentElement
+          const parentRect = parent.getBoundingClientRect()
+          const linkRect = activeLink.getBoundingClientRect()
+          setUnderlineStyle({
+            left: linkRect.left - parentRect.left,
+            width: linkRect.width
+          })
+        }
+      }
+      
+      // Small delay to ensure DOM is ready
+      setTimeout(updateUnderline, 150)
+      
+      // Update on window resize
+      window.addEventListener('resize', updateUnderline)
+      return () => window.removeEventListener('resize', updateUnderline)
+    }
+  }, [router.pathname, profile])
 
   async function loadProfile(userId) {
     try {
@@ -159,10 +185,20 @@ export default function Navbar() {
             <Link href="/dashboard" className="text-xl font-bold text-black">
               EaseRent
             </Link>
-            <div className="hidden md:flex gap-6">
+            <div className="hidden md:flex gap-6 relative">
+              {/* Sliding underline indicator */}
+              <div 
+                className="absolute bottom-0 h-0.5 bg-black"
+                style={{ 
+                  left: `${underlineStyle.left}px`, 
+                  width: `${underlineStyle.width}px`,
+                  transition: 'left 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+              />
+              
               <Link 
                 href="/dashboard" 
-                className={`${isActive('/dashboard') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/dashboard') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
               >
                 Dashboard
               </Link>
@@ -170,13 +206,13 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/properties/new" 
-                    className={`${isActive('/properties/new') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/properties/new') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
                   >
                     Add Property
                   </Link>
                   <Link 
                     href="/applications" 
-                    className={`${isActive('/applications') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/applications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
                   >
                     Applications
                   </Link>
@@ -186,13 +222,13 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/applications" 
-                    className={`${isActive('/applications') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/applications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
                   >
                     My Applications
                   </Link>
                   <Link 
                     href="/maintenance" 
-                    className={`${isActive('/maintenance') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/maintenance') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
                   >
                     Maintenance
                   </Link>
@@ -200,19 +236,19 @@ export default function Navbar() {
               )}
               <Link 
                 href="/payments" 
-                className={`${isActive('/payments') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/payments') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
               >
                 Payments
               </Link>
               <Link 
                 href="/messages" 
-                className={`${isActive('/messages') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/messages') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
               >
                 Messages
               </Link>
               <Link 
                 href="/notifications" 
-                className={`relative ${isActive('/notifications') ? 'text-black font-bold border-b-2 border-black' : 'text-black'}`}
+                className={`nav-link relative pb-1 transition-colors duration-200 ${isActive('/notifications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
               >
                 Notifications
                 {unreadCount > 0 && (
@@ -328,9 +364,17 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {showMobileMenu && (
-        <div className="md:hidden border-t-2 border-black bg-white">
-          {/* User Info Section */}
-          <div className="px-4 py-4 border-b-2 border-black bg-white">
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/20 z-40 md:hidden" 
+            onClick={() => setShowMobileMenu(false)}
+          />
+          
+          {/* Mobile Menu Content */}
+          <div className="absolute left-0 right-0 top-16 md:hidden border-t-2 border-black bg-white z-50 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            {/* User Info Section */}
+            <div className="px-4 py-4 border-b-2 border-black bg-white">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-semibold text-lg">
                 {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
@@ -454,6 +498,7 @@ export default function Navbar() {
             </button>
           </div>
         </div>
+        </>
       )}
     </nav>
   )

@@ -315,14 +315,14 @@ export default function ApplicationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-6">
+    <div className="min-h-screen bg-white p-3 sm:p-6">
       <Toaster position="top-right" />
       <div className="max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold mb-2">
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl font-bold mb-2">
             {profile.role === 'landlord' ? 'Tenant Applications' : 'My Applications'}
           </h1>
-          <p className="text-sm text-black">
+          <p className="text-xs sm:text-sm text-black">
             {profile.role === 'landlord' 
               ? 'Review and manage tenant applications for your properties' 
               : 'Track the status of your rental applications'}
@@ -330,20 +330,20 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="bg-white border-2 border-black mb-6 p-2 flex gap-2">
+        <div className="bg-white border-2 border-black mb-4 sm:mb-6 p-2 flex flex-wrap gap-2">
           <button
             onClick={() => setFilter('all')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
               filter === 'all' 
                 ? 'bg-black text-white' 
                 : 'text-black'
             }`}
           >
-            All Applications
+            All
           </button>
           <button
             onClick={() => setFilter('pending')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
               filter === 'pending' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -353,7 +353,7 @@ export default function ApplicationsPage() {
           </button>
           <button
             onClick={() => setFilter('accepted')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
               filter === 'accepted' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -363,7 +363,7 @@ export default function ApplicationsPage() {
           </button>
           <button
             onClick={() => setFilter('rejected')}
-            className={`flex-1 px-4 py-2 text-sm font-medium ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
               filter === 'rejected' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -376,12 +376,12 @@ export default function ApplicationsPage() {
         {/* Applications List */}
         <div className="space-y-4">
           {loading ? (
-            <div className="text-center py-12 bg-white border-2 border-black">
-              <div className="inline-block animate-spin h-12 w-12 border-b-2 border-black"></div>
+            <div className="text-center py-12 bg-white">
+              <div className="inline-block animate-spin h-12 w-12"></div>
               <p className="mt-4 text-black">Loading applications...</p>
             </div>
           ) : applications.length === 0 ? (
-            <div className="text-center py-12 bg-white border-2 border-black">
+            <div className="text-center py-12 bg-white">
               <p className="text-black mb-2">
                 {filter === 'all' 
                   ? 'No applications yet' 
@@ -395,37 +395,37 @@ export default function ApplicationsPage() {
             </div>
           ) : (
             applications.map(app => (
-              <div key={app.id} className="bg-white border-2 border-black p-6">
-                <div className="flex justify-between items-start mb-4">
+              <div key={app.id} className="bg-white border-2 border-black p-3 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-3">
                   <div className="flex-1">
-                    <h3 className="text-lg font-bold text-black mb-1">
+                    <h3 className="text-base sm:text-lg font-bold text-black mb-1">
                       {app.property?.title}
                     </h3>
-                    <p className="text-sm text-black mb-2">
+                    <p className="text-xs sm:text-sm text-black mb-2">
                       {app.property?.address}, {app.property?.city}
                     </p>
                     {profile.role === 'landlord' && app.tenant_profile && (
                       <div className="mb-3">
-                        <p className="text-sm font-medium text-black">
+                        <p className="text-xs sm:text-sm font-medium text-black">
                           Applicant: {app.tenant_profile.full_name}
                         </p>
                         {app.tenant_profile.email && (
-                          <p className="text-sm text-black">
+                          <p className="text-xs sm:text-sm text-black break-all">
                             Email: {app.tenant_profile.email}
                           </p>
                         )}
                         {app.tenant_profile.phone && (
-                          <p className="text-sm text-black">
+                          <p className="text-xs sm:text-sm text-black">
                             Phone: {app.tenant_profile.phone}
                           </p>
                         )}
                       </div>
                     )}
-                    <p className="text-2xl font-bold text-black mb-3">
+                    <p className="text-xl sm:text-2xl font-bold text-black mb-3">
                       ₱{Number(app.property?.price).toLocaleString()}/month
                     </p>
                   </div>
-                  <span className={`px-3 py-1 text-sm font-semibold ${
+                  <span className={`px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold whitespace-nowrap self-start ${
                     app.status === 'pending' ? 'bg-black text-yellow-700' :
                     app.status === 'accepted' ? 'bg-black text-white' :
                     app.status === 'rejected' ? 'bg-black text-white' :
@@ -436,31 +436,31 @@ export default function ApplicationsPage() {
                 </div>
 
                 {app.message && (
-                  <div className="mb-4 p-3 bg-white">
-                    <p className="text-sm font-medium text-black mb-1">
+                  <div className="mb-4 p-2 sm:p-3 bg-white">
+                    <p className="text-xs sm:text-sm font-medium text-black mb-1">
                       {profile.role === 'landlord' ? 'Message from applicant:' : 'Your message:'}
                     </p>
-                    <p className="text-sm text-black">{app.message}</p>
+                    <p className="text-xs sm:text-sm text-black break-words">{app.message}</p>
                   </div>
                 )}
 
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <p className="text-xs text-black">
                     Applied: {new Date(app.submitted_at).toLocaleDateString()}
                   </p>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {profile.role === 'landlord' && app.status === 'pending' && (
                       <>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'accepted')}
-                          className="px-4 py-2 bg-black text-white text-sm font-medium"
+                          className="px-3 sm:px-4 py-2 bg-black text-white text-xs sm:text-sm font-medium"
                         >
                           Accept
                         </button>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                          className="px-4 py-2 bg-black text-white text-sm font-medium"
+                          className="px-3 sm:px-4 py-2 bg-black text-white text-xs sm:text-sm font-medium"
                         >
                           Reject
                         </button>
@@ -470,21 +470,22 @@ export default function ApplicationsPage() {
                     {profile.role === 'tenant' && app.status === 'accepted' && (
                       <>
                         {app.hasBooking ? (
-                          <div className="text-sm text-black flex items-center gap-2">
-                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="text-xs sm:text-sm text-black flex items-center gap-2">
+                            <svg className="w-4 h-4 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            Viewing scheduled for {new Date(app.latestBooking.booking_date).toLocaleString()}
+                            <span className="break-words">Viewing scheduled for {new Date(app.latestBooking.booking_date).toLocaleString()}</span>
                           </div>
                         ) : (
                           <button
                             onClick={() => openBookingModal(app)}
-                            className="px-4 py-2 bg-black text-white hover:bg-black text-sm font-medium flex items-center gap-2"
+                            className="px-3 sm:px-4 py-2 bg-black text-white hover:bg-black text-xs sm:text-sm font-medium flex items-center gap-2"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            Schedule Viewing
+                            <span className="hidden sm:inline">Schedule Viewing</span>
+                            <span className="sm:hidden">Schedule</span>
                           </button>
                         )}
                       </>
@@ -494,10 +495,10 @@ export default function ApplicationsPage() {
                     {app.status !== 'accepted' && (
                       <button
                         onClick={() => deleteApplication(app.id)}
-                        className="px-4 py-2 bg-black text-white hover:bg-black text-sm font-medium flex items-center gap-2"
+                        className="px-3 sm:px-4 py-2 bg-black text-white hover:bg-black text-xs sm:text-sm font-medium flex items-center gap-2"
                         title="Delete application"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         Delete
@@ -514,12 +515,12 @@ export default function ApplicationsPage() {
       {/* Booking Modal */}
       {showBookingModal && selectedApplication && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-md w-full p-6">
+          <div className="bg-white border-2 border-black max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-black">Schedule Property Viewing</h3>
+              <h3 className="text-lg sm:text-xl font-bold text-black">Schedule Property Viewing</h3>
               <button
                 onClick={closeBookingModal}
-                className="text-black"
+                className="text-black flex-shrink-0"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -527,14 +528,14 @@ export default function ApplicationsPage() {
               </button>
             </div>
 
-            <div className="mb-4 p-3 bg-white">
-              <p className="font-medium text-black">{selectedApplication.property?.title}</p>
-              <p className="text-sm text-black">{selectedApplication.property?.address}, {selectedApplication.property?.city}</p>
+            <div className="mb-4 p-2 sm:p-3 bg-white">
+              <p className="font-medium text-black text-sm sm:text-base break-words">{selectedApplication.property?.title}</p>
+              <p className="text-xs sm:text-sm text-black break-words">{selectedApplication.property?.address}, {selectedApplication.property?.city}</p>
             </div>
 
             <form onSubmit={submitBooking} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-black mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
                   Preferred Date *
                 </label>
                 <input
@@ -543,12 +544,12 @@ export default function ApplicationsPage() {
                   onChange={(e) => setBookingDate(e.target.value)}
                   min={getMinDate()}
                   required
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none text-sm sm:text-base"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
                   Preferred Time *
                 </label>
                 <input
@@ -556,12 +557,12 @@ export default function ApplicationsPage() {
                   value={bookingTime}
                   onChange={(e) => setBookingTime(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none text-sm sm:text-base"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
                   Additional Notes (Optional)
                 </label>
                 <textarea
@@ -569,22 +570,22 @@ export default function ApplicationsPage() {
                   onChange={(e) => setBookingNotes(e.target.value)}
                   rows={3}
                   placeholder="Any specific requirements or questions..."
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black placeholder-gray-400 focus:outline-none"
+                  className="w-full px-3 py-2 bg-white border-2 border-black text-black placeholder-gray-400 focus:outline-none text-sm sm:text-base"
                 />
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
                   onClick={closeBookingModal}
-                  className="flex-1 px-4 py-2 border-2 border-black text-black"
+                  className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingBooking}
-                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 text-sm sm:text-base"
                 >
                   {submittingBooking ? 'Scheduling...' : 'Schedule Viewing'}
                 </button>
@@ -597,33 +598,33 @@ export default function ApplicationsPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-md w-full p-6">
-            <div className="flex items-center mb-4">
-              <div className="flex-shrink-0 w-12 h-12 bg-white flex items-center justify-center mr-4">
-                <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white border-2 border-black max-w-md w-full p-4 sm:p-6">
+            <div className="flex items-start sm:items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white flex items-center justify-center mr-3 sm:mr-4">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-xl font-bold text-black">Delete Application</h3>
-                <p className="text-sm text-black">This action cannot be undone</p>
+                <h3 className="text-lg sm:text-xl font-bold text-black">Delete Application</h3>
+                <p className="text-xs sm:text-sm text-black">This action cannot be undone</p>
               </div>
             </div>
 
-            <p className="text-black mb-6">
+            <p className="text-black mb-6 text-sm sm:text-base">
               Are you sure you want to delete this application? All associated data will be permanently removed.
             </p>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={cancelDelete}
-                className="flex-1 px-4 py-2 border-2 border-black text-black"
+                className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 px-4 py-2 bg-black text-white"
+                className="flex-1 px-4 py-2 bg-black text-white text-sm sm:text-base"
               >
                 Delete
               </button>

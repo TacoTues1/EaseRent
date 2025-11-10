@@ -163,7 +163,7 @@ export default function NotificationsPage() {
           )}
         </div>
 
-        <div className="bg-white border-2 border-black divide-y">
+        <div className="bg-white divide-y">
           {loading ? (
             <p className="p-6 text-black">Loading notifications...</p>
           ) : notifications.length === 0 ? (

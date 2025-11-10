@@ -180,7 +180,7 @@ export default function NewProperty() {
         {message && (
           <div className={`mb-4 p-3 border-2 ${
             message.includes('Error') || message.includes('error') || message.includes('denied')
-              ? 'bg-white text-black border-black'
+              ? 'bg-white text-black border-black rounded-[4px]'
               : message.includes('successfully') || message.includes('complete')
               ? 'bg-black text-white border-black'
               : 'bg-white text-black border-black'
@@ -399,14 +399,14 @@ export default function NewProperty() {
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 bg-black text-white border-2 border-black disabled:opacity-50"
+              className="px-6 py-2 bg-black text-white border-2 border-black disabled:opacity-50 rounded-[4px]"
             >
               {loading ? 'Creating...' : 'Create Property'}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-2 bg-white text-black border-2 border-black"
+              className="px-6 py-2 bg-white text-black border-2 border-black rounded-[4px]"
             >
               Cancel
             </button>

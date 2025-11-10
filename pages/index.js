@@ -13,6 +13,8 @@ export default function Home() {
   const [modalImageIndex, setModalImageIndex] = useState(0)
   const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 })
   const [showZoom, setShowZoom] = useState(false)
+  const [showPermitModal, setShowPermitModal] = useState(false)
+  const [selectedPermit, setSelectedPermit] = useState(null)
 
   useEffect(() => {
     loadFeaturedProperties()
@@ -127,6 +129,37 @@ export default function Home() {
   const handleMouseLeave = () => {
     setShowZoom(false)
   }
+
+  const openPermitModal = (permit) => {
+    setSelectedPermit(permit)
+    setShowPermitModal(true)
+  }
+
+  const closePermitModal = () => {
+    setShowPermitModal(false)
+    setSelectedPermit(null)
+  }
+
+  const permits = [
+    {
+      id: 1,
+      title: 'BIR Registration',
+      subtitle: 'Tax Compliant',
+      image: '/permits/bir.jpeg'
+    },
+    {
+      id: 2,
+      title: 'Contract of Lease',
+      subtitle: 'Verified & Certified',
+      image: '/permits/contact_of_lease.jpg'
+    },
+    {
+      id: 3,
+      title: 'Contract of Lease (Page 2)',
+      subtitle: 'Verified & Certified',
+      image: '/permits/contact_of_lease2.jpg'
+    }
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-gray-50 to-gray-100">
@@ -321,50 +354,25 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* BIR Registration */}
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer">
-              <div className="aspect-video overflow-hidden">
-                <img 
-                  src="/permits/bir.jpeg" 
-                  alt="BIR Registration"
-                  className="w-full h-full object-cover"
-                />
+            {permits.map((permit) => (
+              <div 
+                key={permit.id}
+                onClick={() => openPermitModal(permit)}
+                className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer group"
+              >
+                <div className="aspect-video overflow-hidden">
+                  <img 
+                    src={permit.image} 
+                    alt={permit.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+                <div className="p-4 text-center">
+                  <h3 className="text-base font-bold text-gray-900 mb-1">{permit.title}</h3>
+                  <p className="text-gray-600 text-xs">{permit.subtitle}</p>
+                </div>
               </div>
-              <div className="p-4 text-center">
-                <h3 className="text-base font-bold text-gray-900 mb-1">BIR Registration</h3>
-                <p className="text-gray-600 text-xs">Tax Compliant</p>
-              </div>
-            </div>
-
-            {/* Contract of Lease 1 */}
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer">
-              <div className="aspect-video overflow-hidden">
-                <img 
-                  src="/permits/contact_of_lease.jpg" 
-                  alt="Contract of Lease"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="text-base font-bold text-gray-900 mb-1">Contract of Lease</h3>
-                <p className="text-gray-600 text-xs">Verified & Certified</p>
-              </div>
-            </div>
-
-            {/* Contract of Lease 2 */}
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer">
-              <div className="aspect-video overflow-hidden">
-                <img 
-                  src="/permits/contact_of_lease2.jpg" 
-                  alt="Contract of Lease 2"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="text-base font-bold text-gray-900 mb-1">Contract of Lease (Page 2)</h3>
-                <p className="text-gray-600 text-xs">Verified & Certified</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -566,7 +574,7 @@ export default function Home() {
                             <>
                               <button
                                 onClick={prevModalImage}
-                                className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 w-10 h-10 rounded-full hover:bg-white flex items-center justify-center shadow-lg transition-all"
+                                className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 w-10 h-10 rounded-full hover:bg-white flex items-center justify-center shadow-lg transition-all cursor-pointer"
                               >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -574,7 +582,7 @@ export default function Home() {
                               </button>
                               <button
                                 onClick={nextModalImage}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 w-10 h-10 rounded-full hover:bg-white flex items-center justify-center shadow-lg transition-all"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 text-gray-800 w-10 h-10 rounded-full hover:bg-white flex items-center justify-center shadow-lg transition-all cursor-pointer"
                               >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -590,7 +598,7 @@ export default function Home() {
                                 <button
                                   key={idx}
                                   onClick={() => setModalImageIndex(idx)}
-                                  className={`h-1.5 rounded-full transition-all ${
+                                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
                                     idx === modalImageIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/60'
                                   }`}
                                 />
@@ -661,7 +669,7 @@ export default function Home() {
                         setAuthMode('signup')
                         setShowAuthModal(true)
                       }}
-                      className="flex-1 bg-gradient-to-r from-gray-900 to-gray-700 text-white py-2.5 px-4 rounded-xl text-sm font-semibold hover:from-black hover:to-gray-800 transition-all"
+                      className="flex-1 bg-gradient-to-r from-gray-900 to-gray-700 text-white py-2.5 px-4 rounded-xl text-sm font-semibold hover:from-black hover:to-gray-800 transition-all cursor-pointer"
                     >
                       Apply Now
                     </button>
@@ -671,12 +679,100 @@ export default function Home() {
                         setAuthMode('signin')
                         setShowAuthModal(true)
                       }}
-                      className="px-4 py-2.5 border-2 border-gray-900 text-gray-900 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all"
+                      className="px-4 py-2.5 border-2 border-gray-900 text-gray-900 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all cursor-pointer"
                     >
                       Sign up
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Permit/Certificate Modal */}
+      {showPermitModal && selectedPermit && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            {/* Background overlay */}
+            <div 
+              className="fixed inset-0 bg-black/70"
+              onClick={closePermitModal}
+            ></div>
+
+            {/* Modal panel */}
+            <div className="relative inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+              {/* Close button */}
+              <button
+                onClick={closePermitModal}
+                className="absolute top-4 right-4 z-10 p-2 bg-white/90 hover:bg-white rounded-full transition-all shadow-lg"
+              >
+                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Header */}
+              <div className="bg-gradient-to-r from-gray-900 to-gray-700 px-6 py-4">
+                <h3 className="text-xl font-bold text-white">{selectedPermit.title}</h3>
+                <p className="text-gray-300 text-sm mt-1">{selectedPermit.subtitle}</p>
+              </div>
+
+              {/* Image */}
+              <div className="p-6 bg-gray-50">
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <img 
+                    src={selectedPermit.image} 
+                    alt={selectedPermit.title}
+                    className="w-full h-auto object-contain max-h-[70vh]"
+                  />
+                </div>
+              </div>
+
+              {/* Footer with navigation */}
+              <div className="bg-white px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+                <button
+                  onClick={() => {
+                    const currentIndex = permits.findIndex(p => p.id === selectedPermit.id)
+                    const prevIndex = (currentIndex - 1 + permits.length) % permits.length
+                    setSelectedPermit(permits[prevIndex])
+                  }}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Previous
+                </button>
+
+                <div className="flex gap-2">
+                  {permits.map((permit, index) => (
+                    <button
+                      key={permit.id}
+                      onClick={() => setSelectedPermit(permit)}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        permit.id === selectedPermit.id 
+                          ? 'w-8 bg-gray-900' 
+                          : 'bg-gray-300 hover:bg-gray-400'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    const currentIndex = permits.findIndex(p => p.id === selectedPermit.id)
+                    const nextIndex = (currentIndex + 1) % permits.length
+                    setSelectedPermit(permits[nextIndex])
+                  }}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  Next
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>

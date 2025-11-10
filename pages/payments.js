@@ -376,8 +376,11 @@ export default function PaymentsPage() {
           <h1 className="text-2xl font-bold">Payments</h1>
           {userRole === 'landlord' && (
             <button
+            style={{ 
+              borderRadius: '6px',
+            }}
               onClick={() => setShowForm(!showForm)}
-              className="px-4 py-2 bg-black text-white hover:bg-black font-medium"
+              className="px-4 py-2 bg-black text-white hover:bg-black font-medium cursor-pointer"
             >
               {showForm ? 'Cancel' : 'Send Bill to Tenant'}
             </button>
