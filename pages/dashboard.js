@@ -197,8 +197,11 @@ export default function Dashboard() {
           </div>
           {profile.role === 'landlord' && (
             <button
+            style={{ 
+            borderRadius: '5px',
+            }}
               onClick={() => router.push('/properties/new')}
-              className="flex items-center gap-2 px-6 py-3 bg-black text-white border-2 border-black"
+              className="flex items-center gap-0 px-1 py-1 bg-black text-white border-2 border-black cursor-pointer"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -210,7 +213,8 @@ export default function Dashboard() {
         
         {loading ? (
           <div className="text-center py-16">
-            <div className="inline-block h-16 w-16 border-4 border-white border-t-black"></div>
+            <div 
+            className="inline-block h-16 w-16 border-4 border-white border-t-black"></div>
             <p className="mt-6 text-black text-lg font-medium">Loading properties...</p>
           </div>
         ) : properties.length === 0 ? (
@@ -256,7 +260,7 @@ export default function Dashboard() {
                         <>
                           <button
                             onClick={() => prevImage(property.id, images.length)}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 border-2 border-black flex items-center justify-center"
+                            className="absolute left-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 border-2 border-black flex items-center justify-center cursor-pointer"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
@@ -264,7 +268,7 @@ export default function Dashboard() {
                           </button>
                           <button
                             onClick={() => nextImage(property.id, images.length)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 border-2 border-black flex items-center justify-center"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 border-2 border-black flex items-center justify-center cursor-pointer"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -353,14 +357,14 @@ export default function Dashboard() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => handlePropertyAction(property.id)}
-                        className="flex-1 bg-black text-white py-3 px-4 text-sm font-semibold border-2 border-black"
+                        className="flex-1 bg-black text-white py-3 px-4 text-sm font-semibold border-2 border-black cursor-pointer"
                       >
                         {profile.role === 'landlord' ? 'Edit' : 'View'}
                       </button>
                       {profile.role === 'landlord' && (
                         <button
                           onClick={() => togglePropertyVisibility(property.id, property.available)}
-                          className={`flex-1 py-3 px-4 text-sm font-semibold border-2 border-black ${
+                          className={`flex-1 py-3 px-4 text-sm font-semibold border-2 border-black cursor-pointer ${
                             property.available
                               ? 'bg-white text-black'
                               : 'bg-black text-white'
