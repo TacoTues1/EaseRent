@@ -133,7 +133,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 flex items-center justify-center z-50 px-4" onClick={onClose}>
       {/* Semi-transparent overlay */}
       <div className="absolute inset-0 bg-black opacity-50"></div>
       
