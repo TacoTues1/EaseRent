@@ -78,9 +78,23 @@ export default function Navbar() {
       if (data) {
         setProfile(data)
       } else {
-        // Profile doesn't exist (e.g., Google sign-in user), create one
-        const { data: { user } } = await supabase.auth.getUser()
+        // Profile doesn't exist, try to get user from auth
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
         
+        if (authError) {
+          // User doesn't exist in auth either (orphaned session)
+          console.error('Auth error - signing out:', authError)
+          await supabase.auth.signOut()
+          return
+        }
+        
+        if (!user) {
+          // No user found, sign out
+          await supabase.auth.signOut()
+          return
+        }
+        
+        // User exists in auth but not in profiles, create profile
         const { data: newProfile, error: insertError } = await supabase
           .from('profiles')
           .insert({
@@ -92,7 +106,25 @@ export default function Navbar() {
           .single()
         
         if (insertError) {
-          console.error('Error creating profile:', insertError)
+          // Ignore duplicate key errors (profile was created elsewhere, e.g., by AuthModal)
+          if (insertError.code === '23505') {
+            // Profile exists now, fetch it
+            const { data: existingProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', userId)
+              .maybeSingle()
+            
+            if (existingProfile) {
+              setProfile(existingProfile)
+            }
+          } else if (insertError.code === '23503') {
+            // Foreign key violation - user doesn't exist in auth.users
+            console.error('User not found in auth.users - signing out')
+            await supabase.auth.signOut()
+          } else {
+            console.error('Error creating profile:', insertError)
+          }
         } else if (newProfile) {
           setProfile(newProfile)
         }
@@ -138,20 +170,20 @@ export default function Navbar() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
-                <Link href="/" className="text-xl font-bold text-black">
+                <Link href="/" className="text-lg sm:text-xl font-bold text-black">
                   EaseRent
                 </Link>
               </div>
-              <div className="absolute left-1/2 transform -translate-x-1/2 hidden md:block">
-                <span className="text-xl font-bold text-black">Welcome to EaseRent</span>
+              <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block">
+                <span className="text-lg xl:text-xl font-bold text-black">Welcome to EaseRent</span>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <button 
                   onClick={() => {
                     setAuthMode('signin')
                     setShowAuthModal(true)
                   }}
-                  className="px-4 py-2 text-black border border-black font-medium"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black border border-black font-medium"
                 >
                   Login
                 </button>
@@ -160,7 +192,7 @@ export default function Navbar() {
                     setAuthMode('signup')
                     setShowAuthModal(true)
                   }}
-                  className="px-4 py-2 bg-black text-white border border-black"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black"
                 >
                   Register
                 </button>
@@ -181,11 +213,11 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex items-center gap-8">
-            <Link href="/dashboard" className="text-xl font-bold text-black">
+          <div className="flex items-center gap-4 sm:gap-8">
+            <Link href="/dashboard" className="text-lg sm:text-xl font-bold text-black">
               EaseRent
             </Link>
-            <div className="hidden md:flex gap-6 relative">
+            <div className="hidden md:flex gap-4 lg:gap-6 relative">
               {/* Sliding underline indicator */}
               <div 
                 className="absolute bottom-0 h-0.5 bg-black"
@@ -198,7 +230,7 @@ export default function Navbar() {
               
               <Link 
                 href="/dashboard" 
-                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/dashboard') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/dashboard') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
               >
                 Dashboard
               </Link>
@@ -206,15 +238,27 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/properties/new" 
-                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/properties/new') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/properties/new') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
                   >
                     Add Property
                   </Link>
                   <Link 
                     href="/applications" 
-                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/applications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
                   >
                     Applications
+                  </Link>
+                  <Link 
+                    href="/bookings" 
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/bookings') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                  >
+                    Bookings
+                  </Link>
+                  <Link 
+                    href="/schedule" 
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/schedule') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                  >
+                    Schedule
                   </Link>
                 </>
               )}
@@ -222,13 +266,13 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/applications" 
-                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/applications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
                   >
                     My Applications
                   </Link>
                   <Link 
                     href="/maintenance" 
-                    className={`nav-link pb-1 transition-colors duration-200 ${isActive('/maintenance') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/maintenance') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
                   >
                     Maintenance
                   </Link>
@@ -236,19 +280,19 @@ export default function Navbar() {
               )}
               <Link 
                 href="/payments" 
-                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/payments') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/payments') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
               >
                 Payments
               </Link>
               <Link 
                 href="/messages" 
-                className={`nav-link pb-1 transition-colors duration-200 ${isActive('/messages') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/messages') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
               >
                 Messages
               </Link>
               <Link 
                 href="/notifications" 
-                className={`nav-link relative pb-1 transition-colors duration-200 ${isActive('/notifications') ? 'active text-black font-bold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link relative pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/notifications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
               >
                 Notifications
                 {unreadCount > 0 && (
@@ -260,11 +304,11 @@ export default function Navbar() {
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Mobile menu button - shows user avatar on mobile */}
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="md:hidden flex items-center gap-2 p-2 border border-black"
+              className="md:hidden flex items-center gap-2 p-1.5 sm:p-2 border border-black"
             >
               <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
                 {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
@@ -419,6 +463,20 @@ export default function Navbar() {
                   className={`block px-3 py-2 ${isActive('/applications') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
                 >
                   Applications
+                </Link>
+                <Link 
+                  href="/bookings" 
+                  onClick={() => setShowMobileMenu(false)}
+                  className={`block px-3 py-2 ${isActive('/bookings') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
+                >
+                  Bookings
+                </Link>
+                <Link 
+                  href="/schedule" 
+                  onClick={() => setShowMobileMenu(false)}
+                  className={`block px-3 py-2 ${isActive('/schedule') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
+                >
+                  Schedule
                 </Link>
               </>
             )}

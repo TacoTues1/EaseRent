@@ -19,6 +19,18 @@ export default function ApplicationsPage() {
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [applicationToDelete, setApplicationToDelete] = useState(null)
+  const [availableTimeSlots, setAvailableTimeSlots] = useState([])
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState('')
+  const [pendingBookings, setPendingBookings] = useState([])
+  const [showBookingsListModal, setShowBookingsListModal] = useState(false)
+  const [expandedApplications, setExpandedApplications] = useState({})
+
+  const toggleApplicationDetails = (appId) => {
+    setExpandedApplications(prev => ({
+      ...prev,
+      [appId]: !prev[appId]
+    }))
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -34,6 +46,9 @@ export default function ApplicationsPage() {
   useEffect(() => {
     if (session && profile) {
       loadApplications()
+      if (profile.role === 'landlord') {
+        loadPendingBookings()
+      }
     }
   }, [session, profile, filter])
 
@@ -130,6 +145,54 @@ export default function ApplicationsPage() {
     setLoading(false)
   }
 
+  async function loadPendingBookings() {
+    // Load pending bookings for landlord's properties
+    const { data: myProperties } = await supabase
+      .from('properties')
+      .select('id')
+      .eq('landlord', session.user.id)
+
+    if (myProperties && myProperties.length > 0) {
+      const propertyIds = myProperties.map(p => p.id)
+      
+      const { data } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          property:properties(title, address, city),
+          tenant_profile:profiles(full_name, phone),
+          application:applications(id)
+        `)
+        .in('property_id', propertyIds)
+        .eq('status', 'pending_approval')
+        .order('created_at', { ascending: false })
+
+      setPendingBookings(data || [])
+    }
+  }
+
+  async function loadAvailableTimeSlots(application) {
+    // Get the landlord_id from the application's property
+    const landlordId = application.property?.landlord || application.property?.landlord_id
+    
+    if (!landlordId) {
+      console.error('No landlord ID found for application')
+      setAvailableTimeSlots([])
+      return
+    }
+
+    const { data } = await supabase
+      .from('available_time_slots')
+      .select('*')
+      .eq('landlord_id', landlordId)
+      .eq('is_booked', false)
+      .gte('start_time', new Date().toISOString())
+      .or(`property_id.is.null,property_id.eq.${application.property_id}`)
+      .order('start_time', { ascending: true })
+
+    setAvailableTimeSlots(data || [])
+  }
+
   async function updateApplicationStatus(applicationId, newStatus) {
     const { error } = await supabase
       .from('applications')
@@ -212,7 +275,10 @@ export default function ApplicationsPage() {
     setShowBookingModal(true)
     setBookingDate('')
     setBookingTime('')
+    setSelectedTimeSlot('')
     setBookingNotes('')
+    // Load available time slots for this landlord
+    loadAvailableTimeSlots(application)
   }
 
   function closeBookingModal() {
@@ -220,7 +286,9 @@ export default function ApplicationsPage() {
     setSelectedApplication(null)
     setBookingDate('')
     setBookingTime('')
+    setSelectedTimeSlot('')
     setBookingNotes('')
+    setAvailableTimeSlots([])
   }
 
   async function submitBooking(e) {
@@ -228,21 +296,22 @@ export default function ApplicationsPage() {
     setSubmittingBooking(true)
 
     try {
-      // Combine date and time
-      const bookingDateTime = new Date(`${bookingDate}T${bookingTime}`)
+      let bookingDateTime
+      let timeSlotId = null
 
-      console.log('Submitting booking with data:', {
-        property_id: selectedApplication.property_id,
-        tenant: session.user.id,
-        landlord: selectedApplication.property.landlord,
-        application_id: selectedApplication.id,
-        start_time: bookingDateTime.toISOString(),
-        booking_date: bookingDateTime.toISOString(),
-        notes: bookingNotes,
-        status: 'scheduled'
-      })
+      if (selectedTimeSlot) {
+        // Using landlord's available time slot
+        const slot = availableTimeSlots.find(s => s.id === selectedTimeSlot)
+        if (slot) {
+          bookingDateTime = new Date(slot.start_time)
+          timeSlotId = slot.id
+        }
+      } else {
+        // Manual date/time entry (should not happen if slots are available)
+        bookingDateTime = new Date(`${bookingDate}T${bookingTime}`)
+      }
 
-      // Create booking
+      // Create booking with pending_approval status
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
         .insert({
@@ -253,7 +322,7 @@ export default function ApplicationsPage() {
           start_time: bookingDateTime.toISOString(),
           booking_date: bookingDateTime.toISOString(),
           notes: bookingNotes,
-          status: 'scheduled'
+          status: 'pending_approval'
         })
         .select()
         .single()
@@ -263,20 +332,26 @@ export default function ApplicationsPage() {
         throw bookingError
       }
 
-      console.log('Booking created successfully:', booking)
+      // If a time slot was selected, mark it as booked
+      if (timeSlotId) {
+        await supabase
+          .from('available_time_slots')
+          .update({ is_booked: true })
+          .eq('id', timeSlotId)
+      }
 
       // Send notification to landlord
-      const notificationMessage = `${profile.full_name} has scheduled a viewing for ${selectedApplication.property?.title} on ${new Date(bookingDateTime).toLocaleString()}`
+      const notificationMessage = `${profile.full_name} has requested a viewing for ${selectedApplication.property?.title} on ${new Date(bookingDateTime).toLocaleString()}. Please approve or reject.`
       
       await createNotification({
         recipient: selectedApplication.property.landlord,
         actor: session.user.id,
-        type: 'booking',
+        type: 'booking_request',
         message: notificationMessage,
         link: '/applications'
       })
 
-      toast.success('Viewing scheduled successfully! The landlord has been notified.')
+      toast.success('Viewing request sent! Waiting for landlord approval.')
       closeBookingModal()
       loadApplications()
     } catch (err) {
@@ -297,6 +372,75 @@ export default function ApplicationsPage() {
       toast.error(errorMessage)
     } finally {
       setSubmittingBooking(false)
+    }
+  }
+
+  async function approveBooking(bookingId) {
+    const booking = pendingBookings.find(b => b.id === bookingId)
+    
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'approved' })
+      .eq('id', bookingId)
+
+    if (!error) {
+      // Mark the time slot as booked
+      if (booking?.time_slot_id) {
+        await supabase
+          .from('available_time_slots')
+          .update({ is_booked: true })
+          .eq('id', booking.time_slot_id)
+      }
+      
+      if (booking) {
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'booking_approved',
+          message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
+          link: '/applications'
+        })
+      }
+      toast.success('Booking approved!')
+      loadPendingBookings()
+      loadApplications()
+    } else {
+      console.error('Error approving booking:', error)
+      toast.error('Failed to approve booking')
+    }
+  }
+
+  async function rejectBooking(bookingId) {
+    const booking = pendingBookings.find(b => b.id === bookingId)
+    
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'rejected' })
+      .eq('id', bookingId)
+
+    if (!error) {
+      // Unbook the time slot if it was booked
+      if (booking?.time_slot_id) {
+        await supabase
+          .from('available_time_slots')
+          .update({ is_booked: false })
+          .eq('id', booking.time_slot_id)
+      }
+
+      if (booking) {
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'booking_rejected',
+          message: `Your viewing request for ${booking.property?.title} has been rejected. Please choose another time slot.`,
+          link: '/applications'
+        })
+      }
+      toast.success('Booking rejected')
+      loadPendingBookings()
+      loadApplications()
+    } else {
+      toast.error('Failed to reject booking')
     }
   }
 
@@ -373,8 +517,33 @@ export default function ApplicationsPage() {
           </button>
         </div>
 
+        {/* Landlord: Pending Booking Requests Banner */}
+        {profile.role === 'landlord' && pendingBookings.length > 0 && (
+          <div className="mb-4 sm:mb-6 bg-yellow-50 border-2 border-yellow-600 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="font-semibold text-black">
+                    {pendingBookings.length} Pending Viewing {pendingBookings.length === 1 ? 'Request' : 'Requests'}
+                  </p>
+                  <p className="text-sm text-black">Tenants are waiting for your approval</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBookingsListModal(true)}
+                className="px-4 py-2 bg-yellow-600 text-white font-medium hover:bg-yellow-700 whitespace-nowrap"
+              >
+                View Requests ({pendingBookings.length})
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Applications List */}
-        <div className="space-y-4">
+        <div className="space-y-2">
           {loading ? (
             <div className="text-center py-12 bg-white">
               <div className="inline-block animate-spin h-12 w-12"></div>
@@ -394,120 +563,180 @@ export default function ApplicationsPage() {
               </p>
             </div>
           ) : (
-            applications.map(app => (
-              <div key={app.id} className="bg-white border-2 border-black p-3 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 gap-3">
-                  <div className="flex-1">
-                    <h3 className="text-base sm:text-lg font-bold text-black mb-1">
-                      {app.property?.title}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-black mb-2">
-                      {app.property?.address}, {app.property?.city}
-                    </p>
-                    {profile.role === 'landlord' && app.tenant_profile && (
-                      <div className="mb-3">
-                        <p className="text-xs sm:text-sm font-medium text-black">
-                          Applicant: {app.tenant_profile.full_name}
-                        </p>
-                        {app.tenant_profile.email && (
-                          <p className="text-xs sm:text-sm text-black break-all">
-                            Email: {app.tenant_profile.email}
-                          </p>
-                        )}
-                        {app.tenant_profile.phone && (
-                          <p className="text-xs sm:text-sm text-black">
-                            Phone: {app.tenant_profile.phone}
-                          </p>
-                        )}
+            applications.map(app => {
+              const isExpanded = expandedApplications[app.id]
+              
+              return (
+                <div key={app.id} className="bg-white border-2 border-black p-2 sm:p-3">
+                  {/* Compact Header - Always Visible */}
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className="text-sm sm:text-base font-bold text-black leading-tight">
+                          {app.property?.title}
+                        </h3>
+                        <span className={`px-2 py-0.5 text-[10px] sm:text-xs font-semibold whitespace-nowrap ${
+                          app.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                          app.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                          app.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                        </span>
                       </div>
-                    )}
-                    <p className="text-xl sm:text-2xl font-bold text-black mb-3">
-                      ₱{Number(app.property?.price).toLocaleString()}/month
-                    </p>
+                      
+                      <p className="text-xs text-gray-600 mb-1">
+                        {app.property?.city}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm sm:text-base font-bold text-black">
+                          ₱{Number(app.property?.price).toLocaleString()}
+                        </p>
+                        <span className="text-gray-400">•</span>
+                        <p className="text-[10px] sm:text-xs text-gray-500">
+                          {new Date(app.submitted_at).toLocaleDateString()}
+                        </p>
+                      </div>
+
+                      {/* Booking Status for Tenants - Compact */}
+                      {profile.role === 'tenant' && app.status === 'accepted' && app.hasBooking && !isExpanded && (
+                        <div className="flex items-center gap-1 text-[10px] sm:text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded mt-1 w-fit">
+                          <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Viewing: {new Date(app.latestBooking.booking_date).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <span className={`px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold whitespace-nowrap self-start ${
-                    app.status === 'pending' ? 'bg-black text-yellow-700' :
-                    app.status === 'accepted' ? 'bg-black text-white' :
-                    app.status === 'rejected' ? 'bg-black text-white' :
-                    'bg-black text-white'
-                  }`}>
-                    {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                  </span>
-                </div>
 
-                {app.message && (
-                  <div className="mb-4 p-2 sm:p-3 bg-white">
-                    <p className="text-xs sm:text-sm font-medium text-black mb-1">
-                      {profile.role === 'landlord' ? 'Message from applicant:' : 'Your message:'}
-                    </p>
-                    <p className="text-xs sm:text-sm text-black break-words">{app.message}</p>
-                  </div>
-                )}
+                  {/* Expandable Details Section */}
+                  {isExpanded && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                      {/* Full Address */}
+                      <div className="text-xs text-gray-600">
+                        <span className="font-medium">Address:</span> {app.property?.address}, {app.property?.city}
+                      </div>
 
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                  <p className="text-xs text-black">
-                    Applied: {new Date(app.submitted_at).toLocaleDateString()}
-                  </p>
+                      {/* Applicant Info for Landlords */}
+                      {profile.role === 'landlord' && app.tenant_profile && (
+                        <div className="bg-gray-50 p-2 rounded text-xs">
+                          <p className="font-semibold text-black mb-1">Applicant:</p>
+                          <div className="space-y-0.5">
+                            <p className="text-black">{app.tenant_profile.full_name}</p>
+                            {app.tenant_profile.email && (
+                              <p className="text-black break-all">{app.tenant_profile.email}</p>
+                            )}
+                            {app.tenant_profile.phone && (
+                              <p className="text-black">{app.tenant_profile.phone}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-                  <div className="flex flex-wrap gap-2">
+                      {/* Application Message */}
+                      {app.message && (
+                        <div className="bg-blue-50 p-2 rounded text-xs">
+                          <p className="font-semibold text-black mb-0.5">
+                            {profile.role === 'landlord' ? 'Message:' : 'Your message:'}
+                          </p>
+                          <p className="text-black break-words">{app.message}</p>
+                        </div>
+                      )}
+
+                      {/* Booking Details for Tenants */}
+                      {profile.role === 'tenant' && app.status === 'accepted' && app.hasBooking && (
+                        <div className="bg-green-50 p-2 rounded text-xs">
+                          <p className="font-semibold text-black mb-0.5">Viewing Details:</p>
+                          <p className="text-black">
+                            {new Date(app.latestBooking.booking_date).toLocaleString()}
+                          </p>
+                          <p className="text-black">
+                            Status: {app.latestBooking.status.replace('_', ' ').toUpperCase()}
+                          </p>
+                          {app.latestBooking.notes && (
+                            <p className="text-black mt-1">
+                              <span className="font-medium">Notes:</span> {app.latestBooking.notes}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-200">
+                    {/* View Details Toggle */}
+                    <button
+                      onClick={() => toggleApplicationDetails(app.id)}
+                      className="px-2 py-1 border border-black text-black hover:bg-gray-100 text-[10px] sm:text-xs font-medium flex items-center gap-1"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                          <span className="hidden sm:inline">Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                          <span className="hidden sm:inline">Details</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Landlord Actions */}
                     {profile.role === 'landlord' && app.status === 'pending' && (
                       <>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'accepted')}
-                          className="px-3 sm:px-4 py-2 bg-black text-white text-xs sm:text-sm font-medium"
+                          className="px-2 sm:px-3 py-1 bg-green-600 text-white hover:bg-green-700 text-[10px] sm:text-xs font-medium"
                         >
-                          Accept
+                          ✓ Accept
                         </button>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                          className="px-3 sm:px-4 py-2 bg-black text-white text-xs sm:text-sm font-medium"
+                          className="px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium"
                         >
-                          Reject
+                          ✕ Reject
                         </button>
                       </>
                     )}
 
-                    {profile.role === 'tenant' && app.status === 'accepted' && (
-                      <>
-                        {app.hasBooking ? (
-                          <div className="text-xs sm:text-sm text-black flex items-center gap-2">
-                            <svg className="w-4 h-4 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="break-words">Viewing scheduled for {new Date(app.latestBooking.booking_date).toLocaleString()}</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openBookingModal(app)}
-                            className="px-3 sm:px-4 py-2 bg-black text-white hover:bg-black text-xs sm:text-sm font-medium flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="hidden sm:inline">Schedule Viewing</span>
-                            <span className="sm:hidden">Schedule</span>
-                          </button>
-                        )}
-                      </>
+                    {/* Tenant Actions */}
+                    {profile.role === 'tenant' && app.status === 'accepted' && !app.hasBooking && (
+                      <button
+                        onClick={() => openBookingModal(app)}
+                        className="px-2 sm:px-3 py-1 bg-black text-white hover:bg-gray-800 text-[10px] sm:text-xs font-medium flex items-center gap-1"
+                      >
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="hidden sm:inline">Schedule</span>
+                      </button>
                     )}
 
                     {/* Delete button - hidden for accepted applications */}
                     {app.status !== 'accepted' && (
                       <button
                         onClick={() => deleteApplication(app.id)}
-                        className="px-3 sm:px-4 py-2 bg-black text-white hover:bg-black text-xs sm:text-sm font-medium flex items-center gap-2"
+                        className="ml-auto px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium flex items-center gap-1"
                         title="Delete application"
                       >
-                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        Delete
+                        <span className="hidden sm:inline">Delete</span>
                       </button>
                     )}
                   </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>
@@ -534,32 +763,92 @@ export default function ApplicationsPage() {
             </div>
 
             <form onSubmit={submitBooking} className="space-y-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
-                  Preferred Date *
-                </label>
-                <input
-                  type="date"
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  min={getMinDate()}
-                  required
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none text-sm sm:text-base"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
-                  Preferred Time *
-                </label>
-                <input
-                  type="time"
-                  value={bookingTime}
-                  onChange={(e) => setBookingTime(e.target.value)}
-                  required
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black focus:outline-none text-sm sm:text-base"
-                />
-              </div>
+              {availableTimeSlots.length > 0 ? (
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-black mb-2">
+                    Select Available Time Slot *
+                  </label>
+                  <div className="space-y-2 max-h-60 overflow-y-auto border-2 border-black p-2">
+                    {availableTimeSlots.map((slot) => {
+                      const startTime = new Date(slot.start_time)
+                      const startHour = startTime.getHours()
+                      
+                      // Determine time slot label
+                      let timeLabel = 'Custom'
+                      let timeRange = `${startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - ${new Date(slot.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+                      let badgeColor = 'bg-purple-100 text-purple-800'
+                      let emoji = '⏰'
+                      
+                      if (startHour === 8) {
+                        timeLabel = 'Morning'
+                        timeRange = '8AM - 11AM'
+                        badgeColor = 'bg-yellow-100 text-yellow-800'
+                        emoji = '🌅'
+                      } else if (startHour === 13) {
+                        timeLabel = 'Afternoon'
+                        timeRange = '1PM - 5:30PM'
+                        badgeColor = 'bg-orange-100 text-orange-800'
+                        emoji = '☀️'
+                      }
+                      
+                      return (
+                        <label
+                          key={slot.id}
+                          className={`block p-2 border-2 cursor-pointer transition-colors ${
+                            selectedTimeSlot === slot.id
+                              ? 'border-black bg-black text-white'
+                              : 'border-gray-300 hover:border-black'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="timeSlot"
+                            value={slot.id}
+                            checked={selectedTimeSlot === slot.id}
+                            onChange={(e) => setSelectedTimeSlot(e.target.value)}
+                            className="sr-only"
+                            required
+                          />
+                          <div className="flex justify-between items-center gap-2">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="text-base flex-shrink-0">{emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm truncate">
+                                  {startTime.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })} • {timeRange}
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 text-xs font-semibold flex-shrink-0 ${
+                                selectedTimeSlot === slot.id 
+                                  ? 'bg-white text-black' 
+                                  : badgeColor
+                              }`}>
+                                {timeLabel}
+                              </span>
+                            </div>
+                            {selectedTimeSlot === slot.id && (
+                              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Choose your preferred viewing time
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-100 border-2 border-black">
+                  <p className="text-sm text-black">
+                    No available time slots yet. The landlord hasn't set up viewing times for this property. Please contact the landlord directly.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-black mb-1">
@@ -584,10 +873,10 @@ export default function ApplicationsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingBooking}
-                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 text-sm sm:text-base"
+                  disabled={submittingBooking || availableTimeSlots.length === 0}
+                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
-                  {submittingBooking ? 'Scheduling...' : 'Schedule Viewing'}
+                  {submittingBooking ? 'Sending Request...' : 'Request Viewing'}
                 </button>
               </div>
             </form>
@@ -628,6 +917,95 @@ export default function ApplicationsPage() {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Bookings List Modal (for Landlords) */}
+      {showBookingsListModal && profile.role === 'landlord' && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border-2 border-black max-w-3xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg sm:text-xl font-bold text-black">Pending Viewing Requests</h3>
+              <button
+                onClick={() => setShowBookingsListModal(false)}
+                className="text-black flex-shrink-0"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {pendingBookings.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-black">No pending booking requests</p>
+                </div>
+              ) : (
+                pendingBookings.map((booking) => (
+                  <div key={booking.id} className="border-2 border-black p-3">
+                    <div className="flex justify-between items-start gap-2 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-sm text-black truncate">{booking.property?.title}</h4>
+                        <p className="text-xs text-gray-600 truncate">{booking.property?.address}, {booking.property?.city}</p>
+                      </div>
+                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold flex-shrink-0">
+                        Pending
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 mb-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span className="font-medium text-xs">Tenant:</span>
+                        <span className="text-xs">{booking.tenant_profile?.full_name}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="font-medium text-xs">Date:</span>
+                        <span className="text-xs">{new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • {new Date(booking.booking_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+
+                      {booking.notes && (
+                        <div className="flex items-start gap-2 bg-gray-50 p-2 rounded">
+                          <svg className="w-3.5 h-3.5 text-black flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                          </svg>
+                          <span className="text-xs flex-1">{booking.notes}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          approveBooking(booking.id)
+                          setShowBookingsListModal(false)
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 font-medium text-xs"
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        onClick={() => {
+                          rejectBooking(booking.id)
+                          setShowBookingsListModal(false)
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 font-medium text-xs"
+                      >
+                        ✕ Reject
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

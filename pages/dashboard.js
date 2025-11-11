@@ -391,95 +391,109 @@ export default function Dashboard() {
         )}
 
         {/* Quick Links Section */}
-        <div className="mt-16">
-          <div className="mb-8">
-            <h3 className="text-3xl font-bold text-black mb-2">Quick Actions</h3>
-            <p className="text-black">Access frequently used features</p>
+        <div className="mt-12">
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold text-black mb-2">Quick Actions</h3>
+            <p className="text-sm text-black">Access frequently used features</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {profile.role === 'tenant' && (
               <button
                 onClick={() => router.push('/maintenance')}
-                className="p-8 bg-white border-2 border-black text-left"
+                className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
               >
-                <div className="w-16 h-16 mb-4 bg-black flex items-center justify-center">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                   </svg>
                 </div>
-                <div className="font-bold text-xl mb-2 text-black">Maintenance</div>
-                <div className="text-sm text-black leading-relaxed">
-                  Submit maintenance request
+                <div className="font-bold text-base mb-1 text-black">Maintenance</div>
+                <div className="text-xs text-black leading-relaxed">
+                  Submit request
                 </div>
               </button>
             )}
 
             {profile.role === 'landlord' && (
-              <button
-                onClick={() => router.push('/maintenance')}
-                className="p-8 bg-white border-2 border-black text-left"
-              >
-                <div className="w-16 h-16 mb-4 bg-black flex items-center justify-center">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <div className="font-bold text-xl mb-2 text-black">Maintenance Requests</div>
-                <div className="text-sm text-black leading-relaxed">
-                  View tenant maintenance requests
-                </div>
-              </button>
+              <>
+                <button
+                  onClick={() => router.push('/maintenance')}
+                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+                >
+                  <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                  </div>
+                  <div className="font-bold text-base mb-1 text-black">Maintenance</div>
+                  <div className="text-xs text-black leading-relaxed">
+                    View requests
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => router.push('/bookings')}
+                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+                >
+                  <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="font-bold text-base mb-1 text-black">Bookings</div>
+                  <div className="text-xs text-black leading-relaxed">
+                    Manage viewings
+                  </div>
+                </button>
+              </>
             )}
 
             <button
               onClick={() => router.push('/payments')}
-              className="p-8 bg-white border-2 border-black text-left"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
             >
-              <div className="w-16 h-16 mb-4 bg-black flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <div className="font-bold text-xl mb-2 text-black">Payments</div>
-              <div className="text-sm text-black leading-relaxed">
+              <div className="font-bold text-base mb-1 text-black">Payments</div>
+              <div className="text-xs text-black leading-relaxed">
                 {profile.role === 'landlord' 
-                  ? 'Track income and payments' 
-                  : 'View payment history'}
+                  ? 'Track income' 
+                  : 'Payment history'}
               </div>
             </button>
 
             <button
               onClick={() => router.push('/messages')}
-              className="p-8 bg-white border-2 border-black text-left"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
             >
-              <div className="w-16 h-16 mb-4 bg-black flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
               </div>
-              <div className="font-bold text-xl mb-2 text-black">Messages</div>
-              <div className="text-sm text-black leading-relaxed">
+              <div className="font-bold text-base mb-1 text-black">Messages</div>
+              <div className="text-xs text-black leading-relaxed">
                 {profile.role === 'landlord' 
-                  ? 'Chat with your tenants' 
+                  ? 'Chat with tenants' 
                   : 'Chat with landlords'}
               </div>
             </button>
 
             <button
               onClick={() => router.push('/settings')}
-              className="p-8 bg-white border-2 border-black text-left"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
             >
-              <div className="w-16 h-16 mb-4 bg-black flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <div className="font-bold text-xl mb-2 text-black">Settings</div>
-              <div className="text-sm text-black leading-relaxed">
-                Manage your account settings
+              <div className="font-bold text-base mb-1 text-black">Settings</div>
+              <div className="text-xs text-black leading-relaxed">
+                Account settings
               </div>
             </button>
           </div>

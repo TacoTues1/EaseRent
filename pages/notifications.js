@@ -79,24 +79,23 @@ export default function NotificationsPage() {
     }
 
     // Navigate based on notification type
-    if (notif.type === 'payment' && notif.link) {
-      router.push(notif.link)
-    } else if (notif.type === 'maintenance' && notif.link) {
-      router.push(notif.link)
-    } else if (notif.type === 'application' && notif.link) {
-      router.push(notif.link)
-    } else if (notif.type === 'message' && notif.link) {
+    if (notif.link) {
       router.push(notif.link)
     } else {
       // Default navigation based on type
-      if (notif.type === 'payment') {
+      if (notif.type === 'payment' || notif.type === 'payment_confirmed') {
         router.push('/payments')
       } else if (notif.type === 'maintenance') {
         router.push('/maintenance')
-      } else if (notif.type === 'application') {
+      } else if (notif.type === 'application' || notif.type.includes('application_')) {
         router.push('/applications')
       } else if (notif.type === 'message') {
         router.push('/messages')
+      } else if (notif.type === 'booking_request' || notif.type === 'booking_approved' || notif.type === 'booking_rejected') {
+        router.push('/bookings')
+      } else {
+        // Fallback to applications for any unknown type
+        router.push('/applications')
       }
     }
   }
@@ -231,13 +230,13 @@ export default function NotificationsPage() {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={cancelDelete}
-                className="px-4 py-2 text-black bg-white-colors font-medium"
+                className="px-4 py-2 border-2 border-black text-black bg-white hover:bg-gray-100 font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 text-white bg-black-colors font-medium"
+                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 font-medium"
               >
                 Delete
               </button>

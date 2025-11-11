@@ -296,7 +296,7 @@ export default function MaintenancePage() {
           </div>
         )}
 
-        <div className="bg-white border-2 border-black">
+        <div className="bg-white -black">
           {loading ? (
             <p className="p-6 text-black">Loading...</p>
           ) : requests.length === 0 ? (

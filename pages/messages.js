@@ -17,6 +17,7 @@ export default function Messages() {
   const [loading, setLoading] = useState(true)
   const [showNewConversation, setShowNewConversation] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  const [unreadCounts, setUnreadCounts] = useState({}) // { conversationId: count }
   const router = useRouter()
 
   useEffect(() => {
@@ -47,6 +48,32 @@ export default function Messages() {
     if (profile) {
       loadConversations()
       loadAllUsers()
+      loadUnreadCounts()
+      
+      // Subscribe to new messages globally to update unread counts
+      const channel = supabase
+        .channel('global-messages')
+        .on('postgres_changes', 
+          { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'messages',
+            filter: `receiver_id=eq.${profile.id}`
+          }, 
+          (payload) => {
+            // Update unread count for this conversation
+            loadUnreadCounts()
+            // If not viewing this conversation, refresh list to show updated order
+            if (!selectedConversation || selectedConversation.id !== payload.new.conversation_id) {
+              loadConversations()
+            }
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
   }, [profile])
 
@@ -103,7 +130,7 @@ export default function Messages() {
     setLoading(true)
     
     // Get conversations where user is either participant
-    const { data: conversations, error } = await supabase
+    const { data: allConversations, error } = await supabase
       .from('conversations')
       .select('*, property:properties(title, address)')
       .or(`landlord_id.eq.${session.user.id},tenant_id.eq.${session.user.id}`)
@@ -114,6 +141,18 @@ export default function Messages() {
       setLoading(false)
       return
     }
+
+    // Filter out conversations hidden by current user
+    const conversations = allConversations?.filter(conv => {
+      const isLandlord = conv.landlord_id === session.user.id
+      const isTenant = conv.tenant_id === session.user.id
+      
+      // Hide if current user deleted it
+      if (isLandlord && conv.hidden_by_landlord) return false
+      if (isTenant && conv.hidden_by_tenant) return false
+      
+      return true
+    }) || []
 
     if (conversations && conversations.length > 0) {
       // Get all unique user IDs (both participants)
@@ -187,6 +226,28 @@ export default function Messages() {
     setFilteredUsers(users || [])
   }
 
+  async function loadUnreadCounts() {
+    // Get unread message counts for all conversations
+    const { data: unreadMessages, error } = await supabase
+      .from('messages')
+      .select('conversation_id, id')
+      .eq('receiver_id', session.user.id)
+      .eq('read', false)
+
+    if (error) {
+      console.error('Error loading unread counts:', error)
+      return
+    }
+
+    // Count messages per conversation
+    const counts = {}
+    unreadMessages?.forEach(msg => {
+      counts[msg.conversation_id] = (counts[msg.conversation_id] || 0) + 1
+    })
+
+    setUnreadCounts(counts)
+  }
+
   async function startNewConversation(otherUser) {
     // Check if conversation already exists in local state
     const existingLocal = conversations.find(c => 
@@ -200,12 +261,27 @@ export default function Messages() {
       return
     }
 
-    // Also check in database for any existing conversation between these two users
-    const { data: existingDb } = await supabase
+    // Check in database for any existing conversation between these two users
+    const { data: existingConversations, error: fetchError } = await supabase
       .from('conversations')
       .select('*, property:properties(title, address)')
       .or(`and(landlord_id.eq.${session.user.id},tenant_id.eq.${otherUser.id}),and(landlord_id.eq.${otherUser.id},tenant_id.eq.${session.user.id})`)
-      .maybeSingle()
+
+    if (fetchError) {
+      console.error('Error checking existing conversations:', fetchError)
+    }
+
+    // Find a conversation that's not hidden by current user
+    const existingDb = existingConversations?.find(conv => {
+      const isLandlord = conv.landlord_id === session.user.id
+      const isTenant = conv.tenant_id === session.user.id
+      
+      // Skip if hidden by current user
+      if (isLandlord && conv.hidden_by_landlord) return false
+      if (isTenant && conv.hidden_by_tenant) return false
+      
+      return true
+    })
 
     if (existingDb) {
       // Get profiles for this conversation
@@ -228,6 +304,18 @@ export default function Messages() {
         other_user_id: otherUserId
       }
 
+      // If conversation was hidden, unhide it
+      const isCurrentUserLandlord = existingDb.landlord_id === session.user.id
+      const updateField = isCurrentUserLandlord ? 'hidden_by_landlord' : 'hidden_by_tenant'
+      
+      if ((isCurrentUserLandlord && existingDb.hidden_by_landlord) || 
+          (!isCurrentUserLandlord && existingDb.hidden_by_tenant)) {
+        await supabase
+          .from('conversations')
+          .update({ [updateField]: false })
+          .eq('id', existingDb.id)
+      }
+
       setConversations(prev => {
         const alreadyInList = prev.find(c => c.id === enrichedConv.id)
         if (alreadyInList) return prev
@@ -238,11 +326,11 @@ export default function Messages() {
       return
     }
 
-    // Create new conversation (store current user as landlord_id, other user as tenant_id for consistency)
+    // Create new conversation
     const { data: newConv, error } = await supabase
       .from('conversations')
       .insert({
-        property_id: null, // No property required
+        property_id: null,
         landlord_id: session.user.id,
         tenant_id: otherUser.id
       })
@@ -251,41 +339,42 @@ export default function Messages() {
 
     if (error) {
       console.error('Error creating conversation:', error)
-      // If still getting conflict, try to fetch the conversation that was created
-      if (error.code === '23505') { // Unique constraint violation
-        const { data: conflictConv } = await supabase
-          .from('conversations')
-          .select('*, property:properties(title, address)')
-          .or(`and(landlord_id.eq.${session.user.id},tenant_id.eq.${otherUser.id}),and(landlord_id.eq.${otherUser.id},tenant_id.eq.${session.user.id})`)
-          .single()
-        
-        if (conflictConv) {
-          // Get profiles
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, role')
-            .in('id', [conflictConv.landlord_id, conflictConv.tenant_id])
+      
+      // Try to fetch the conversation that might have been created by the other user
+      const { data: retryConversations } = await supabase
+        .from('conversations')
+        .select('*, property:properties(title, address)')
+        .or(`and(landlord_id.eq.${session.user.id},tenant_id.eq.${otherUser.id}),and(landlord_id.eq.${otherUser.id},tenant_id.eq.${session.user.id})`)
 
-          const profileMap = {}
-          profiles?.forEach(p => { profileMap[p.id] = p })
+      const retryConv = retryConversations?.[0]
+      
+      if (retryConv) {
+        // Get profiles
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('id', [retryConv.landlord_id, retryConv.tenant_id])
 
-          const isLandlord = conflictConv.landlord_id === session.user.id
-          const otherUserId = isLandlord ? conflictConv.tenant_id : conflictConv.landlord_id
+        const profileMap = {}
+        profiles?.forEach(p => { profileMap[p.id] = p })
 
-          const enrichedConv = {
-            ...conflictConv,
-            landlord_profile: profileMap[conflictConv.landlord_id],
-            tenant_profile: profileMap[conflictConv.tenant_id],
-            other_user: profileMap[otherUserId],
-            other_user_id: otherUserId
-          }
+        const isLandlord = retryConv.landlord_id === session.user.id
+        const otherUserId = isLandlord ? retryConv.tenant_id : retryConv.landlord_id
 
-          setConversations([enrichedConv, ...conversations])
-          setSelectedConversation(enrichedConv)
-          setShowNewConversation(false)
-          return
+        const enrichedConv = {
+          ...retryConv,
+          landlord_profile: profileMap[retryConv.landlord_id],
+          tenant_profile: profileMap[retryConv.tenant_id],
+          other_user: profileMap[otherUserId],
+          other_user_id: otherUserId
         }
+
+        setConversations([enrichedConv, ...conversations])
+        setSelectedConversation(enrichedConv)
+        setShowNewConversation(false)
+        return
       }
+      
       toast.error('Failed to start conversation. Please try again.')
     } else {
       // Get profiles for the new conversation
@@ -334,6 +423,12 @@ export default function Messages() {
         .update({ read: true })
         .eq('conversation_id', conversationId)
         .eq('receiver_id', session.user.id)
+      
+      // Clear unread count for this conversation
+      setUnreadCounts(prev => ({
+        ...prev,
+        [conversationId]: 0
+      }))
     }
   }
 
@@ -341,9 +436,8 @@ export default function Messages() {
     if (!newMessage.trim() || !selectedConversation) return
 
     const messageText = newMessage.trim()
-    const receiverId = profile.role === 'landlord' 
-      ? selectedConversation.tenant_id 
-      : selectedConversation.landlord_id
+    // Receiver is the OTHER person in the conversation (not me!)
+    const receiverId = selectedConversation.other_user_id
 
     // Clear input immediately for better UX
     setNewMessage('')
@@ -414,27 +508,28 @@ export default function Messages() {
   async function deleteConversation(conversationId) {
     setDeleteConfirmId(null)
     
-    // First, manually delete all messages in the conversation
-    const { error: messagesError } = await supabase
-      .from('messages')
-      .delete()
-      .eq('conversation_id', conversationId)
-
-    if (messagesError) {
-      console.error('Error deleting messages:', messagesError)
+    // Find the conversation to determine user's role in it
+    const conversation = conversations.find(c => c.id === conversationId)
+    if (!conversation) {
+      toast.error('Conversation not found')
+      return
     }
-
-    // Then delete the conversation
+    
+    // Soft delete: hide based on which participant is the current user
+    const isLandlord = conversation.landlord_id === session.user.id
+    const isTenant = conversation.tenant_id === session.user.id
+    const updateField = isLandlord ? 'hidden_by_landlord' : 'hidden_by_tenant'
+    
     const { error } = await supabase
       .from('conversations')
-      .delete()
+      .update({ [updateField]: true })
       .eq('id', conversationId)
 
     if (error) {
-      console.error('Error deleting conversation:', error)
+      console.error('Error hiding conversation:', error)
       toast.error('Failed to delete conversation. Please try again.')
     } else {
-      // Remove from local state using functional update to ensure latest state
+      // Remove from local state
       setConversations(prev => prev.filter(c => c.id !== conversationId))
       
       // Clear selection if this was the selected conversation
@@ -481,9 +576,9 @@ export default function Messages() {
         }}
       />
       {/* Header */}
-      <div className="bg-white border-2 border-black">
+      <div className="bg-white ">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-black">Messages</h1>
+          <h1 className="text-xl sm:text-5xl font-bold text-black">Messages</h1>
           <p className="text-xs sm:text-sm text-black">
             {profile.role === 'landlord' 
               ? 'Chat with your tenants' 
@@ -494,11 +589,11 @@ export default function Messages() {
 
       {/* Chat Interface */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6">
-        <div className="bg-white border-2 border-black overflow-hidden" style={{ height: 'calc(100vh - 180px)' }}>
+        <div className="bg-white border-2 border-black overflow-hidden" style={{ height: 'calc(95vh - 190px)' }}>
           <div className="flex flex-col md:flex-row h-full">
             {/* Conversations List */}
-            <div className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-black overflow-y-auto`}>
-              <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center">
+            <div className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-70 border-b md:border-b-0 md:border-r border-black overflow-y-auto`}>
+              <div className="p-2 sm:p-5 border-b border-black bg-white flex justify-between items-center">
                 <h2 className="font-semibold text-black text-sm sm:text-base">
                   {showNewConversation ? 'Start New Chat' : 'Conversations'}
                 </h2>
@@ -607,6 +702,8 @@ export default function Messages() {
                 <div>
                   {conversations.map(conv => {
                     const otherPerson = conv.other_user?.full_name || 'Unknown User'
+                    const unreadCount = unreadCounts[conv.id] || 0
+                    const hasUnread = unreadCount > 0
                     
                     return (
                       <div
@@ -615,17 +712,34 @@ export default function Messages() {
                           setSelectedConversation(conv)
                           setShowNewConversation(false)
                         }}
-                        className={`p-3 sm:p-4 border-b border-gray-100 cursor-pointer ${
-                          selectedConversation?.id === conv.id ? 'bg-white' : ''
+                        className={`p-3 sm:p-4 border-b border-gray-100 cursor-pointer relative ${
+                          selectedConversation?.id === conv.id 
+                            ? 'bg-white border-l-4 border-l-black' 
+                            : hasUnread
+                            ? 'bg-gray-50 border-l-4 border-l-black font-semibold'
+                            : 'hover:bg-gray-50'
                         }`}
                       >
-                        <div className="font-semibold text-xs sm:text-sm text-black truncate">{otherPerson}</div>
-                        <div className="text-xs text-black mt-1">
-                          {conv.other_user?.role === 'landlord' ? '🏠 Landlord' : '👤 Tenant'}
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-xs sm:text-sm text-black truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`}>
+                              {otherPerson}
+                            </div>
+                            <div className="text-xs text-black mt-1">
+                              {conv.other_user?.role === 'landlord' ? '🏠 Landlord' : '👤 Tenant'}
+                            </div>
+                            {conv.property && (
+                              <div className="text-xs text-black mt-1 truncate">{conv.property?.title}</div>
+                            )}
+                          </div>
+                          {hasUnread && (
+                            <div className="ml-2 flex-shrink-0">
+                              <span className="bg-black text-white text-xs w-6 h-6 flex items-center justify-center border border-black font-bold">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {conv.property && (
-                          <div className="text-xs text-black mt-1 truncate">{conv.property?.title}</div>
-                        )}
                       </div>
                     )
                   })}
@@ -651,9 +765,7 @@ export default function Messages() {
                       </button>
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-black text-sm sm:text-base truncate">
-                          {profile.role === 'landlord' 
-                            ? selectedConversation.tenant_profile?.full_name 
-                            : selectedConversation.landlord_profile?.full_name}
+                          {selectedConversation.other_user?.full_name || 'Unknown User'}
                         </div>
                         {selectedConversation.property?.title && (
                           <div className="text-xs sm:text-sm text-black truncate">
@@ -731,7 +843,7 @@ export default function Messages() {
                       <button
                         onClick={sendMessage}
                         disabled={!newMessage.trim()}
-                        className="px-3 sm:px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex-shrink-0"
+                        className="px-3 sm:px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex-shrink-0 rounded-[8px]"
                       >
                         Send
                       </button>

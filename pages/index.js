@@ -146,18 +146,6 @@ export default function Home() {
       title: 'BIR Registration',
       subtitle: 'Tax Compliant',
       image: '/permits/bir.jpeg'
-    },
-    {
-      id: 2,
-      title: 'Contract of Lease',
-      subtitle: 'Verified & Certified',
-      image: '/permits/contact_of_lease.jpg'
-    },
-    {
-      id: 3,
-      title: 'Contract of Lease (Page 2)',
-      subtitle: 'Verified & Certified',
-      image: '/permits/contact_of_lease2.jpg'
     }
   ]
 
@@ -353,150 +341,32 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {permits.map((permit) => (
-              <div 
-                key={permit.id}
-                onClick={() => openPermitModal(permit)}
-                className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer group"
-              >
-                <div className="aspect-video overflow-hidden">
-                  <img 
-                    src={permit.image} 
-                    alt={permit.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                </div>
-                <div className="p-4 text-center">
-                  <h3 className="text-base font-bold text-gray-900 mb-1">{permit.title}</h3>
-                  <p className="text-gray-600 text-xs">{permit.subtitle}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Company History Section */}
-      <div className="bg-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* <div className="text-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-2">
-              Our Story
-            </h2>
-            <p className="text-gray-600 text-sm max-w-xl mx-auto">
-              Building a better rental experience since 2020
-            </p>
-          </div> */}
-
-          <div className="relative">
-            <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-gradient-to-b from-gray-900 to-gray-600 hidden md:block"></div>
-            
-            <div className="space-y-8">
-              {/* <div className="relative flex items-center md:justify-start">
-                <div className="md:w-1/2 md:pr-8 text-right">
-                  <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-5 rounded-xl shadow-lg">
-                    <div className="text-xl font-bold text-gray-900 mb-1">2020</div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Founded</h3>
-                    <p className="text-gray-600 text-sm">
-                      Established to revolutionize property rental management
-                    </p>
+          <div className="flex justify-center">
+            <div className="w-full max-w-md">
+              {permits.map((permit) => (
+                <div 
+                  key={permit.id}
+                  onClick={() => openPermitModal(permit)}
+                  className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer group"
+                >
+                  <div className="aspect-video overflow-hidden flex items-center justify-center bg-gray-100">
+                    <img 
+                      src={permit.image} 
+                      alt={permit.title}
+                      className="h-full w-auto object-contain transform rotate-90 scale-110 group-hover:scale-125 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-4 text-center">
+                    <h3 className="text-base font-bold text-gray-900 mb-1">{permit.title}</h3>
+                    <p className="text-gray-600 text-xs">{permit.subtitle}</p>
                   </div>
                 </div>
-                <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-900 rounded-full border-4 border-white shadow-lg"></div>
-              </div> */}
-
-              {/* <div className="relative flex items-center md:justify-end">
-                <div className="md:w-1/2 md:pl-8">
-                  <div className="bg-gradient-to-br from-gray-200 to-gray-300 p-5 rounded-xl shadow-lg">
-                    <div className="text-xl font-bold text-gray-800 mb-1">2024</div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Platform Launch</h3>
-                    <p className="text-gray-600 text-sm">
-                      Launched platform connecting landlords and tenants
-                      Alejobayot
-                    </p>
-                  </div>
-                </div>
-                <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-700 rounded-full border-4 border-white shadow-lg"></div>
-              </div> */}
-
-              {/* <div className="relative flex items-center md:justify-start">
-                <div className="md:w-1/2 md:pr-8 text-right">
-                  <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-5 rounded-xl shadow-lg">
-                    <div className="text-xl font-bold text-gray-900 mb-1">2025</div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Growing Strong</h3>
-                    <p className="text-gray-600 text-sm">
-                      Serving 1,000+ users with 500+ properties
-                    </p>
-                  </div>
-                </div>
-                <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-600 rounded-full border-4 border-white shadow-lg"></div>
-              </div> */}
+              ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Owner Information Section */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
-              Meet Our Leadership
-            </h2>
-            <p className="text-gray-300 text-sm max-w-xl mx-auto">
-              Experienced professionals dedicated to your success
-            </p>
-          </div>
-
-          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl overflow-hidden hover:scale-105 transition-transform">
-              <div className="aspect-video bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                <svg className="w-20 h-20 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">John Doe</h3>
-                <p className="text-gray-800 font-medium text-sm mb-2">Chief Executive Officer</p>
-                <p className="text-gray-600 text-xs">
-                  15+ years in real estate management
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl overflow-hidden hover:scale-105 transition-transform">
-              <div className="aspect-video bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                <svg className="w-20 h-20 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Jane Smith</h3>
-                <p className="text-gray-700 font-medium text-sm mb-2">Chief Operating Officer</p>
-                <p className="text-gray-600 text-xs">
-                  Operations and customer service expert
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl overflow-hidden hover:scale-105 transition-transform">
-              <div className="aspect-video bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                <svg className="w-20 h-20 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                </svg>
-              </div>
-              <div className="p-4 text-center">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Mike Johnson</h3>
-                <p className="text-gray-600 font-medium text-sm mb-2">Chief Technology Officer</p>
-                <p className="text-gray-600 text-xs">
-                  Technology innovation leader
-                </p>
-              </div>
-            </div>
-          </div> */}
-        </div>
-      </div>
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-6">
@@ -721,11 +591,11 @@ export default function Home() {
 
               {/* Image */}
               <div className="p-6 bg-gray-50">
-                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden flex items-center justify-center min-h-[60vh]">
                   <img 
                     src={selectedPermit.image} 
                     alt={selectedPermit.title}
-                    className="w-full h-auto object-contain max-h-[70vh]"
+                    className="max-w-full h-auto object-contain max-h-[80vh] transform rotate-90 scale-110"
                   />
                 </div>
               </div>
