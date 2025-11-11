@@ -87,7 +87,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           // ALWAYS show OTP input for email verification
           // Even if Supabase auto-confirms, we want manual verification
           setShowOtpInput(true)
-          toast.success('Check your email! We sent you a 6-digit verification code.')
+          toast.success('Check your email! We sent you a 6-digit verification code.', {
+            icon: '✓',
+          })
           
           /* Old logic - removed to always require OTP
           // Check if email confirmation is required
@@ -131,12 +133,16 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           }
         }
         
-        toast.success('Login successful! Redirecting...')
+        toast.success('Login successful!', {
+          icon: '✓',
+        })
         onClose()
         router.push('/dashboard')
       }
     } catch (err) {
-      toast.error(err.message || 'An error occurred')
+      toast.error(err.message || 'An error occurred', {
+        icon: '✕',
+      })
     } finally {
       setLoading(false)
     }
@@ -157,7 +163,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       if (error) throw error
       // User will be redirected automatically - no email verification needed
     } catch (err) {
-      toast.error(err.message || 'Failed to sign in with Google')
+      toast.error(err.message || 'Failed to sign in with Google', {
+        icon: '✕',
+      })
       setLoading(false)
     }
   }
@@ -178,7 +186,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       if (error) throw error
       // User will be redirected automatically - no email verification needed
     } catch (err) {
-      toast.error(err.message || 'Failed to sign in with Facebook')
+      toast.error(err.message || 'Failed to sign in with Facebook', {
+        icon: '✕',
+      })
       setLoading(false)
     }
   }
@@ -220,14 +230,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         }
 
         // Profile exists now (either already existed or just created)
-        toast.success('Email verified successfully! Redirecting...')
+        toast.success('Email verified successfully! Redirecting...', {
+          icon: '✓',
+        })
         setTimeout(() => {
           onClose()
           router.push('/dashboard')
         }, 1500)
       }
     } catch (err) {
-      toast.error(err.message || 'Invalid verification code. Please try again.')
+      toast.error(err.message || 'Invalid verification code. Please try again.', {
+        icon: '✕',
+      })
     } finally {
       setLoading(false)
     }
@@ -244,9 +258,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
 
       if (error) throw error
 
-      toast.success('Verification code resent! Check your email.')
+      toast.success('Verification code resent! Check your email.', {
+        icon: '✓',
+      })
     } catch (err) {
-      toast.error(err.message || 'Failed to resend code. Please try again.')
+      toast.error(err.message || 'Failed to resend code. Please try again.', {
+        icon: '✕',
+      })
     } finally {
       setLoading(false)
     }

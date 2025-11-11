@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
+import toast from 'react-hot-toast'
 
 export default function Settings() {
   const router = useRouter()
@@ -80,6 +81,9 @@ export default function Settings() {
 
   async function handleSignOut() {
     await supabase.auth.signOut()
+    toast.success('Signed out successfully', {
+      icon: '✓',
+    })
     router.push('/')
   }
 

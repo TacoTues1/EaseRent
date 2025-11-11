@@ -193,7 +193,6 @@ export default function MaintenancePage() {
 
   return (
     <div className="min-h-screen bg-white p-6">
-      <Toaster position="top-right" />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>

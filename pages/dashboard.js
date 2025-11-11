@@ -167,7 +167,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Toaster position="top-right" />
       {/* Hero Section */}
       <div className="relative bg-black text-white py-16">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

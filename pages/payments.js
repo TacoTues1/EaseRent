@@ -345,32 +345,6 @@ export default function PaymentsPage() {
 
   return (
     <div className="min-h-screen bg-white p-6">
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#363636',
-            padding: '16px',
-            borderRadius: '0px',
-            boxShadow: 'none',
-            border: '2px solid #000',
-          },
-          success: {
-            iconTheme: {
-              primary: '#000',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: '#000',
-              secondary: '#fff',
-            },
-          },
-        }}
-      />
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Payments</h1>

@@ -552,29 +552,6 @@ export default function Messages() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          success: {
-            icon: '✓',
-            style: {
-              background: '#10b981',
-              color: '#ffffff',
-              border: '2px solid #10b981',
-              fontWeight: 'bold',
-            },
-          },
-          error: {
-            icon: '✕',
-            style: {
-              background: '#ffffff',
-              color: '#000000',
-              border: '2px solid #000000',
-              fontWeight: 'bold',
-            },
-          },
-        }}
-      />
       {/* Header */}
       <div className="bg-white ">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4">

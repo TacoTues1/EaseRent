@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
+import toast from 'react-hot-toast'
 
 export default function Navbar() {
   const router = useRouter()
@@ -158,6 +159,9 @@ export default function Navbar() {
     await supabase.auth.signOut()
     setSession(null)
     setProfile(null)
+    toast.success('Signed out successfully', {
+      icon: '✓',
+    })
     router.push('/')
   }
 

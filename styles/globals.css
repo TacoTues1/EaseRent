@@ -9,8 +9,78 @@ body {
   color: #000000;
 }
 
-/* Remove all transitions and animations globally */
-* {
+/* Remove all transitions and animations globally, EXCEPT for toast notifications */
+*:not([data-sonner-toast]):not([data-sonner-toast] *):not([role="status"]):not([role="status"] *) {
   transition: none !important;
   animation: none !important;
 }
+
+/* Smooth animations specifically for react-hot-toast */
+[data-sonner-toast],
+[data-sonner-toast] *,
+[role="status"],
+[role="status"] *,
+div[role="status"] > div,
+div[role="status"] > div > *,
+div[role="status"] span,
+div[role="status"] div {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Ultra-smooth toast entrance animation */
+@keyframes toast-enter {
+  0% {
+    transform: translateX(calc(100% + 30px)) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Ultra-smooth toast exit animation */
+@keyframes toast-exit {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(100% + 30px)) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* Apply ultra-smooth animations ONLY to the outermost toast container */
+div[role="status"] {
+  animation: toast-enter 0.6s cubic-bezier(0.19, 1, 0.22, 1) forwards !important;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
+  transform-origin: center;
+}
+
+div[role="status"][data-visible="false"] {
+  animation: toast-exit 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
+  transform-origin: center;
+}
+
+/* Absolutely ensure NO child elements animate independently */
+div[role="status"] *,
+div[role="status"] > *,
+div[role="status"] > * > *,
+div[role="status"] span,
+div[role="status"] div,
+div[role="status"] svg,
+div[role="status"] [data-content],
+div[role="status"] [data-icon] {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+

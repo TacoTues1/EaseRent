@@ -233,31 +233,6 @@ export default function EditProperty() {
 
   return (
     <div className="min-h-screen bg-white p-6">
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#000',
-            padding: '16px',
-            borderRadius: '0px',
-            border: '2px solid #000',
-          },
-          success: {
-            iconTheme: {
-              primary: '#000',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: '#000',
-              secondary: '#fff',
-            },
-          },
-        }}
-      />
       <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         {message && (

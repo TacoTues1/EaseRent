@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
+import toast from 'react-hot-toast'
 
 export default function NotificationsPage() {
   const router = useRouter()
@@ -127,6 +128,13 @@ export default function NotificationsPage() {
     
     if (!error) {
       setNotifications(prev => prev.filter(n => n.id !== deleteConfirm.id))
+      toast.success('Notification deleted successfully', {
+        icon: '✓',
+      })
+    } else {
+      toast.error('Failed to delete notification', {
+        icon: '✕',
+      })
     }
     
     setDeleteConfirm(null)
