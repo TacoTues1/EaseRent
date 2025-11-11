@@ -16,6 +16,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
   const [showOtpInput, setShowOtpInput] = useState(false)
   const [otp, setOtp] = useState('')
   const [pendingUserId, setPendingUserId] = useState(null)
+  const [rememberMe, setRememberMe] = useState(false)
   const router = useRouter()
 
   // Update mode when initialMode prop changes
@@ -32,6 +33,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       setShowOtpInput(false)
       setOtp('')
       setPendingUserId(null)
+      setRememberMe(false)
+      
+      // Load saved email if "Remember Me" was previously checked
+      if (initialMode === 'signin') {
+        const savedRememberMe = localStorage.getItem('rememberMe')
+        const savedEmail = localStorage.getItem('savedEmail')
+        if (savedRememberMe === 'true' && savedEmail) {
+          setEmail(savedEmail)
+          setRememberMe(true)
+        }
+      }
     }
   }, [isOpen, initialMode])
 
@@ -120,7 +132,26 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         }
       } else {
         // Sign In
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        const { data, error } = await supabase.auth.signInWithPassword({ 
+          email, 
+          password,
+          options: {
+            // Set session to persist if "Remember Me" is checked
+            // Otherwise use default session behavior
+            data: {
+              rememberMe: rememberMe
+            }
+          }
+        })
+        
+        // If remember me is checked, store credentials in localStorage
+        if (rememberMe && !error) {
+          localStorage.setItem('rememberMe', 'true')
+          localStorage.setItem('savedEmail', email)
+        } else if (!rememberMe) {
+          localStorage.removeItem('rememberMe')
+          localStorage.removeItem('savedEmail')
+        }
         
         if (error) {
           // Provide helpful error messages
@@ -273,12 +304,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 px-4" onClick={onClose}>
+    <div className="fixed inset-0 flex items-center justify-center z-50 px-4">
       {/* Semi-transparent overlay */}
       <div className="absolute inset-0 bg-black opacity-50"></div>
       
       {/* Modal content */}
-      <div className="bg-white border-2 border-black p-6 w-full max-w-md relative z-10" onClick={e => e.stopPropagation()}>
+      <div className="bg-white border-2 border-black p-6 w-full max-w-md relative z-10">
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 text-black text-2xl"
@@ -406,6 +437,21 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
               </button>
             </div>
           </div>
+
+          {!isSignUp && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 border-2 border-black cursor-pointer"
+              />
+              <label htmlFor="rememberMe" className="ml-2 text-sm text-black cursor-pointer">
+                Remember me
+              </label>
+            </div>
+          )}
 
           {isSignUp && (
             <div>
