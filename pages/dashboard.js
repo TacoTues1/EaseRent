@@ -172,7 +172,7 @@ export default function Dashboard() {
       <div className="relative bg-black text-white py-16">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-4xl md:text-5xl font-bold mb-3">
-            Welcome back, {profile.full_name}!
+            Welcome , {profile.full_name}!
           </h1>
           <p className="text-xl max-w-2xl leading-relaxed">
             {profile.role === 'landlord' 
