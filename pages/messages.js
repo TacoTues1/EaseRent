@@ -14,6 +14,8 @@ export default function Messages() {
   const [selectedUser, setSelectedUser] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showNewConversation, setShowNewConversation] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
@@ -205,7 +207,7 @@ export default function Messages() {
   }
 
   async function loadAllUsers() {
-    console.log('Current session user ID:', session.user.id) // Debug log
+    // console.log('Current session user ID:', session.user.id) // Debug log
     
     // Load all users except the current user
     const { data: users, error } = await supabase
@@ -219,8 +221,8 @@ export default function Messages() {
       return
     }
 
-    console.log('Loaded users:', users) // Debug log
-    console.log('Total users found:', users?.length || 0) // Debug log
+    // console.log('Loaded users:', users) // Debug log
+    // console.log('Total users found:', users?.length || 0) // Debug log
     
     setAllUsers(users || [])
     setFilteredUsers(users || [])
@@ -432,72 +434,149 @@ export default function Messages() {
     }
   }
 
-  async function sendMessage() {
-    if (!newMessage.trim() || !selectedConversation) return
-
-    const messageText = newMessage.trim()
-    // Receiver is the OTHER person in the conversation (not me!)
-    const receiverId = selectedConversation.other_user_id
-
-    // Clear input immediately for better UX
-    setNewMessage('')
-
-    // Create optimistic message object
-    const optimisticMessage = {
-      id: `temp-${Date.now()}`, // Temporary ID
-      conversation_id: selectedConversation.id,
-      sender_id: session.user.id,
-      receiver_id: receiverId,
-      message: messageText,
-      read: false,
-      created_at: new Date().toISOString(),
-      sender: {
-        full_name: profile.full_name,
-        role: profile.role
+  function handleFileSelect(e) {
+    const file = e.target.files[0]
+    if (file) {
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File size must be less than 10MB')
+        return
       }
+      setSelectedFile(file)
+    }
+  }
+
+  function removeSelectedFile() {
+    setSelectedFile(null)
+    // Reset file input
+    const fileInput = document.getElementById('file-input')
+    if (fileInput) fileInput.value = ''
+  }
+
+  async function uploadFile(file, conversationId) {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
+    const filePath = `${session.user.id}/${conversationId}/${fileName}`
+
+    const { data, error } = await supabase.storage
+      .from('message-attachments')
+      .upload(filePath, file)
+
+    if (error) {
+      console.error('Error uploading file:', error)
+      throw error
     }
 
-    // Add message to UI immediately (optimistic update)
-    setMessages(prev => [...prev, optimisticMessage])
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('message-attachments')
+      .getPublicUrl(filePath)
 
-    // Scroll to bottom
-    setTimeout(() => {
-      const messagesContainer = document.querySelector('.messages-container')
-      if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight
+    return {
+      url: urlData.publicUrl,
+      name: file.name,
+      type: file.type,
+      size: file.size
+    }
+  }
+
+  async function sendMessage() {
+    if (!newMessage.trim() && !selectedFile) return
+    if (!selectedConversation) return
+
+    const messageText = newMessage.trim()
+    const receiverId = selectedConversation.other_user_id
+    
+    setUploadingFile(true)
+    
+    try {
+      let fileData = null
+      
+      // Upload file if selected
+      if (selectedFile) {
+        fileData = await uploadFile(selectedFile, selectedConversation.id)
       }
-    }, 50)
 
-    // Send to database
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
+      // Clear inputs immediately for better UX
+      setNewMessage('')
+      const tempFile = selectedFile
+      setSelectedFile(null)
+      
+      // Reset file input
+      const fileInput = document.getElementById('file-input')
+      if (fileInput) fileInput.value = ''
+
+      // Create optimistic message object
+      const optimisticMessage = {
+        id: `temp-${Date.now()}`,
         conversation_id: selectedConversation.id,
         sender_id: session.user.id,
         receiver_id: receiverId,
-        message: messageText
-      })
-      .select()
-      .single()
+        message: messageText || (fileData ? '📎 File attachment' : ''),
+        file_url: fileData?.url || null,
+        file_name: fileData?.name || null,
+        file_type: fileData?.type || null,
+        file_size: fileData?.size || null,
+        read: false,
+        created_at: new Date().toISOString(),
+        sender: {
+          full_name: profile.full_name,
+          role: profile.role
+        }
+      }
 
-    if (error) {
-      console.error('Error sending message:', error)
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
-      toast.error('Failed to send message')
-      // Restore the message text
-      setNewMessage(messageText)
-    } else {
-      // Replace optimistic message with real one
-      setMessages(prev => prev.map(m => 
-        m.id === optimisticMessage.id ? data : m
-      ))
-      
-      // Update conversation timestamp
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', selectedConversation.id)
+      // Add message to UI immediately
+      setMessages(prev => [...prev, optimisticMessage])
+
+      // Scroll to bottom
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-container')
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight
+        }
+      }, 50)
+
+      // Send to database
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: selectedConversation.id,
+          sender_id: session.user.id,
+          receiver_id: receiverId,
+          message: messageText || (fileData ? '📎 File attachment' : ''),
+          file_url: fileData?.url || null,
+          file_name: fileData?.name || null,
+          file_type: fileData?.type || null,
+          file_size: fileData?.size || null
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error sending message:', error)
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
+        toast.error('Failed to send message')
+        // Restore inputs
+        setNewMessage(messageText)
+        setSelectedFile(tempFile)
+      } else {
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(m => 
+          m.id === optimisticMessage.id ? data : m
+        ))
+        
+        // Update conversation timestamp
+        await supabase
+          .from('conversations')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', selectedConversation.id)
+      }
+    } catch (err) {
+      console.error('Error in sendMessage:', err)
+      toast.error(err.message || 'Failed to send message')
+    } finally {
+      setUploadingFile(false)
     }
   }
 
@@ -782,6 +861,8 @@ export default function Messages() {
                   <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 messages-container">
                     {messages.map(msg => {
                       const isOwn = msg.sender_id === session.user.id
+                      const hasFile = msg.file_url && msg.file_name
+                      const isImage = msg.file_type?.startsWith('image/')
                       
                       return (
                         <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
@@ -796,7 +877,53 @@ export default function Messages() {
                                 : 'bg-black text-white'
                             }`}
                           >
-                            <div className="text-xs sm:text-sm break-words">{msg.message}</div>
+                            {msg.message && (
+                              <div className="text-xs sm:text-sm break-words">{msg.message}</div>
+                            )}
+                            
+                            {hasFile && (
+                              <div className="mt-2">
+                                {isImage ? (
+                                  <a 
+                                    href={msg.file_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="block"
+                                  >
+                                    <img 
+                                      src={msg.file_url} 
+                                      alt={msg.file_name}
+                                      className="max-w-full rounded border border-white/20 cursor-pointer hover:opacity-90"
+                                      style={{ maxHeight: '200px' }}
+                                    />
+                                    <div className="text-xs mt-1 opacity-70">
+                                      📷 {msg.file_name}
+                                    </div>
+                                  </a>
+                                ) : (
+                                  <a 
+                                    href={msg.file_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 p-2 border border-white/20 rounded hover:bg-white/10"
+                                  >
+                                    <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                                    </svg>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-xs truncate">{msg.file_name}</div>
+                                      <div className="text-xs opacity-70">
+                                        {msg.file_size ? `${(msg.file_size / 1024).toFixed(1)} KB` : 'File'}
+                                      </div>
+                                    </div>
+                                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            
                             <div className="text-xs mt-1 text-white opacity-70">
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
@@ -808,21 +935,73 @@ export default function Messages() {
 
                   {/* Message Input */}
                   <div className="p-2 sm:p-4 border-t border-black bg-white">
+                    {/* File Preview */}
+                    {selectedFile && (
+                      <div className="mb-2 p-2 bg-gray-50 border-2 border-black flex items-center justify-between">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <svg className="w-5 h-5 text-black flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-black truncate">{selectedFile.name}</div>
+                            <div className="text-xs text-gray-600">{(selectedFile.size / 1024).toFixed(1)} KB</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={removeSelectedFile}
+                          className="text-black hover:text-red-600 flex-shrink-0"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                    
                     <div className="flex gap-2">
+                      {/* File Upload Button */}
+                      <input
+                        type="file"
+                        id="file-input"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        accept="image/*,.pdf,.doc,.docx,.txt"
+                      />
+                      <label
+                        htmlFor="file-input"
+                        className="px-3 py-2 border-2 border-black cursor-pointer hover:bg-gray-50 flex-shrink-0"
+                        title="Attach file"
+                      >
+                        <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                      </label>
+                      
                       <input
                         type="text"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                        onKeyPress={(e) => e.key === 'Enter' && !uploadingFile && sendMessage()}
                         placeholder="Type a message..."
-                        className="flex-1 border-2 border-black px-2 sm:px-4 py-2 focus:outline-none text-xs sm:text-sm"
+                        disabled={uploadingFile}
+                        className="flex-1 border-2 border-black px-2 sm:px-4 py-2 focus:outline-none text-xs sm:text-sm disabled:bg-gray-100"
                       />
                       <button
                         onClick={sendMessage}
-                        disabled={!newMessage.trim()}
+                        disabled={(!newMessage.trim() && !selectedFile) || uploadingFile}
                         className="px-3 sm:px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex-shrink-0 rounded-[8px]"
                       >
-                        Send
+                        {uploadingFile ? (
+                          <div className="flex items-center gap-2">
+                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="hidden sm:inline">Sending...</span>
+                          </div>
+                        ) : (
+                          'Send'
+                        )}
                       </button>
                     </div>
                   </div>

@@ -427,7 +427,7 @@ export default function Navbar() {
               <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-semibold text-lg">
                 {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <div>
+              <div>2
                 <div className="font-medium text-black">{profile?.full_name || 'User'}</div>
                 <div className="text-sm text-black">{session?.user?.email}</div>
               </div>
