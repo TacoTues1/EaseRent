@@ -63,6 +63,7 @@ export default function Messages() {
             filter: `receiver_id=eq.${profile.id}`
           }, 
           (payload) => {
+            console.log('Global message notification:', payload.new)
             // Update unread count for this conversation
             loadUnreadCounts()
             // If not viewing this conversation, refresh list to show updated order
@@ -71,13 +72,15 @@ export default function Messages() {
             }
           }
         )
-        .subscribe()
+        .subscribe((status) => {
+          console.log('Global subscription status:', status)
+        })
 
       return () => {
         supabase.removeChannel(channel)
       }
     }
-  }, [profile])
+  }, [profile, selectedConversation])
 
   useEffect(() => {
     // Filter users based on search query
@@ -93,7 +96,7 @@ export default function Messages() {
   }, [searchQuery, allUsers])
 
   useEffect(() => {
-    if (selectedConversation) {
+    if (selectedConversation && session) {
       loadMessages(selectedConversation.id)
       
       // Subscribe to new messages
@@ -106,17 +109,63 @@ export default function Messages() {
             table: 'messages',
             filter: `conversation_id=eq.${selectedConversation.id}`
           }, 
-          (payload) => {
-            setMessages(prev => [...prev, payload.new])
+          async (payload) => {
+            console.log('New message received:', payload.new)
+            
+            // Fetch the complete message with sender details
+            const { data: newMessage } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                sender:profiles!messages_sender_id_fkey(full_name, role)
+              `)
+              .eq('id', payload.new.id)
+              .single()
+            
+            console.log('Fetched message details:', newMessage)
+            
+            if (newMessage) {
+              setMessages(prev => {
+                // Check if message already exists (avoid duplicates)
+                const exists = prev.some(m => m.id === newMessage.id)
+                if (exists) return prev
+                return [...prev, newMessage]
+              })
+              
+              // Auto-scroll to bottom on new message
+              setTimeout(() => {
+                const messagesContainer = document.querySelector('.messages-container')
+                if (messagesContainer) {
+                  messagesContainer.scrollTop = messagesContainer.scrollHeight
+                }
+              }, 100)
+              
+              // Mark as read if current user is the receiver
+              if (newMessage.receiver_id === session.user.id) {
+                await supabase
+                  .from('messages')
+                  .update({ read: true })
+                  .eq('id', newMessage.id)
+                
+                // Update unread count
+                setUnreadCounts(prev => ({
+                  ...prev,
+                  [selectedConversation.id]: Math.max(0, (prev[selectedConversation.id] || 0) - 1)
+                }))
+              }
+            }
           }
         )
-        .subscribe()
+        .subscribe((status) => {
+          console.log('Subscription status:', status)
+        })
 
       return () => {
+        console.log('Cleaning up channel')
         supabase.removeChannel(channel)
       }
     }
-  }, [selectedConversation])
+  }, [selectedConversation, session])
 
   async function loadProfile(userId) {
     const { data } = await supabase
@@ -431,6 +480,14 @@ export default function Messages() {
         ...prev,
         [conversationId]: 0
       }))
+      
+      // Scroll to bottom after loading messages
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-container')
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight
+        }
+      }, 100)
     }
   }
 
@@ -563,7 +620,7 @@ export default function Messages() {
       } else {
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => 
-          m.id === optimisticMessage.id ? data : m
+          m.id === optimisticMessage.id ? { ...data, sender: { full_name: profile.full_name, role: profile.role } } : m
         ))
         
         // Update conversation timestamp
@@ -571,6 +628,14 @@ export default function Messages() {
           .from('conversations')
           .update({ updated_at: new Date().toISOString() })
           .eq('id', selectedConversation.id)
+        
+        // Scroll to bottom after sending
+        setTimeout(() => {
+          const messagesContainer = document.querySelector('.messages-container')
+          if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight
+          }
+        }, 100)
       }
     } catch (err) {
       console.error('Error in sendMessage:', err)
@@ -644,11 +709,11 @@ export default function Messages() {
       </div>
 
       {/* Chat Interface */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6">
-        <div className="bg-white border-2 border-black overflow-hidden" style={{ height: 'calc(95vh - 190px)' }}>
+      <div className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-6">
+        <div className="bg-white border-0 sm:border-2 border-black overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
           <div className="flex flex-col md:flex-row h-full">
             {/* Conversations List */}
-            <div className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-70 border-b md:border-b-0 md:border-r border-black overflow-y-auto`}>
+            <div className={`${selectedConversation ? 'hidden md:block' : 'flex flex-col'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-black h-full`}>
               <div className="p-2 sm:p-5 border-b border-black bg-white flex justify-between items-center">
                 <h2 className="font-semibold text-black text-sm sm:text-base">
                   {showNewConversation ? 'Start New Chat' : 'Conversations'}
@@ -703,7 +768,7 @@ export default function Messages() {
                 </div>
               ) : showNewConversation ? (
                 // Show all users list with search
-                <div>
+                <div className="flex-1 overflow-y-auto">
                   {filteredUsers.length === 0 ? (
                     <div className="p-4 sm:p-8 text-center text-black">
                       {searchQuery ? (
@@ -755,7 +820,7 @@ export default function Messages() {
                   </p>
                 </div>
               ) : (
-                <div>
+                <div className="flex-1 overflow-y-auto">
                   {conversations.map(conv => {
                     const otherPerson = conv.other_user?.full_name || 'Unknown User'
                     const unreadCount = unreadCounts[conv.id] || 0
@@ -804,11 +869,11 @@ export default function Messages() {
             </div>
 
             {/* Messages Area */}
-            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col w-full md:w-auto`}>
+            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col w-full md:w-auto h-full`}>
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center">
+                  <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {/* Back button for mobile */}
                       <button
@@ -858,7 +923,7 @@ export default function Messages() {
                   </div>
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 messages-container">
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 messages-container" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0 }}>
                     {messages.map(msg => {
                       const isOwn = msg.sender_id === session.user.id
                       const hasFile = msg.file_url && msg.file_name
@@ -934,7 +999,7 @@ export default function Messages() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="p-2 sm:p-4 border-t border-black bg-white">
+                  <div className="p-2 sm:p-4 border-t border-black bg-white flex-shrink-0">
                     {/* File Preview */}
                     {selectedFile && (
                       <div className="mb-2 p-2 bg-gray-50 border-2 border-black flex items-center justify-between">
