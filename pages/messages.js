@@ -14,7 +14,7 @@ export default function Messages() {
   const [selectedUser, setSelectedUser] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
-  const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedFiles, setSelectedFiles] = useState([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showNewConversation, setShowNewConversation] = useState(false)
@@ -62,16 +62,26 @@ export default function Messages() {
             table: 'messages',
             filter: `receiver_id=eq.${profile.id}`
           }, 
-          (payload) => {
+          async (payload) => {
+            console.log('🌐 Global message notification:', payload.new)
+            
             // Update unread count for this conversation
             loadUnreadCounts()
-            // If not viewing this conversation, refresh list to show updated order
-            if (!selectedConversation || selectedConversation.id !== payload.new.conversation_id) {
-              loadConversations()
-            }
+            
+            // Update conversation timestamp without full reload
+            setConversations(prev => {
+              return prev.map(conv => {
+                if (conv.id === payload.new.conversation_id) {
+                  return { ...conv, updated_at: new Date().toISOString() }
+                }
+                return conv
+              }).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+            })
           }
         )
-        .subscribe()
+        .subscribe((status) => {
+          console.log('🌐 Global subscription status:', status)
+        })
 
       return () => {
         supabase.removeChannel(channel)
@@ -93,12 +103,16 @@ export default function Messages() {
   }, [searchQuery, allUsers])
 
   useEffect(() => {
-    if (selectedConversation) {
+    if (selectedConversation && session) {
       loadMessages(selectedConversation.id)
       
-      // Subscribe to new messages
+      // Subscribe to new messages with better error handling
       const channel = supabase
-        .channel(`messages:${selectedConversation.id}`)
+        .channel(`messages-${selectedConversation.id}-${Date.now()}`, {
+          config: {
+            broadcast: { self: true },
+          },
+        })
         .on('postgres_changes', 
           { 
             event: 'INSERT', 
@@ -106,17 +120,78 @@ export default function Messages() {
             table: 'messages',
             filter: `conversation_id=eq.${selectedConversation.id}`
           }, 
-          (payload) => {
-            setMessages(prev => [...prev, payload.new])
+          async (payload) => {
+            console.log('📨 New message received:', payload.new)
+            
+            // Fetch the complete message with sender details
+            const { data: newMessage, error } = await supabase
+              .from('messages')
+              .select(`
+                *,
+                sender:profiles!messages_sender_id_fkey(full_name, role)
+              `)
+              .eq('id', payload.new.id)
+              .single()
+            
+            if (error) {
+              console.error('❌ Error fetching message details:', error)
+              return
+            }
+            
+            console.log('✅ Message details fetched:', newMessage)
+            
+            if (newMessage) {
+              setMessages(prev => {
+                // Check if message already exists (avoid duplicates)
+                const exists = prev.some(m => m.id === newMessage.id)
+                if (exists) {
+                  console.log('⚠️ Message already exists, skipping')
+                  return prev
+                }
+                console.log('➕ Adding new message to list')
+                return [...prev, newMessage]
+              })
+              
+              // Auto-scroll to bottom on new message
+              setTimeout(() => {
+                const messagesContainer = document.querySelector('.messages-container')
+                if (messagesContainer) {
+                  messagesContainer.scrollTop = messagesContainer.scrollHeight
+                }
+              }, 100)
+              
+              // Mark as read if current user is the receiver
+              if (newMessage.receiver_id === session.user.id) {
+                await supabase
+                  .from('messages')
+                  .update({ read: true })
+                  .eq('id', newMessage.id)
+                
+                // Update unread count
+                setUnreadCounts(prev => ({
+                  ...prev,
+                  [selectedConversation.id]: Math.max(0, (prev[selectedConversation.id] || 0) - 1)
+                }))
+              }
+            }
           }
         )
-        .subscribe()
+        .subscribe((status, err) => {
+          console.log('🔌 Subscription status:', status)
+          if (err) {
+            console.error('❌ Subscription error:', err)
+          }
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Successfully subscribed to messages')
+          }
+        })
 
       return () => {
+        console.log('🔌 Cleaning up subscription')
         supabase.removeChannel(channel)
       }
     }
-  }, [selectedConversation])
+  }, [selectedConversation, session])
 
   async function loadProfile(userId) {
     const { data } = await supabase
@@ -431,23 +506,45 @@ export default function Messages() {
         ...prev,
         [conversationId]: 0
       }))
+      
+      // Scroll to bottom after loading messages
+      setTimeout(() => {
+        const messagesContainer = document.querySelector('.messages-container')
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight
+        }
+      }, 100)
     }
   }
 
   function handleFileSelect(e) {
-    const file = e.target.files[0]
-    if (file) {
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('File size must be less than 10MB')
-        return
-      }
-      setSelectedFile(file)
+    const newFiles = Array.from(e.target.files)
+    
+    // Combine with existing files
+    const allFiles = [...selectedFiles, ...newFiles]
+    
+    // Limit to 5 files total
+    if (allFiles.length > 5) {
+      toast.error('You can only upload up to 5 files at a time')
+      // Reset the input
+      e.target.value = ''
+      return
     }
+    
+    // Check each file size (max 10MB per file)
+    const invalidFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024)
+    if (invalidFiles.length > 0) {
+      toast.error('Each file must be less than 10MB')
+      // Reset the input
+      e.target.value = ''
+      return
+    }
+    
+    setSelectedFiles(allFiles)
   }
 
-  function removeSelectedFile() {
-    setSelectedFile(null)
+  function removeSelectedFile(index) {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
     // Reset file input
     const fileInput = document.getElementById('file-input')
     if (fileInput) fileInput.value = ''
@@ -458,22 +555,46 @@ export default function Messages() {
     const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
     const filePath = `${session.user.id}/${conversationId}/${fileName}`
 
+    console.log('📤 Uploading file:', file.name, 'to path:', filePath)
+
     const { data, error } = await supabase.storage
       .from('message-attachments')
-      .upload(filePath, file)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
 
     if (error) {
-      console.error('Error uploading file:', error)
+      console.error('❌ Error uploading file:', error)
       throw error
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
+    console.log('✅ File uploaded successfully:', data)
+
+    // Create a signed URL that expires in 1 year
+    const { data: signedUrlData, error: urlError } = await supabase.storage
       .from('message-attachments')
-      .getPublicUrl(filePath)
+      .createSignedUrl(filePath, 31536000) // 1 year in seconds
+
+    if (urlError) {
+      console.error('❌ Error creating signed URL:', urlError)
+      // Fallback to public URL if signed URL fails
+      const { data: urlData } = supabase.storage
+        .from('message-attachments')
+        .getPublicUrl(filePath)
+      
+      return {
+        url: urlData.publicUrl,
+        name: file.name,
+        type: file.type,
+        size: file.size
+      }
+    }
+
+    console.log('🔗 Signed URL:', signedUrlData.signedUrl)
 
     return {
-      url: urlData.publicUrl,
+      url: signedUrlData.signedUrl,
       name: file.name,
       type: file.type,
       size: file.size
@@ -481,7 +602,7 @@ export default function Messages() {
   }
 
   async function sendMessage() {
-    if (!newMessage.trim() && !selectedFile) return
+    if (!newMessage.trim() && selectedFiles.length === 0) return
     if (!selectedConversation) return
 
     const messageText = newMessage.trim()
@@ -490,88 +611,143 @@ export default function Messages() {
     setUploadingFile(true)
     
     try {
-      let fileData = null
+      let uploadedFiles = []
       
-      // Upload file if selected
-      if (selectedFile) {
-        fileData = await uploadFile(selectedFile, selectedConversation.id)
+      // Upload all selected files
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+          const fileData = await uploadFile(file, selectedConversation.id)
+          uploadedFiles.push(fileData)
+        }
       }
 
       // Clear inputs immediately for better UX
       setNewMessage('')
-      const tempFile = selectedFile
-      setSelectedFile(null)
+      const tempFiles = [...selectedFiles]
+      setSelectedFiles([])
       
       // Reset file input
       const fileInput = document.getElementById('file-input')
       if (fileInput) fileInput.value = ''
 
-      // Create optimistic message object
-      const optimisticMessage = {
-        id: `temp-${Date.now()}`,
-        conversation_id: selectedConversation.id,
-        sender_id: session.user.id,
-        receiver_id: receiverId,
-        message: messageText || (fileData ? '📎 File attachment' : ''),
-        file_url: fileData?.url || null,
-        file_name: fileData?.name || null,
-        file_type: fileData?.type || null,
-        file_size: fileData?.size || null,
-        read: false,
-        created_at: new Date().toISOString(),
-        sender: {
-          full_name: profile.full_name,
-          role: profile.role
+      // Send message with text or files
+      if (uploadedFiles.length > 0) {
+        // Send a message for each file
+        for (let i = 0; i < uploadedFiles.length; i++) {
+          const fileData = uploadedFiles[i]
+          // Only include message text with the first file
+          const includeText = i === 0 ? messageText : ''
+          
+          const optimisticMessage = {
+            id: `temp-${Date.now()}-${Math.random()}`,
+            conversation_id: selectedConversation.id,
+            sender_id: session.user.id,
+            receiver_id: receiverId,
+            message: includeText,
+            file_url: fileData.url,
+            file_name: fileData.name,
+            file_type: fileData.type,
+            file_size: fileData.size,
+            read: false,
+            created_at: new Date().toISOString(),
+            sender: {
+              full_name: profile.full_name,
+              role: profile.role
+            }
+          }
+
+          // Add message to UI immediately
+          setMessages(prev => [...prev, optimisticMessage])
+
+          // Send to database
+          const { data, error } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: selectedConversation.id,
+              sender_id: session.user.id,
+              receiver_id: receiverId,
+              message: includeText,
+              file_url: fileData.url,
+              file_name: fileData.name,
+              file_type: fileData.type,
+              file_size: fileData.size
+            })
+            .select()
+            .single()
+
+          if (error) {
+            console.error('Error sending message:', error)
+            setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
+            toast.error('Failed to send file: ' + fileData.name)
+          } else {
+            // Replace optimistic message with real one
+            setMessages(prev => prev.map(m => 
+              m.id === optimisticMessage.id ? { ...data, sender: { full_name: profile.full_name, role: profile.role } } : m
+            ))
+          }
+        }
+      } else if (messageText) {
+        // Send text-only message
+        const optimisticMessage = {
+          id: `temp-${Date.now()}`,
+          conversation_id: selectedConversation.id,
+          sender_id: session.user.id,
+          receiver_id: receiverId,
+          message: messageText,
+          file_url: null,
+          file_name: null,
+          file_type: null,
+          file_size: null,
+          read: false,
+          created_at: new Date().toISOString(),
+          sender: {
+            full_name: profile.full_name,
+            role: profile.role
+          }
+        }
+
+        setMessages(prev => [...prev, optimisticMessage])
+
+        const { data, error } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: selectedConversation.id,
+            sender_id: session.user.id,
+            receiver_id: receiverId,
+            message: messageText,
+            file_url: null,
+            file_name: null,
+            file_type: null,
+            file_size: null
+          })
+          .select()
+          .single()
+
+        if (error) {
+          console.error('Error sending message:', error)
+          setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
+          toast.error('Failed to send message')
+          setNewMessage(messageText)
+        } else {
+          setMessages(prev => prev.map(m => 
+            m.id === optimisticMessage.id ? { ...data, sender: { full_name: profile.full_name, role: profile.role } } : m
+          ))
         }
       }
 
-      // Add message to UI immediately
-      setMessages(prev => [...prev, optimisticMessage])
-
-      // Scroll to bottom
+      // Update conversation timestamp
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', selectedConversation.id)
+      
+      // Scroll to bottom after sending
       setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-container')
         if (messagesContainer) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight
         }
-      }, 50)
-
-      // Send to database
-      const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: selectedConversation.id,
-          sender_id: session.user.id,
-          receiver_id: receiverId,
-          message: messageText || (fileData ? '📎 File attachment' : ''),
-          file_url: fileData?.url || null,
-          file_name: fileData?.name || null,
-          file_type: fileData?.type || null,
-          file_size: fileData?.size || null
-        })
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Error sending message:', error)
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
-        toast.error('Failed to send message')
-        // Restore inputs
-        setNewMessage(messageText)
-        setSelectedFile(tempFile)
-      } else {
-        // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => 
-          m.id === optimisticMessage.id ? data : m
-        ))
-        
-        // Update conversation timestamp
-        await supabase
-          .from('conversations')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', selectedConversation.id)
-      }
+      }, 100)
     } catch (err) {
       console.error('Error in sendMessage:', err)
       toast.error(err.message || 'Failed to send message')
@@ -631,6 +807,34 @@ export default function Messages() {
 
   return (
     <div className="min-h-screen bg-white">
+      <Toaster 
+        position="top-center"
+        reverseOrder={false}
+        gutter={8}
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#363636',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+          },
+          success: {
+            duration: 2000,
+            style: {
+              background: '#10b981',
+              color: '#fff',
+            },
+          },
+          error: {
+            duration: 3000,
+            style: {
+              background: '#ef4444',
+              color: '#fff',
+            },
+          },
+        }}
+      />
       {/* Header */}
       <div className="bg-white ">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4">
@@ -644,11 +848,11 @@ export default function Messages() {
       </div>
 
       {/* Chat Interface */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6">
-        <div className="bg-white border-2 border-black overflow-hidden" style={{ height: 'calc(95vh - 190px)' }}>
+      <div className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-6">
+        <div className="bg-white border-0 sm:border-2 border-black overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
           <div className="flex flex-col md:flex-row h-full">
             {/* Conversations List */}
-            <div className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-70 border-b md:border-b-0 md:border-r border-black overflow-y-auto`}>
+            <div className={`${selectedConversation ? 'hidden md:block' : 'flex flex-col'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-black h-full`}>
               <div className="p-2 sm:p-5 border-b border-black bg-white flex justify-between items-center">
                 <h2 className="font-semibold text-black text-sm sm:text-base">
                   {showNewConversation ? 'Start New Chat' : 'Conversations'}
@@ -703,7 +907,7 @@ export default function Messages() {
                 </div>
               ) : showNewConversation ? (
                 // Show all users list with search
-                <div>
+                <div className="flex-1 overflow-y-auto">
                   {filteredUsers.length === 0 ? (
                     <div className="p-4 sm:p-8 text-center text-black">
                       {searchQuery ? (
@@ -755,7 +959,7 @@ export default function Messages() {
                   </p>
                 </div>
               ) : (
-                <div>
+                <div className="flex-1 overflow-y-auto">
                   {conversations.map(conv => {
                     const otherPerson = conv.other_user?.full_name || 'Unknown User'
                     const unreadCount = unreadCounts[conv.id] || 0
@@ -804,11 +1008,11 @@ export default function Messages() {
             </div>
 
             {/* Messages Area */}
-            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col w-full md:w-auto`}>
+            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col w-full md:w-auto h-full`}>
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center">
+                  <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {/* Back button for mobile */}
                       <button
@@ -858,73 +1062,126 @@ export default function Messages() {
                   </div>
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 messages-container">
+                  <div className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2 messages-container" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0 }}>
                     {messages.map(msg => {
                       const isOwn = msg.sender_id === session.user.id
                       const hasFile = msg.file_url && msg.file_name
                       const isImage = msg.file_type?.startsWith('image/')
+                      const senderName = msg.sender?.full_name || (isOwn ? profile.full_name : selectedConversation.other_user?.full_name) || 'Unknown'
+                      const senderInitials = senderName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
                       
                       return (
-                        <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                          <div 
-                            style={{ 
-                              borderRadius: '16px',
-                              overflow: 'hidden'
-                            }}
-                            className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2 ${
-                              isOwn 
-                                ? 'bg-black text-white' 
-                                : 'bg-black text-white'
-                            }`}
-                          >
-                            {msg.message && (
-                              <div className="text-xs sm:text-sm break-words">{msg.message}</div>
-                            )}
-                            
-                            {hasFile && (
-                              <div className="mt-2">
-                                {isImage ? (
-                                  <a 
-                                    href={msg.file_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="block"
-                                  >
-                                    <img 
-                                      src={msg.file_url} 
-                                      alt={msg.file_name}
-                                      className="max-w-full rounded border border-white/20 cursor-pointer hover:opacity-90"
-                                      style={{ maxHeight: '200px' }}
-                                    />
-                                    <div className="text-xs mt-1 opacity-70">
-                                      📷 {msg.file_name}
-                                    </div>
-                                  </a>
-                                ) : (
-                                  <a 
-                                    href={msg.file_url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 p-2 border border-white/20 rounded hover:bg-white/10"
-                                  >
-                                    <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
-                                    </svg>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-xs truncate">{msg.file_name}</div>
-                                      <div className="text-xs opacity-70">
-                                        {msg.file_size ? `${(msg.file_size / 1024).toFixed(1)} KB` : 'File'}
+                        <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                          {/* Profile Avatar */}
+                          <div className="flex-shrink-0">
+                            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                              isOwn ? 'bg-blue-600' : 'bg-gray-600'
+                            }`}>
+                              {senderInitials}
+                            </div>
+                          </div>
+                          
+                          {/* Message Bubble */}
+                          <div className="flex flex-col max-w-[50%] sm:max-w-md">
+                            <div 
+                              style={{ 
+                                borderRadius: '12px',
+                                overflow: 'hidden'
+                              }}
+                              className={`px-3 py-1.5 ${
+                                isOwn 
+                                  ? 'bg-blue-600 text-white' 
+                                  : 'bg-gray-800 text-white'
+                              }`}
+                            >
+                              {msg.message && (
+                                <div className="text-xs sm:text-sm break-words">{msg.message}</div>
+                              )}
+                              
+                              {hasFile && (
+                                <div className="mt-1.5">
+                                  {isImage ? (
+                                    <div>
+                                      <img 
+                                        src={msg.file_url} 
+                                        alt={msg.file_name}
+                                        className="max-w-full rounded border border-white/20"
+                                        style={{ maxHeight: '150px' }}
+                                      />
+                                      <div className="flex items-center justify-between mt-1">
+                                        <div className="text-xs opacity-70 truncate flex-1">
+                                          {msg.file_name}
+                                        </div>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              const response = await fetch(msg.file_url)
+                                              const blob = await response.blob()
+                                              const url = window.URL.createObjectURL(blob)
+                                              const link = document.createElement('a')
+                                              link.href = url
+                                              link.download = msg.file_name
+                                              document.body.appendChild(link)
+                                              link.click()
+                                              document.body.removeChild(link)
+                                              window.URL.revokeObjectURL(url)
+                                              toast.success('Downloaded')
+                                            } catch (err) {
+                                              console.error('Download failed:', err)
+                                              toast.error('Failed to download')
+                                            }
+                                          }}
+                                          className="ml-2 p-1 hover:bg-white/20 rounded flex-shrink-0"
+                                          title="Download"
+                                        >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                          </svg>
+                                        </button>
                                       </div>
                                     </div>
-                                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
-                                  </a>
-                                )}
-                              </div>
-                            )}
-                            
-                            <div className="text-xs mt-1 text-white opacity-70">
+                                  ) : (
+                                    <div className="p-2 border border-white/20 rounded">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs truncate font-medium">{msg.file_name}</div>
+                                          <div className="text-xs opacity-70 mt-0.5">
+                                            {msg.file_size ? `${(msg.file_size / 1024).toFixed(1)} KB` : 'File'}
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={async () => {
+                                            try {
+                                              const response = await fetch(msg.file_url)
+                                              const blob = await response.blob()
+                                              const url = window.URL.createObjectURL(blob)
+                                              const link = document.createElement('a')
+                                              link.href = url
+                                              link.download = msg.file_name
+                                              document.body.appendChild(link)
+                                              link.click()
+                                              document.body.removeChild(link)
+                                              window.URL.revokeObjectURL(url)
+                                              toast.success('Downloaded')
+                                            } catch (err) {
+                                              console.error('Download failed:', err)
+                                              toast.error('Failed to download')
+                                            }
+                                          }}
+                                          className="ml-2 p-1.5 hover:bg-white/20 rounded flex-shrink-0"
+                                          title="Download"
+                                        >
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <div className={`text-xs mt-0.5 px-1 opacity-60 ${isOwn ? 'text-right' : 'text-left'}`}>
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
@@ -934,27 +1191,35 @@ export default function Messages() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="p-2 sm:p-4 border-t border-black bg-white">
-                    {/* File Preview */}
-                    {selectedFile && (
-                      <div className="mb-2 p-2 bg-gray-50 border-2 border-black flex items-center justify-between">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <svg className="w-5 h-5 text-black flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
-                          </svg>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium text-black truncate">{selectedFile.name}</div>
-                            <div className="text-xs text-gray-600">{(selectedFile.size / 1024).toFixed(1)} KB</div>
-                          </div>
+                  <div className="p-2 sm:p-4 border-t border-black bg-white flex-shrink-0">
+                    {/* File Preview - Compact */}
+                    {selectedFiles.length > 0 && (
+                      <div className="mb-2">
+                        <div className="text-xs text-gray-600 mb-1 font-medium">
+                          {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} • Max 5
                         </div>
-                        <button
-                          onClick={removeSelectedFile}
-                          className="text-black hover:text-red-600 flex-shrink-0"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {selectedFiles.map((file, index) => {
+                            const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '')
+                            return (
+                            <div key={index} className="p-1.5 bg-gray-50 border border-gray-300 flex items-center justify-between text-xs w-25">
+                              <div className="flex-1 min-w-0 mr-2">
+                                <div className="font-medium text-black truncate">{fileNameWithoutExt}</div>
+                                <div className="text-gray-500">{(file.size / 1024).toFixed(1)} KB</div>
+                              </div>
+                              <button
+                                onClick={() => removeSelectedFile(index)}
+                                className="text-gray-600 hover:text-red-600 flex-shrink-0"
+                                title="Remove file"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
                     
@@ -966,11 +1231,12 @@ export default function Messages() {
                         onChange={handleFileSelect}
                         className="hidden"
                         accept="image/*,.pdf,.doc,.docx,.txt"
+                        multiple
                       />
                       <label
                         htmlFor="file-input"
                         className="px-3 py-2 border-2 border-black cursor-pointer hover:bg-gray-50 flex-shrink-0"
-                        title="Attach file"
+                        title="Attach files (max 5)"
                       >
                         <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -988,7 +1254,7 @@ export default function Messages() {
                       />
                       <button
                         onClick={sendMessage}
-                        disabled={(!newMessage.trim() && !selectedFile) || uploadingFile}
+                        disabled={(!newMessage.trim() && selectedFiles.length === 0) || uploadingFile}
                         className="px-3 sm:px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex-shrink-0 rounded-[8px]"
                       >
                         {uploadingFile ? (
