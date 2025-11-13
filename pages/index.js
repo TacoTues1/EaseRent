@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
 
 export default function Home() {
+  const router = useRouter()
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
@@ -15,6 +17,10 @@ export default function Home() {
   const [showZoom, setShowZoom] = useState(false)
   const [showPermitModal, setShowPermitModal] = useState(false)
   const [selectedPermit, setSelectedPermit] = useState(null)
+  const [showFaqChat, setShowFaqChat] = useState(false)
+  const [selectedFaq, setSelectedFaq] = useState(null)
+  const [chatHistory, setChatHistory] = useState([])
+  const chatMessagesRef = useRef(null)
 
   useEffect(() => {
     loadFeaturedProperties()
@@ -48,11 +54,22 @@ export default function Home() {
     }
   }, [showPropertyModal, selectedProperty])
 
+  // Auto-scroll chat to bottom when new messages are added
+  useEffect(() => {
+    if (chatMessagesRef.current && chatHistory.length > 0) {
+      setTimeout(() => {
+        chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+      }, 100)
+    }
+  }, [chatHistory])
+
   async function loadFeaturedProperties() {
     const { data, error } = await supabase
       .from('properties')
-      .select('*')
-      .eq('available', true)
+      .select(`
+        *,
+        landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)
+      `)
       .order('created_at', { ascending: false })
       .limit(6)
     
@@ -69,9 +86,9 @@ export default function Home() {
     
     // Otherwise, use mock Unsplash images
     return [
-      `https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&h=600&fit=crop`,
-      `https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop`,
-      `https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop`
+      // `https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&h=600&fit=crop`,
+      // `https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop`,
+      // `https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop`
     ]
   }
 
@@ -128,6 +145,58 @@ export default function Home() {
 
   const handleMouseLeave = () => {
     setShowZoom(false)
+  }
+
+  const faqData = [
+    {
+      id: 1,
+      question: "How do I apply for a property?",
+      answer: "Click 'View Details' on any property listing, then click the 'Apply' button. Fill out the application form with your details, and the landlord will review and contact you directly."
+    },
+    {
+      id: 2,
+      question: "How do I schedule a viewing?",
+      answer: "On the property details page, you'll find the landlord's available time slots. Select your preferred date and time to book an appointment. You'll receive a confirmation in your dashboard."
+    },
+    {
+      id: 3,
+      question: "How do I pay rent?",
+      answer: "Once approved as a tenant, your landlord will send payment requests through the platform. Upload proof of payment in the Payments section of your dashboard and track your payment history."
+    },
+    {
+      id: 4,
+      question: "How do I contact the landlord?",
+      answer: "Use our built-in messaging system accessible from your dashboard. You can send text messages, share images, and exchange files for any property-related communication."
+    },
+    {
+      id: 5,
+      question: "What if something needs repair?",
+      answer: "Submit a maintenance request through the Maintenance section in your dashboard. Describe the issue, upload photos if needed, and your landlord will be notified immediately."
+    },
+    {
+      id: 6,
+      question: "What documents do I need?",
+      answer: "Typically, you'll need a valid ID, proof of income or employment, and references. Specific requirements vary by landlord, so check the property listing for details."
+    }
+  ]
+
+  const handleFaqClick = (faq) => {
+    if (!showFaqChat) {
+      // First time opening - just show the chat with this FAQ
+      setSelectedFaq(faq)
+      setChatHistory([faq])
+      setShowFaqChat(true)
+    } else {
+      // Already open - add to history
+      setChatHistory(prev => [...prev, faq])
+      setSelectedFaq(faq)
+    }
+  }
+
+  const closeFaqChat = () => {
+    setShowFaqChat(false)
+    setSelectedFaq(null)
+    setChatHistory([])
   }
 
   const openPermitModal = (permit) => {
@@ -218,12 +287,33 @@ export default function Home() {
                           ))}
                         </div>
                       )}
+
+                      {/* Status Badge */}
+                      <div className="absolute top-4 right-4">
+                        <span className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 border-black ${
+                          property.status === 'available'
+                            ? 'bg-black text-white' 
+                            : property.status === 'occupied'
+                            ? 'bg-white text-black'
+                            : 'bg-white text-black'
+                        }`}>
+                          {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
                   {/* Property Info - Bottom */}
                   <div className="p-6">
                     <h3 className="text-lg font-bold mb-2 line-clamp-1 text-gray-900">{property.title}</h3>
+                    
+                    {/* Landlord Name */}
+                    {property.landlord_profile?.full_name && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        By {property.landlord_profile.full_name}
+                      </p>
+                    )}
+                    
                     <div className="flex items-start gap-2 mb-3">
                       <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -264,7 +354,7 @@ export default function Home() {
                     </div>
                     
                     <button
-                      onClick={() => openPropertyModal(property)}
+                      onClick={() => router.push(`/properties/${property.id}`)}
                       className="w-full bg-black text-white py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer"
                     >
                       View Details
@@ -367,17 +457,116 @@ export default function Home() {
         </div>
       </div>
 
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
+      {/* Footer with FAQ */}
+      <footer className="bg-gray-900 text-white py-12">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* FAQ Section */}
+          <div className="mb-10">
+            <h3 className="text-xl font-bold text-white mb-6 text-center">Frequently Asked Questions</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {faqData.map((faq) => (
+                <button
+                  key={faq.id}
+                  onClick={() => handleFaqClick(faq)}
+                  className="text-left text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+                >
+                  {faq.question}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Copyright */}
+          <div className="text-center border-t border-gray-700 pt-6">
             <p className="text-gray-400 text-sm">
               © 2025 EaseRent. All rights reserved.
             </p>
           </div>
         </div>
       </footer>
+
+      {/* FAQ Chat Widget - Facebook Style */}
+      {showFaqChat && chatHistory.length > 0 && (
+        <div className="fixed bottom-4 right-4 w-80 bg-white rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden border border-gray-200 max-h-[480px]">
+          {/* Chat Header */}
+          <div className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <span className="font-semibold text-sm">EaseRent Support</span>
+            </div>
+            <button
+              onClick={closeFaqChat}
+              className="hover:bg-gray-700 rounded-full p-1 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Chat Messages */}
+          <div ref={chatMessagesRef} className="flex-1 p-4 bg-gray-50 overflow-y-auto">
+            <div className="space-y-3">
+              {chatHistory.map((faq, index) => (
+                <div key={index}>
+                  {/* User Question (Right side) */}
+                  <div className="flex justify-end mb-2">
+                    <div className="bg-gray-800 text-white px-4 py-2 rounded-2xl rounded-tr-none max-w-[80%]">
+                      <p className="text-sm">{faq.question}</p>
+                    </div>
+                  </div>
+
+                  {/* Bot Answer (Left side) */}
+                  <div className="flex justify-start mb-3">
+                    <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%]">
+                      <p className="text-sm leading-relaxed">{faq.answer}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Additional help prompt */}
+              <div className="flex justify-start">
+                <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%]">
+                  <p className="text-sm">Need more help? Click a question below!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Questions Section */}
+          <div className="bg-white border-t border-gray-200 px-3 py-2 flex-shrink-0">
+            <p className="text-xs text-gray-600 mb-1.5 font-medium">Quick Questions:</p>
+            <div className="space-y-1.5 max-h-15 overflow-y-auto">
+              {faqData
+                .filter(faq => !chatHistory.find(h => h.id === faq.id))
+                .map((faq) => (
+                  <button
+                    key={faq.id}
+                    onClick={() => handleFaqClick(faq)}
+                    className="w-full text-left text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-2.5 py-1.5 rounded-lg transition-colors border border-gray-300"
+                  >
+                    {faq.question}
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          {/* Chat Footer */}
+          <div className="bg-white border-t border-gray-200 px-4 py-2 flex-shrink-0">
+            <button
+              onClick={closeFaqChat}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Property Details Modal */}
       {showPropertyModal && selectedProperty && (

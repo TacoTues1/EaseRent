@@ -11,7 +11,7 @@ function MyApp({ Component, pageProps }) {
     <>
       <Meta />
       <Toaster 
-        position="top-right"
+        position="top-center"
         toastOptions={{
           duration: 3000,
           className: '',
@@ -25,8 +25,6 @@ function MyApp({ Component, pageProps }) {
             fontWeight: '500',
             maxWidth: '350px',
             boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-            animation: 'none',
-            transition: 'none',
           },
           success: {
             icon: '✓',
@@ -37,8 +35,6 @@ function MyApp({ Component, pageProps }) {
             style: {
               background: '#16a34a',
               color: '#ffffff',
-              animation: 'none',
-              transition: 'none',
             },
           },
           error: {
@@ -50,8 +46,6 @@ function MyApp({ Component, pageProps }) {
             style: {
               background: '#dc2626',
               color: '#ffffff',
-              animation: 'none',
-              transition: 'none',
             },
           },
         }}

@@ -143,27 +143,30 @@ export default function SchedulePage() {
     setSelectedDateSlots(prev => {
       const newState = { ...prev }
       
-      // If clicking the same time slot, deselect the date
-      if (newState[dateStr] === timeSlot) {
-        delete newState[dateStr]
-        setActiveDate(null)
-      } else {
-        // Set the time slot for this date
-        newState[dateStr] = timeSlot
-        setActiveDate(null) // Close the time slot picker after selection
-      }
+      // Set the time slot for this date (allows changing from morning to afternoon or vice versa)
+      newState[dateStr] = timeSlot
+      setActiveDate(null) // Close the time slot picker after selection
       
       return newState
     })
   }
 
   function toggleActiveDate(dateStr) {
-    // If clicking the same date, close it
+    // If clicking the same date and it already has a time slot, allow editing
     if (activeDate === dateStr) {
       setActiveDate(null)
     } else {
       setActiveDate(dateStr)
     }
+  }
+
+  function clearDateSelection(dateStr) {
+    setSelectedDateSlots(prev => {
+      const newState = { ...prev }
+      delete newState[dateStr]
+      return newState
+    })
+    setActiveDate(null)
   }
 
   function selectAllDates(timeSlot, filterFn) {
@@ -384,7 +387,7 @@ export default function SchedulePage() {
                           <button
                             type="button"
                             onClick={() => toggleActiveDate(dateStr)}
-                            className={`w-full p-4 text-center transition-all duration-300 min-h-[140px] flex flex-col items-center justify-center ${
+                            className={`w-full p-4 text-center transition-all duration-300 min-h-[140px] flex flex-col items-center justify-center relative ${
                               selectedTimeSlot === 'morning'
                                 ? 'bg-yellow-100'
                                 : selectedTimeSlot === 'afternoon'
@@ -398,12 +401,15 @@ export default function SchedulePage() {
                             <div className="font-bold text-3xl my-2">{dayNum}</div>
                             <div className="text-xs text-gray-600 font-medium">{monthName}</div>
                             {selectedTimeSlot && (
-                              <div className={`text-[10px] font-semibold mt-3 px-2 py-1 rounded ${
+                              <div className={`text-[10px] font-semibold mt-3 px-2 py-1 rounded cursor-pointer hover:opacity-80 ${
                                 selectedTimeSlot === 'morning' 
                                   ? 'bg-yellow-200 text-yellow-800' 
                                   : 'bg-orange-200 text-orange-800'
-                              }`}>
+                              }`}
+                              title="Click to change time"
+                              >
                                 {selectedTimeSlot === 'morning' ? '🌅 Morning' : '☀️ Afternoon'}
+                                <div className="text-[8px] mt-0.5">Click to edit</div>
                               </div>
                             )}
                           </button>
@@ -411,7 +417,7 @@ export default function SchedulePage() {
                           {/* Time Slot Options - Replace date when active */}
                           <div 
                             className={`absolute inset-0 transition-all duration-300 ease-in-out flex flex-col items-center justify-center p-3 space-y-2 bg-white ${
-                              isActive && !selectedTimeSlot
+                              isActive
                                 ? 'opacity-100 pointer-events-auto z-20' 
                                 : 'opacity-0 pointer-events-none'
                             }`}
@@ -419,11 +425,16 @@ export default function SchedulePage() {
                             <button
                               type="button"
                               onClick={() => toggleDateTimeSlot(dateStr, 'morning')}
-                              className="w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 bg-white text-black border-yellow-400 hover:bg-yellow-50 hover:border-yellow-600 hover:shadow-md"
+                              className={`w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 ${
+                                selectedTimeSlot === 'morning'
+                                  ? 'bg-yellow-200 text-black border-yellow-600 ring-2 ring-yellow-400'
+                                  : 'bg-white text-black border-yellow-400 hover:bg-yellow-50 hover:border-yellow-600'
+                              } hover:shadow-md`}
                             >
                               <div className="flex items-center justify-center gap-1">
                                 <span>🌅</span>
                                 <span>Morning</span>
+                                {selectedTimeSlot === 'morning' && <span className="ml-1">✓</span>}
                               </div>
                               <div className="text-[10px] opacity-80 mt-1">8:00 AM - 11:00 AM</div>
                             </button>
@@ -431,11 +442,16 @@ export default function SchedulePage() {
                             <button
                               type="button"
                               onClick={() => toggleDateTimeSlot(dateStr, 'afternoon')}
-                              className="w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 bg-white text-black border-orange-400 hover:bg-orange-50 hover:border-orange-600 hover:shadow-md"
+                              className={`w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 ${
+                                selectedTimeSlot === 'afternoon'
+                                  ? 'bg-orange-200 text-black border-orange-600 ring-2 ring-orange-400'
+                                  : 'bg-white text-black border-orange-400 hover:bg-orange-50 hover:border-orange-600'
+                              } hover:shadow-md`}
                             >
                               <div className="flex items-center justify-center gap-1">
                                 <span>☀️</span>
                                 <span>Afternoon</span>
+                                {selectedTimeSlot === 'afternoon' && <span className="ml-1">✓</span>}
                               </div>
                               <div className="text-[10px] opacity-80 mt-1">1:00 PM - 5:30 PM</div>
                             </button>

@@ -86,16 +86,14 @@ export default function Dashboard() {
     
     let query = supabase
       .from('properties')
-      .select('*')
+      .select('*, landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)')
       .order('created_at', { ascending: false })
 
     // If landlord, show their own properties (all statuses)
     if (profile?.role === 'landlord') {
       query = query.eq('landlord', session.user.id)
-    } else {
-      // If tenant, show only available properties
-      query = query.eq('available', true)
     }
+    // Tenants see all properties regardless of status
 
     const { data, error } = await query
     
@@ -142,18 +140,18 @@ export default function Dashboard() {
     }
   }
 
-  async function togglePropertyVisibility(propertyId, currentStatus) {
+  async function togglePropertyVisibility(propertyId, newStatus) {
     const { error } = await supabase
       .from('properties')
-      .update({ available: !currentStatus })
+      .update({ status: newStatus })
       .eq('id', propertyId)
 
     if (!error) {
       // Reload properties to reflect changes
       loadProperties()
-      toast.success('Property visibility updated')
+      toast.success(`Property status changed to ${newStatus}`)
     } else {
-      toast.error('Failed to update property visibility')
+      toast.error('Failed to update property status')
     }
   }
 
@@ -171,7 +169,7 @@ export default function Dashboard() {
       <div className="relative bg-black text-white py-16">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-4xl md:text-5xl font-bold mb-3">
-            Welcome , {profile.full_name}!
+            Welcome, {profile.full_name}!
           </h1>
           <p className="text-xl max-w-2xl leading-relaxed">
             {profile.role === 'landlord' 
@@ -238,7 +236,7 @@ export default function Dashboard() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {properties.map((property) => {
               const images = getPropertyImages(property)
               const currentIndex = currentImageIndex[property.id] || 0
@@ -290,93 +288,105 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      {/* Availability Badge */}
-                      {profile.role === 'landlord' && (
-                        <div className="absolute top-4 right-4">
-                          <span className={`px-4 py-2 text-xs font-bold border-2 border-black ${
-                            property.available 
-                              ? 'bg-black text-white' 
-                              : 'bg-white text-black'
-                          }`}>
-                            {property.available ? 'Available' : 'Occupied'}
-                          </span>
-                        </div>
-                      )}
+                      {/* Status Badge */}
+                      <div className="absolute top-4 right-4">
+                        <span className={`px-3 py-1.5 text-xs font-bold border-2 border-black ${
+                          property.status === 'available'
+                            ? 'bg-black text-white' 
+                            : property.status === 'occupied'
+                            ? 'bg-white text-black'
+                            : 'bg-white text-black'
+                        }`}>
+                          {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
                   {/* Property Info - Bottom */}
-                  <div className="p-6">
-                    <h3 className="text-xl font-bold mb-2 line-clamp-1 text-black">{property.title}</h3>
-                    <div className="flex items-start gap-2 mb-4">
+                  <div className="p-4">
+                    <h3 className="text-lg font-bold mb-2 line-clamp-1 text-black">{property.title}</h3>
+                    
+                    {/* Landlord Name - Only show for tenants */}
+                    {profile?.role === 'tenant' && property.landlord_profile?.full_name && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        By {property.landlord_profile.full_name}
+                      </p>
+                    )}
+                    
+                    <div className="flex items-start gap-2 mb-3">
                       <svg className="w-4 h-4 text-black mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                      <p className="text-sm text-black line-clamp-1">
+                      <p className="text-xs text-black line-clamp-1">
                         {property.address}, {property.city}
                         {property.state && `, ${property.state}`}
                       </p>
                     </div>
                     
-                    <div className="mb-4">
-                      <p className="text-3xl font-bold text-black">
+                    <div className="mb-3">
+                      <p className="text-2xl font-bold text-black">
                         ₱{Number(property.price).toLocaleString()}
                       </p>
-                      <span className="text-sm text-black font-medium">per month</span>
+                      <span className="text-xs text-black font-medium">per month</span>
                     </div>
                     
-                    <div className="flex gap-4 mb-4 pb-4 border-b-2 border-black">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 640 512">
+                    <div className="flex gap-3 mb-3 pb-3 border-b-2 border-black">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 640 512">
                           <path d="M32 32c17.7 0 32 14.3 32 32V320H288V160c0-17.7 14.3-32 32-32H544c53 0 96 43 96 96V448c0 17.7-14.3 32-32 32s-32-14.3-32-32V416H352 320 64v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V64C0 46.3 14.3 32 32 32zm144 96a80 80 0 1 1 0 160 80 80 0 1 1 0-160z"/>
                         </svg>
-                        <span className="text-sm font-medium text-black">{property.bedrooms} bed</span>
+                        <span className="text-xs font-medium text-black">{property.bedrooms}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 512 512">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 512 512">
                           <path d="M96 77.3c0-7.3 5.9-13.3 13.3-13.3c3.5 0 6.9 1.4 9.4 3.9l14.9 14.9C130 91.8 128 101.7 128 112c0 19.9 7.2 38 19.2 52c-5.3 9.2-4 21.1 3.8 29c9.4 9.4 24.6 9.4 33.9 0L289 89c9.4-9.4 9.4-24.6 0-33.9c-7.9-7.9-19.8-9.1-29-3.8C246 39.2 227.9 32 208 32c-10.3 0-20.2 2-29.2 5.5L163.9 22.6C149.4 8.1 129.7 0 109.3 0C66.6 0 32 34.6 32 77.3V256c-17.7 0-32 14.3-32 32s14.3 32 32 32H480c17.7 0 32-14.3 32-32s-14.3-32-32-32H96V77.3zM32 352v16c0 28.4 12.4 54 32 71.6V480c0 17.7 14.3 32 32 32s32-14.3 32-32V464H384v16c0 17.7 14.3 32 32 32s32-14.3 32-32V439.6c19.6-17.6 32-43.1 32-71.6V352H32z"/>
                         </svg>
-                        <span className="text-sm font-medium text-black">{property.bathrooms} bath</span>
+                        <span className="text-xs font-medium text-black">{property.bathrooms}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                         </svg>
-                        <span className="text-sm font-medium text-black">{property.area_sqft} sqft</span>
+                        <span className="text-xs font-medium text-black">{property.area_sqft}</span>
                       </div>
                     </div>
                     
                     {property.description && (
-                      <p className="text-sm text-black mb-4 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-black mb-3 line-clamp-2 leading-relaxed">
                         {property.description}
                       </p>
                     )}
                     
-                    <div className="flex gap-3">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handlePropertyAction(property.id)}
-                        className="flex-1 bg-black text-white py-3 px-4 text-sm font-semibold border-2 border-black cursor-pointer"
+                        className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer"
                       >
-                        {profile.role === 'landlord' ? 'Edit' : 'View'}
+                        {profile.role === 'landlord' ? 'Edit' : 'View Details'}
                       </button>
                       {profile.role === 'landlord' && (
-                        <button
-                          onClick={() => togglePropertyVisibility(property.id, property.available)}
-                          className={`flex-1 py-3 px-4 text-sm font-semibold border-2 border-black cursor-pointer ${
-                            property.available
+                        <select
+                          value={property.status || 'available'}
+                          onChange={(e) => togglePropertyVisibility(property.id, e.target.value)}
+                          className={`flex-1 py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer ${
+                            property.status === 'available'
+                              ? 'bg-black text-white'
+                              : property.status === 'occupied'
                               ? 'bg-white text-black'
-                              : 'bg-black text-white'
+                              : 'bg-white text-black'
                           }`}
-                          title={property.available ? 'Hide from tenants' : 'Show to tenants'}
                         >
-                          {property.available ? 'Hide' : 'Show'}
-                        </button>
+                          <option value="available" className="bg-white text-black">Available</option>
+                          <option value="occupied" className="bg-white text-black">Occupied</option>
+                          <option value="not available" className="bg-white text-black">Not Available</option>
+                        </select>
                       )}
-                      {profile.role === 'tenant' && property.available && (
+                      {profile.role === 'tenant' && property.status === 'available' && (
                         <button
                           onClick={() => router.push(`/properties/${property.id}`)}
-                          className="flex-1 bg-black text-white py-3 px-4 text-sm font-semibold border-2 border-black"
+                          className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black"
                         >
                         Apply
                         </button>
@@ -497,6 +507,56 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {/* FAQ Section - Tenant Only */}
+        {profile.role === 'tenant' && (
+          <div className="mt-12 bg-white border-2 border-black p-6">
+            <h3 className="text-2xl font-bold text-black mb-6">Frequently Asked Questions</h3>
+            <div className="space-y-4">
+              <div className="border-b-2 border-gray-200 pb-4">
+                <h4 className="font-bold text-black mb-2">How do I apply for a property?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  Click on "View Details" to see the full property information, then click "Apply" to submit your application. The landlord will review and contact you.
+                </p>
+              </div>
+              
+              <div className="border-b-2 border-gray-200 pb-4">
+                <h4 className="font-bold text-black mb-2">How do I schedule a property viewing?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  On the property details page, you'll find available time slots for viewing. Select your preferred date and time to book an appointment with the landlord.
+                </p>
+              </div>
+              
+              <div className="border-b-2 border-gray-200 pb-4">
+                <h4 className="font-bold text-black mb-2">How do I pay my rent?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  Go to the Payments section where you'll receive payment requests from your landlord. You can upload proof of payment and track your payment history.
+                </p>
+              </div>
+              
+              <div className="border-b-2 border-gray-200 pb-4">
+                <h4 className="font-bold text-black mb-2">How do I submit a maintenance request?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  Navigate to the Maintenance section from the Quick Actions menu. Fill out the form describing the issue and submit it. Your landlord will be notified immediately.
+                </p>
+              </div>
+              
+              <div className="border-b-2 border-gray-200 pb-4">
+                <h4 className="font-bold text-black mb-2">How can I contact my landlord?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  Use the Messages feature to chat directly with your landlord. You can send text messages, images, and files for any property-related communication.
+                </p>
+              </div>
+              
+              <div>
+                <h4 className="font-bold text-black mb-2">What if I need to move out?</h4>
+                <p className="text-sm text-black leading-relaxed">
+                  Contact your landlord through the messaging system to discuss your move-out date and process. Make sure to settle all outstanding payments before moving out.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

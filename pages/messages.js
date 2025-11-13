@@ -20,6 +20,7 @@ export default function Messages() {
   const [showNewConversation, setShowNewConversation] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [unreadCounts, setUnreadCounts] = useState({}) // { conversationId: count }
+  const [imageModal, setImageModal] = useState(null) // For viewing images
   const router = useRouter()
 
   useEffect(() => {
@@ -174,6 +175,24 @@ export default function Messages() {
                 }))
               }
             }
+          }
+        )
+        .on('postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${selectedConversation.id}`
+          },
+          async (payload) => {
+            console.log('🔄 Message updated (read status):', payload.new)
+            
+            // Update the message in the local state
+            setMessages(prev => prev.map(msg => 
+              msg.id === payload.new.id 
+                ? { ...msg, read: payload.new.read }
+                : msg
+            ))
           }
         )
         .subscribe((status, err) => {
@@ -494,12 +513,18 @@ export default function Messages() {
       console.error('Error loading messages:', error)
     } else {
       setMessages(data || [])
-      // Mark messages as read
-      await supabase
-        .from('messages')
-        .update({ read: true })
-        .eq('conversation_id', conversationId)
-        .eq('receiver_id', session.user.id)
+      
+      // Find the latest message from the other user (where current user is receiver)
+      const messagesFromOther = (data || []).filter(msg => msg.receiver_id === session.user.id)
+      if (messagesFromOther.length > 0) {
+        const latestMessage = messagesFromOther[messagesFromOther.length - 1]
+        
+        // Only mark the latest message as read
+        await supabase
+          .from('messages')
+          .update({ read: true })
+          .eq('id', latestMessage.id)
+      }
       
       // Clear unread count for this conversation
       setUnreadCounts(prev => ({
@@ -602,10 +627,13 @@ export default function Messages() {
   }
 
   async function sendMessage() {
-    if (!newMessage.trim() && selectedFiles.length === 0) return
+    // Trim and clean the message to remove extra whitespace
+    const trimmedMessage = newMessage.trim().replace(/\s+/g, ' ')
+    
+    if (!trimmedMessage && selectedFiles.length === 0) return
     if (!selectedConversation) return
 
-    const messageText = newMessage.trim()
+    const messageText = trimmedMessage
     const receiverId = selectedConversation.other_user_id
     
     setUploadingFile(true)
@@ -1063,23 +1091,28 @@ export default function Messages() {
 
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2 messages-container" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0 }}>
-                    {messages.map(msg => {
+                    {messages.map((msg, index) => {
                       const isOwn = msg.sender_id === session.user.id
                       const hasFile = msg.file_url && msg.file_name
                       const isImage = msg.file_type?.startsWith('image/')
                       const senderName = msg.sender?.full_name || (isOwn ? profile.full_name : selectedConversation.other_user?.full_name) || 'Unknown'
                       const senderInitials = senderName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
                       
+                      // Find the latest message sent by current user (for "Seen" status)
+                      const myMessages = messages.filter(m => m.sender_id === session.user.id)
+                      const latestMyMessage = myMessages.length > 0 ? myMessages[myMessages.length - 1] : null
+                      const isLatestFromMe = latestMyMessage && msg.id === latestMyMessage.id
+                      
                       return (
                         <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-                          {/* Profile Avatar */}
-                          <div className="flex-shrink-0">
-                            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                              isOwn ? 'bg-blue-600' : 'bg-gray-600'
-                            }`}>
-                              {senderInitials}
+                          {/* Profile Avatar - Only show for receiver */}
+                          {!isOwn && (
+                            <div className="flex-shrink-0">
+                              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600">
+                                {senderInitials}
+                              </div>
                             </div>
-                          </div>
+                          )}
                           
                           {/* Message Bubble */}
                           <div className="flex flex-col max-w-[50%] sm:max-w-md">
@@ -1088,14 +1121,12 @@ export default function Messages() {
                                 borderRadius: '12px',
                                 overflow: 'hidden'
                               }}
-                              className={`px-3 py-1.5 ${
-                                isOwn 
-                                  ? 'bg-blue-600 text-white' 
-                                  : 'bg-gray-800 text-white'
-                              }`}
+                              className="px-3 py-1.5 bg-gray-800 text-white"
                             >
                               {msg.message && (
-                                <div className="text-xs sm:text-sm break-words">{msg.message}</div>
+                                <div className="text-xs sm:text-sm" style={{ wordBreak: 'break-word' }}>
+                                  {msg.message.trim().replace(/\s+/g, ' ')}
+                                </div>
                               )}
                               
                               {hasFile && (
@@ -1105,15 +1136,17 @@ export default function Messages() {
                                       <img 
                                         src={msg.file_url} 
                                         alt={msg.file_name}
-                                        className="max-w-full rounded border border-white/20"
+                                        className="max-w-full rounded border border-white/20 cursor-pointer hover:opacity-90"
                                         style={{ maxHeight: '150px' }}
+                                        onClick={() => setImageModal(msg.file_url)}
                                       />
                                       <div className="flex items-center justify-between mt-1">
                                         <div className="text-xs opacity-70 truncate flex-1">
                                           {msg.file_name}
                                         </div>
                                         <button
-                                          onClick={async () => {
+                                          onClick={async (e) => {
+                                            e.stopPropagation()
                                             try {
                                               const response = await fetch(msg.file_url)
                                               const blob = await response.blob()
@@ -1181,8 +1214,13 @@ export default function Messages() {
                                 </div>
                               )}
                             </div>
-                            <div className={`text-xs mt-0.5 px-1 opacity-60 ${isOwn ? 'text-right' : 'text-left'}`}>
-                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            <div className={`text-xs mt-0.5 px-1 opacity-60 flex items-center gap-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              {isOwn && isLatestFromMe && (
+                                <span className="text-xs">
+                                  {msg.read ? '✓✓ Seen' : '✓ Sent'}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1281,6 +1319,28 @@ export default function Messages() {
           </div>
         </div>
       </div>
+
+      {/* Image Modal */}
+      {imageModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          onClick={() => setImageModal(null)}
+        >
+          <button
+            onClick={() => setImageModal(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 text-4xl font-light"
+            title="Close"
+          >
+            ×
+          </button>
+          <img 
+            src={imageModal} 
+            alt="Full size" 
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }
