@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from "react";
 const MODEL_NAME = "gemini-2.5-flash"; 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
+
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
