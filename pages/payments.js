@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
+import ChatWidget from '../components/ChatWidget'
 
 export default function PaymentsPage() {
   const router = useRouter()
@@ -345,6 +346,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="min-h-screen bg-white p-6">
+      <ChatWidget />
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Payments</h1>

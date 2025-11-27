@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
+import ChatWidget from '../components/ChatWidget'
 
 export default function Messages() {
   const [session, setSession] = useState(null)
@@ -835,6 +836,7 @@ export default function Messages() {
 
   return (
     <div className="min-h-screen bg-white">
+      <ChatWidget />
       <Toaster 
         position="top-center"
         reverseOrder={false}

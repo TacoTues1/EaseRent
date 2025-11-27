@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
+import ChatWidget from '../../components/ChatWidget'
 
 export default function EditProperty() {
   const router = useRouter()
@@ -233,6 +234,7 @@ export default function EditProperty() {
 
   return (
     <div className="min-h-screen bg-white p-6">
+      <ChatWidget />
       <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
         <h1 className="text-2xl font-bold mb-4">Edit Property</h1>
         {message && (

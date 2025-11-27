@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
+import ChatWidget from '../components/ChatWidget'
 
 export default function Home() {
   const router = useRouter()
@@ -220,6 +221,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-gray-50 to-gray-100">
+      <ChatWidget />
       {/* Featured Properties */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-8">
@@ -486,87 +488,7 @@ export default function Home() {
       </footer>
 
       {/* FAQ Chat Widget - Facebook Style */}
-      {showFaqChat && chatHistory.length > 0 && (
-        <div className="fixed bottom-4 right-4 w-80 bg-white rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden border border-gray-200 max-h-[480px]">
-          {/* Chat Header */}
-          <div className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <span className="font-semibold text-sm">EaseRent Support</span>
-            </div>
-            <button
-              onClick={closeFaqChat}
-              className="hover:bg-gray-700 rounded-full p-1 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Chat Messages */}
-          <div ref={chatMessagesRef} className="flex-1 p-4 bg-gray-50 overflow-y-auto">
-            <div className="space-y-3">
-              {chatHistory.map((faq, index) => (
-                <div key={index}>
-                  {/* User Question (Right side) */}
-                  <div className="flex justify-end mb-2">
-                    <div className="bg-gray-800 text-white px-4 py-2 rounded-2xl rounded-tr-none max-w-[80%]">
-                      <p className="text-sm">{faq.question}</p>
-                    </div>
-                  </div>
-
-                  {/* Bot Answer (Left side) */}
-                  <div className="flex justify-start mb-3">
-                    <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%]">
-                      <p className="text-sm leading-relaxed">{faq.answer}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Additional help prompt */}
-              <div className="flex justify-start">
-                <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%]">
-                  <p className="text-sm">Need more help? Click a question below!</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Questions Section */}
-          <div className="bg-white border-t border-gray-200 px-3 py-2 flex-shrink-0">
-            <p className="text-xs text-gray-600 mb-1.5 font-medium">Quick Questions:</p>
-            <div className="space-y-1.5 max-h-15 overflow-y-auto">
-              {faqData
-                .filter(faq => !chatHistory.find(h => h.id === faq.id))
-                .map((faq) => (
-                  <button
-                    key={faq.id}
-                    onClick={() => handleFaqClick(faq)}
-                    className="w-full text-left text-xs bg-gray-100 hover:bg-gray-200 text-gray-800 px-2.5 py-1.5 rounded-lg transition-colors border border-gray-300"
-                  >
-                    {faq.question}
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          {/* Chat Footer */}
-          <div className="bg-white border-t border-gray-200 px-4 py-2 flex-shrink-0">
-            <button
-              onClick={closeFaqChat}
-              className="text-xs text-gray-500 hover:text-gray-700"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      <ChatWidget />
       
       {/* Property Details Modal */}
       {showPropertyModal && selectedProperty && (

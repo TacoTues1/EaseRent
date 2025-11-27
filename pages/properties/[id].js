@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { createNotification, NotificationTemplates } from '../../lib/notifications'
 import AuthModal from '../../components/AuthModal'
+import ChatWidget from '../../components/ChatWidget'
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -44,22 +45,60 @@ export default function PropertyDetail() {
 
   async function loadProperty() {
     setLoading(true)
-    const { data, error } = await supabase
+    // 1. Fetch Property (No complex joins)
+    const { data: propertyData, error: propertyError } = await supabase
       .from('properties')
-      .select(`
-        *,
-        landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)
-      `)
+      .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
     
-    if (!error && data) {
-      setProperty(data)
-      // Set landlord profile if available
-      if (data.landlord_profile) {
-        setLandlordProfile(data.landlord_profile)
+    if (propertyError) {
+      console.error('Error loading property:', propertyError)
+      setLoading(false)
+      return
+    }
+    // const { data, error } = await supabase
+    //   .from('properties')
+    //   .select(`
+    //     *,
+    //     landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)
+    //   `)
+    //   .eq('id', id)
+    //   .single()
+    if (propertyData) {
+      setProperty(propertyData)
+
+
+      // 2. Explicitly fetch the Landlord Profile using the ID from the property
+      if (propertyData.landlord) {
+        const { data: landlordData, error: landlordError } = await supabase
+          .from('profiles')
+          .select('*') // or select('id, full_name, role')
+          .eq('id', propertyData.landlord)
+          .maybeSingle()
+          
+        if (!landlordError && landlordData) {
+          setLandlordProfile(landlordData)
+        } else {
+          console.log("Could not load landlord profile:", landlordError)
+        }
       }
     }
+//     if (!error && data) {
+//       setProperty(data)
+//       // Set landlord profile if available
+// const profileData = Array.isArray(data.landlord_profile) 
+//         ? data.landlord_profile[0] 
+//         : data.landlord_profile
+
+//       if (profileData) {
+//         setLandlordProfile(profileData)
+//       }
+
+//       // if (data.landlord_profile) {
+//       //   setLandlordProfile(data.landlord_profile)
+//       // }
+//     }
     setLoading(false)
   }
 
@@ -114,6 +153,7 @@ export default function PropertyDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+     <ChatWidget /> 
       <div className="max-w-7xl mx-auto">
         {/* Two Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -171,7 +211,9 @@ export default function PropertyDetail() {
               <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Property Owner</h3>
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-white font-bold">
-                  {landlordProfile?.full_name ? landlordProfile.full_name.charAt(0).toUpperCase() : 'L'}
+                  {landlordProfile?.full_name 
+                  ? landlordProfile.full_name.charAt(0).toUpperCase() 
+                  : 'L'}
                 </div>
                 <div>
                   <p className="font-semibold text-gray-900">{landlordProfile?.full_name || 'Property Owner'}</p>
@@ -207,7 +249,7 @@ export default function PropertyDetail() {
                 <button
                   onClick={handleApply}
                   disabled={submitting}
-                  className="w-full bg-gray-900 text-white py-4 px-6 rounded-lg text-base font-semibold disabled:opacity-50 hover:bg-black transition-colors"
+                  className="w-full bg-gray-900 text-white py-4 px-6 rounded-lg text-base font-semibold disabled:opacity-50 hover:bg-black transition-colors cursor-pointer"
                 >
                   {submitting ? 'Submitting Application...' : 'Submit Application'}
                 </button>

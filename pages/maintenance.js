@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
 import toast, { Toaster } from 'react-hot-toast'
+import ChatWidget from '../components/ChatWidget'
 
 export default function MaintenancePage() {
   const router = useRouter()
@@ -193,6 +194,7 @@ export default function MaintenancePage() {
 
   return (
     <div className="min-h-screen bg-white p-6">
+      <ChatWidget />
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>

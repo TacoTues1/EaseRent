@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
+import ChatWidget from '../components/ChatWidget'
 
 export default function SchedulePage() {
   const router = useRouter()
@@ -252,7 +253,7 @@ export default function SchedulePage() {
 
   return (
     <div className="min-h-screen bg-white">
-
+<ChatWidget />
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">

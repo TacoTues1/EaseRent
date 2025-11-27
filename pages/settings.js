@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast from 'react-hot-toast'
+import ChatWidget from '../components/ChatWidget'
 
 export default function Settings() {
   const router = useRouter()
@@ -96,7 +97,9 @@ export default function Settings() {
   }
 
   return (
+    
     <div className="min-h-screen bg-white">
+      <ChatWidget />
       {/* Header */}
       <div className="bg-white border-2 border-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
