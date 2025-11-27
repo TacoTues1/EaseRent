@@ -30,62 +30,36 @@ export default function ChatWidget() {
     setInput("");
     setIsLoading(true);
 
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    
-    const model = genAI.getGenerativeModel({ 
-        model: MODEL_NAME,
-        systemInstruction: {
-            parts: [{ text: "You are a helpful AI assistant. You are a text-based model. You CANNOT generate images, videos, or audio files. If a user asks for an image, politely explain that you can only provide text descriptions or code, but not actual visual files." }],
-            role: "system"
-        }
-    });
-
-    const generationConfig = {
-      temperature: 0.9,
-      topK: 1,
-      topP: 1,
-      maxOutputTokens: 2048,
-    };
-
-    const safetySettings = [
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-    ];
-
-    const apiHistory = newHistory.filter((msg, index) => {
-        return index > 0 || msg.role === "user";
-    });
-
-    const chat = model.startChat({
-      generationConfig,
-      safetySettings,
-      history: apiHistory, 
-    });
-
     try {
-      const result = await chat.sendMessage(promptText);
-      const response = result.response;
-      
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText, history: newHistory }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error('Chat error (server):', res.status, err);
+        setMessages((prev) => [
+          ...prev,
+          { role: 'model', parts: [{ text: 'Sorry, something went wrong.' }] },
+        ]);
+        return;
+      }
+
+      const data = await res.json();
+      const text = data.text || '';
+
       setMessages((prev) => [
         ...prev,
-        { role: "model", parts: [{ text: response.text() }] },
+        { role: 'model', parts: [{ text }] },
       ]);
     } catch (error) {
-      console.error("Chat error:", error);
+      console.error('Chat error:', error);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'model', parts: [{ text: 'Network error. Please try again.' }] },
+      ]);
     } finally {
       setIsLoading(false);
     }
