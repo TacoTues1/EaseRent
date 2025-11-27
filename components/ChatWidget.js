@@ -12,9 +12,8 @@ const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: "model", parts: [{ text: "Hello! How can I help?" }] },
-  ]);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
@@ -23,43 +22,95 @@ export default function ChatWidget() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
+  
+  const toggleChat = () => {
+    if (isAnimating) return;
+    
+    if (!isOpen) {
+      // Opening the chat
+      setIsOpen(true);
+      setIsAnimating(true);
+      setTimeout(() => setIsAnimating(false), 300);
+    } else {
+      // Closing the chat - start animation first, then update state
+      setIsAnimating(true);
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+      }, 250); // Slightly less than animation duration
+    }
+  };
 
   async function runChat(promptText) {
-    const newHistory = [...messages, { role: "user", parts: [{ text: promptText }] }];
+    const userMessage = { role: "user", parts: [{ text: promptText }] };
+    const newHistory = [...messages, userMessage];
     setMessages(newHistory);
     setInput("");
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: promptText, history: newHistory }),
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
+      // Format chat history for the API - ensure it's in the correct format
+      const chatHistory = messages
+        .filter(msg => msg.parts && msg.parts.length > 0)
+        .map(msg => {
+          // Ensure each part has the correct structure
+          const parts = msg.parts.map(part => {
+            if (typeof part === 'string') {
+              return { text: part };
+            }
+            return part;
+          });
+          return {
+            role: msg.role,
+            parts: parts
+          };
+        });
+
+      // For debugging - log the history being sent
+      // console.log('Sending chat history:', JSON.stringify(chatHistory, null, 2));
+
+      // Start a new chat with the formatted history
+      const chat = model.startChat({
+        history: chatHistory,
+        generationConfig: {
+          maxOutputTokens: 1000,
+        },
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.error('Chat error (server):', res.status, err);
-        setMessages((prev) => [
-          ...prev,
-          { role: 'model', parts: [{ text: 'Sorry, something went wrong.' }] },
-        ]);
-        return;
+      // Send the message and get the response
+      const result = await chat.sendMessage(promptText);
+      const response = await result.response;
+      
+      // Handle the response
+      let responseText = "";
+      if (typeof response.text === 'function') {
+        responseText = response.text();
+      } else if (response.candidates?.[0]?.content?.parts?.[0]?.text) {
+        responseText = response.candidates[0].content.parts[0].text;
+      } else if (typeof response.text === 'string') {
+        responseText = response.text;
+      } else {
+        console.error('Unexpected response format:', response);
+        throw new Error('Unexpected response format from the API');
       }
 
-      const data = await res.json();
-      const text = data.text || '';
-
-      setMessages((prev) => [
-        ...prev,
-        { role: 'model', parts: [{ text }] },
-      ]);
+      // Add the AI's response to the messages
+      setMessages(prev => [...prev, { 
+        role: 'model', 
+        parts: [{ text: responseText }] 
+      }]);
     } catch (error) {
-      console.error('Chat error:', error);
-      setMessages((prev) => [
-        ...prev,
-        { role: 'model', parts: [{ text: 'Network error. Please try again.' }] },
-      ]);
+      console.error('Error in runChat:', error);
+      const errorMessage = error.message.includes('API key not valid')
+        ? 'API key is not valid. Please check your configuration.'
+        : 'Sorry, something went wrong. Please try again.';
+      setMessages(prev => [...prev, { 
+        role: 'model', 
+        parts: [{ text: errorMessage }] 
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -75,35 +126,65 @@ export default function ChatWidget() {
     <>
       <style jsx>{`
         @keyframes slideInUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { 
+            opacity: 0; 
+            transform: translateY(20px);
+            visibility: hidden;
+          }
+          to { 
+            opacity: 1; 
+            transform: translateY(0);
+            visibility: visible;
+          }
+        }
+        @keyframes slideOutDown {
+          from { 
+            opacity: 1; 
+            transform: translateY(0);
+            visibility: visible;
+          }
+          to { 
+            opacity: 0; 
+            transform: translateY(20px);
+            visibility: hidden;
+          }
         }
         @keyframes fadeIn {
           from { opacity: 0; transform: scale(0.95); }
           to { opacity: 1; transform: scale(1); }
         }
-        .animate-slide-up { animation: slideInUp 0.3s ease-out forwards; }
-        .animate-pop-in { animation: fadeIn 0.2s ease-out forwards; }
+        .chat-window {
+          animation: ${isOpen ? 'slideInUp' : 'slideOutDown'} 0.3s ease-out forwards;
+          ${!isOpen && 'pointer-events: none;'}
+        }
+        .animate-pop-in { 
+          animation: fadeIn 0.2s ease-out forwards; 
+        }
       `}</style>
 
       {/* --- Toggle Button (Compact & Responsive) --- */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 right-4 h-12 w-auto px-6 bg-black text-white rounded-full shadow-xl flex items-center justify-center transition-all duration-300 z-60 hover:scale-105 active:scale-95 cursor-pointer ${
+        onClick={toggleChat}
+        className={`fixed bottom-4 right-4 h-12 w-12 sm:w-auto px-4 sm:px-6 bg-black text-white rounded-full shadow-xl flex items-center justify-center transition-all duration-300 z-60 hover:scale-105 active:scale-95 cursor-pointer ${
             isOpen ? "bg-gray-800" : ""
         }`}
+        aria-label={isOpen ? "Close chat" : "Open chat"}
       >
         <span className="font-semibold text-sm tracking-wide">
-            {isOpen ? "X" : "Chat With AI"}
+          {isOpen ? (
+            <span className="text-lg">×</span>
+          ) : (
+            <span className="hidden sm:inline">Chat With AI</span>
+          )}
         </span>
       </button>
 
       {/* --- Chat Window --- */}
-      {isOpen && (
+      {(isOpen || isAnimating) && (
         <div 
             // UPDATED HERE: Changed h-[60vh] to h-[75vh] for mobile. 
             // sm:h-[450px] remains unchanged for desktop.
-            className="fixed bottom-20 right-4 left-4 sm:left-auto sm:w-[320px] h-[35vh] sm:h-[450px] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-50 animate-slide-up"
+            className={`fixed bottom-20 right-4 left-4 sm:left-auto sm:w-[320px] h-[35vh] sm:h-[450px] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-50 chat-window ${!isOpen ? 'opacity-0' : ''}`}
         >
           
           {/* Header */}
