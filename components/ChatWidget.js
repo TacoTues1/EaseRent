@@ -10,10 +10,8 @@ import { useState, useRef, useEffect } from "react";
 const MODEL_NAME = "gemini-2.5-flash"; 
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
-
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -24,22 +22,13 @@ export default function ChatWidget() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
   
-  const toggleChat = () => {
-    if (isAnimating) return;
-    
-    if (!isOpen) {
-      // Opening the chat
-      setIsOpen(true);
-      setIsAnimating(true);
-      setTimeout(() => setIsAnimating(false), 300);
-    } else {
-      // Closing the chat - start animation first, then update state
-      setIsAnimating(true);
-      setTimeout(() => {
-        setIsOpen(false);
-        setIsAnimating(false);
-      }, 250); // Slightly less than animation duration
-    }
+  const openChat = (e) => {
+    if (e) e.stopPropagation();
+    setIsOpen(true);
+  };
+
+  const closeChat = () => {
+    setIsOpen(false);
   };
 
   async function runChat(promptText) {
@@ -53,11 +42,9 @@ export default function ChatWidget() {
       const genAI = new GoogleGenerativeAI(API_KEY);
       const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-      // Format chat history for the API - ensure it's in the correct format
       const chatHistory = messages
         .filter(msg => msg.parts && msg.parts.length > 0)
         .map(msg => {
-          // Ensure each part has the correct structure
           const parts = msg.parts.map(part => {
             if (typeof part === 'string') {
               return { text: part };
@@ -70,10 +57,6 @@ export default function ChatWidget() {
           };
         });
 
-      // For debugging - log the history being sent
-      // console.log('Sending chat history:', JSON.stringify(chatHistory, null, 2));
-
-      // Start a new chat with the formatted history
       const chat = model.startChat({
         history: chatHistory,
         generationConfig: {
@@ -81,11 +64,9 @@ export default function ChatWidget() {
         },
       });
 
-      // Send the message and get the response
       const result = await chat.sendMessage(promptText);
       const response = await result.response;
       
-      // Handle the response
       let responseText = "";
       if (typeof response.text === 'function') {
         responseText = response.text();
@@ -94,11 +75,9 @@ export default function ChatWidget() {
       } else if (typeof response.text === 'string') {
         responseText = response.text;
       } else {
-        console.error('Unexpected response format:', response);
-        throw new Error('Unexpected response format from the API');
+        throw new Error('Unexpected response format');
       }
 
-      // Add the AI's response to the messages
       setMessages(prev => [...prev, { 
         role: 'model', 
         parts: [{ text: responseText }] 
@@ -125,77 +104,46 @@ export default function ChatWidget() {
 
   return (
     <>
-      <style jsx>{`
-        @keyframes slideInUp {
-          from { 
-            opacity: 0; 
-            transform: translateY(20px);
-            visibility: hidden;
-          }
-          to { 
-            opacity: 1; 
-            transform: translateY(0);
-            visibility: visible;
-          }
-        }
-        @keyframes slideOutDown {
-          from { 
-            opacity: 1; 
-            transform: translateY(0);
-            visibility: visible;
-          }
-          to { 
-            opacity: 0; 
-            transform: translateY(20px);
-            visibility: hidden;
-          }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        .chat-window {
-          animation: ${isOpen ? 'slideInUp' : 'slideOutDown'} 0.3s ease-out forwards;
-          ${!isOpen && 'pointer-events: none;'}
-        }
-        .animate-pop-in { 
-          animation: fadeIn 0.2s ease-out forwards; 
-        }
-      `}</style>
-
-      {/* --- Toggle Button (Compact & Responsive) --- */}
-      <button
-        onClick={toggleChat}
-        className={`fixed bottom-4 right-4 h-12 w-12 sm:w-auto px-4 sm:px-6 bg-black text-white rounded-full shadow-xl flex items-center justify-center transition-all duration-300 z-60 hover:scale-105 active:scale-95 cursor-pointer ${
-            isOpen ? "bg-gray-800" : ""
-        }`}
-        aria-label={isOpen ? "Close chat" : "Open chat"}
-      >
-        <span className="font-semibold text-sm tracking-wide">
-          {isOpen ? (
-            <span className="text-lg">×</span>
-          ) : (
-            <span className="hidden sm:inline">Chat With AI</span>
-          )}
-        </span>
-      </button>
+      {/* --- Toggle Button (Only shows when chat is closed) --- */}
+      {!isOpen && (
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
+          <button 
+            onClick={openChat}
+            className="bg-black rounded-full p-3.5 flex items-center justify-center shadow-xl hover:scale-105 transition-transform"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-white">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* --- Chat Window --- */}
-      {(isOpen || isAnimating) && (
+      {isOpen && (
         <div 
-            // UPDATED HERE: Changed h-[60vh] to h-[75vh] for mobile. 
-            // sm:h-[450px] remains unchanged for desktop.
-            className={`fixed bottom-20 right-4 left-4 sm:left-auto sm:w-[320px] h-[35vh] sm:h-[450px] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-50 chat-window ${!isOpen ? 'opacity-0' : ''}`}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed bottom-20 right-4 left-4 sm:left-auto sm:w-[320px] h-[35vh] sm:h-[450px] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-50"
         >
-          
           {/* Header */}
           <div className="bg-black p-3 text-white flex justify-between items-center shadow-sm">
             <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <h2 className="font-semibold text-xs tracking-wide">EaseRent AI</h2>
             </div>
-            <button onClick={() => setIsOpen(false)} className="opacity-70 hover:opacity-100 transition-opacity">
-               
+            
+            {/* Close Button */}
+            {/* I added the 'X' icon and used toggleChat so the close animation plays smoothly */}
+            <button 
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeChat();
+              }} 
+              className="opacity-70 hover:opacity-100 transition-opacity p-1"
+            >
+               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+               </svg>
             </button>
           </div>
 

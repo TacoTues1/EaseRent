@@ -1,6 +1,6 @@
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
 import toast from 'react-hot-toast'
@@ -309,13 +309,27 @@ export default function Navbar() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Mobile menu button - shows user avatar on mobile */}
+            {/* Mobile AI Chat Button */}
+            <Link 
+              href="/ai-chat"
+              className="md:hidden p-1.5 text-black hover:bg-gray-100 rounded-full transition-colors"
+              title="AI Chat"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </Link>
+
+            {/* Mobile menu button */}
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
               className="md:hidden flex items-center gap-2 p-1.5 sm:p-2 border border-black"
             >
               <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
                 {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <div className="md:hidden">
+                <div className="font-medium text-black text-sm">{profile?.full_name?.split(' ')[0] || 'User'}</div>
               </div>
               <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {showMobileMenu ? (
@@ -326,28 +340,43 @@ export default function Navbar() {
               </svg>
             </button>
 
+            {/* Desktop AI Chat Button */}
+            <div className="hidden md:flex items-center">
+              <Link 
+                href="/ai-chat"
+                className="p-2 text-black hover:bg-gray-100 rounded-full transition-colors"
+                title="AI Chat"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </Link>
+            </div>
+
             {/* Desktop User Profile Dropdown */}
             <div className="hidden md:block relative">
-            <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-3 px-3 py-2 border border-black"
-            >
-              <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
-                {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="text-left hidden md:block">
-                <div className="font-medium text-black text-sm">{profile?.full_name || 'User'}</div>
-                <div className="text-black text-xs capitalize">{profile?.role || 'tenant'}</div>
-              </div>
-              <svg 
-                className={`w-4 h-4 text-black ${showDropdown ? 'rotate-180' : ''}`}
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
+              <button
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="flex items-center gap-3 px-3 py-2 border border-black"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
+                    {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-black text-sm">{profile?.full_name || 'User'}</div>
+                    <div className="text-black text-xs capitalize">{profile?.role || 'tenant'}</div>
+                  </div>
+                </div>
+                <svg 
+                  className={`w-4 h-4 text-black ${showDropdown ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
             {/* Dropdown Menu */}
             {showDropdown && (
