@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
 import { createNotification } from '../lib/notifications'
-import ChatWidget from '../components/ChatWidget'
 
 export default function BookingsPage() {
   const router = useRouter()

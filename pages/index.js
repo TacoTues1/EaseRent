@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
-import ChatWidget from '../components/ChatWidget'
 
 export default function Home() {
   const router = useRouter()

@@ -4,7 +4,6 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { createNotification, NotificationTemplates } from '../../lib/notifications'
 import AuthModal from '../../components/AuthModal'
-import ChatWidget from '../../components/ChatWidget'
 
 export default function PropertyDetail() {
   const router = useRouter()

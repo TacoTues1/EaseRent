@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
-import ChatWidget from '../components/ChatWidget'
 
 export default function Dashboard() {
   const [session, setSession] = useState(null)

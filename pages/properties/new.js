@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import ChatWidget from '../../components/ChatWidget'
 
 export default function NewProperty() {
   const router = useRouter()

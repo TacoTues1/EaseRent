@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
 import toast, { Toaster } from 'react-hot-toast'
-import ChatWidget from '../components/ChatWidget'
 
 export default function MaintenancePage() {
   const router = useRouter()
