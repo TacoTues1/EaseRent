@@ -220,8 +220,7 @@ export default function Home() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-gray-50 to-gray-100">
-      <ChatWidget />
+    <div className="min-h-screen bg-gradient-to-br from-white via-gray-50 to-gray-100">  
       {/* Featured Properties */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-8">
@@ -488,7 +487,6 @@ export default function Home() {
       </footer>
 
       {/* FAQ Chat Widget - Facebook Style */}
-      <ChatWidget />
       
       {/* Property Details Modal */}
       {showPropertyModal && selectedProperty && (

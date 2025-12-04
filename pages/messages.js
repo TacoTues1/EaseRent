@@ -835,8 +835,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <ChatWidget />
+    <div className="min-h-screen bg-white">    
       <Toaster 
         position="top-center"
         reverseOrder={false}

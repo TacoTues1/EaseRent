@@ -345,8 +345,7 @@ export default function PaymentsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <ChatWidget />
+    <div className="min-h-screen bg-white p-6">   
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Payments</h1>

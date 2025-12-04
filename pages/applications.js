@@ -461,7 +461,6 @@ export default function ApplicationsPage() {
 
   return (
     <div className="min-h-screen bg-white p-3 sm:p-6">
-      <ChatWidget />
       <div className="max-w-6xl mx-auto">
         <div className="mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl font-bold mb-2">
