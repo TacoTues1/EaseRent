@@ -22,7 +22,8 @@ export default function NewProperty() {
     bedrooms: 1,
     bathrooms: 1,
     area_sqft: '',
-    available: true
+    available: true,
+    terms_conditions: ''
   })
 
   useEffect(() => {
@@ -319,81 +320,88 @@ export default function NewProperty() {
 
           {/* Image Upload Section */}
           <div className="border-t-2 border-black pt-4">
-            <div className="flex justify-between items-center mb-3">
-              <label className="block text-sm font-medium">Property Images</label>
-              <button
-                type="button"
-                onClick={addImageUrlField}
-                className="text-sm text-black font-medium"
-              >
-                + Add Image
-              </button>
-            </div>
+            <label className="block text-sm font-medium mb-3">Property Images</label>
             
-            <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
               {imageUrls.map((url, index) => (
-                <div key={index} className="flex gap-2 items-start">
-                  <div className="flex-1">
-                    <div className="flex gap-2 mb-1">
-                      <input
-                        type="url"
-                        placeholder="Paste image URL or upload file below"
-                        className="flex-1 border-2 border-black px-3 py-2 text-sm"
-                        value={url}
-                        onChange={(e) => handleImageUrlChange(index, e.target.value)}
-                      />
-                      {imageUrls.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeImageUrlField(index)}
-                          className="px-3 py-2 text-black bg-white border-2 border-black"
-                        >
-                          ×
-                        </button>
+                <div key={index} className="relative">
+                  <label className="cursor-pointer block">
+                    <div className={`w-14 h-14 border-2 border-black flex items-center justify-center transition-all ${
+                      url ? 'bg-green-100 border-green-600' : 'bg-gray-50 hover:bg-gray-100'
+                    } ${uploadingImages[index] ? 'animate-pulse bg-yellow-50' : ''}`}>
+                      {uploadingImages[index] ? (
+                        <span className="text-xs">...</span>
+                      ) : url ? (
+                        <span className="text-green-600 text-lg">✓</span>
+                      ) : (
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
                       )}
                     </div>
-                    
-                    <div className="flex gap-2 items-center">
-                      <label className="cursor-pointer">
-                        <span className="text-xs text-black underline">
-                          Upload from computer
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleImageUpload(e, index)}
-                          disabled={uploadingImages[index]}
-                        />
-                      </label>
-                      {uploadingImages[index] && (
-                        <span className="text-xs text-black">Uploading...</span>
-                      )}
-                      {url && !uploadingImages[index] && (
-                        <span className="text-xs text-black">✓ Uploaded</span>
-                      )}
-                    </div>
-                  </div>
+                    <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-500">{index + 1}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleImageUpload(e, index)}
+                      disabled={uploadingImages[index]}
+                    />
+                  </label>
+                  {url && imageUrls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeImageUrlField(index)}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ))}
+              
+              {imageUrls.length < 10 && (
+                <button
+                  type="button"
+                  onClick={addImageUrlField}
+                  className="w-14 h-14 border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-black hover:bg-gray-50 transition-all"
+                >
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              )}
             </div>
             
-            <p className="mt-2 text-xs text-black">
-              Add up to 10 images. You can paste URLs or upload from your computer (max 5MB per image).
+            <p className="mt-6 text-xs text-gray-500">
+              Click boxes to upload images (max 5MB each)
             </p>
           </div>
 
-          {/* <div className="flex items-center">
-            <input
-              type="checkbox"
-              name="available"
-              id="available"
-              className="mr-2"
-              checked={formData.available}
+          {/* Terms and Conditions Section */}
+          <div className="border-t pt-4 mt-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium">Terms & Conditions</label>
+              <a
+                href="/terms"
+                target="_blank"
+                className="text-xs text-blue-600 hover:underline"
+              >
+                View Default Template →
+              </a>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">
+              Customize the terms for this property. Leave empty to use the default terms.
+            </p>
+            <textarea
+              name="terms_conditions"
+              rows="8"
+              className="w-full border-2 px-3 py-2 text-sm font-mono"
+              placeholder="Enter custom terms and conditions for this property...\n\nExample:\n1. Lease Duration: 1 year minimum\n2. Monthly rent: ₱XX,XXX\n3. Security deposit: 1 month\n..."
+              value={formData.terms_conditions}
               onChange={handleChange}
             />
-            <label htmlFor="available" className="text-sm">Available for rent</label>
-          </div> */}
+          </div>
 
           <div className="flex gap-2">
             <button

@@ -227,135 +227,90 @@ export default function Home() {
         </div>
         
         {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-            <p className="mt-4 text-gray-600">Loading properties...</p>
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           </div>
         ) : properties.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-600">No properties available at the moment.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-600 text-sm">No properties available.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
             {properties.map((property) => {
               const images = getPropertyImages(property)
               const currentIndex = currentImageIndex[property.id] || 0
               
               return (
-                <div key={property.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-                  {/* Image Slider - Top */}
-                  <div className="relative">
-                    <div className="aspect-video relative overflow-hidden">
-                      <img 
-                        src={images[currentIndex]} 
-                        alt={property.title}
-                        className="w-full h-full object-cover"
-                      />
-                      
-                      {/* Navigation Arrows */}
-                      {images.length > 1 && (
-                        <>
-                          <button
-                            onClick={() => prevImage(property.id, images.length)}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-all duration-200 cursor-pointer"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => nextImage(property.id, images.length)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 bg-white text-black w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-all duration-200 cursor-pointer"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
-                        </>
-                      )}
-                      
-                      {/* Image Indicators */}
-                      {images.length > 1 && (
-                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                          {images.map((_, idx) => (
-                            <div
-                              key={idx}
-                              className={`h-1.5 rounded-full transition-all duration-300 ${
-                                idx === currentIndex ? 'w-6 bg-white shadow-lg' : 'w-1.5 bg-white/60'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      )}
+                <div 
+                  key={property.id} 
+                  className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow cursor-pointer"
+                  onClick={() => router.push(`/properties/${property.id}`)}
+                >
+                  {/* Image */}
+                  <div className="relative aspect-[4/3] overflow-hidden">
+                    <img 
+                      src={images[currentIndex]} 
+                      alt={property.title}
+                      className="w-full h-full object-cover"
+                    />
+                    
+                    {/* Status Badge */}
+                    <span className={`absolute top-2 right-2 px-2 py-0.5 text-[10px] font-semibold rounded ${
+                      property.status === 'available'
+                        ? 'bg-black text-white' 
+                        : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {property.status === 'available' ? 'Available' : 'Occupied'}
+                    </span>
 
-                      {/* Status Badge */}
-                      <div className="absolute top-4 right-4">
-                        <span className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 border-black ${
-                          property.status === 'available'
-                            ? 'bg-black text-white' 
-                            : property.status === 'occupied'
-                            ? 'bg-white text-black'
-                            : 'bg-white text-black'
-                        }`}>
-                          {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
-                        </span>
+                    {/* Image count indicator */}
+                    {images.length > 1 && (
+                      <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                        1/{images.length}
                       </div>
-                    </div>
+                    )}
                   </div>
                   
-                  {/* Property Info - Bottom */}
-                  <div className="p-6">
-                    <h3 className="text-lg font-bold mb-2 line-clamp-1 text-gray-900">{property.title}</h3>
-                    
-                    {/* Landlord Name */}
-                    {property.landlord_profile?.full_name && (
-                      <p className="text-xs text-gray-500 mb-2">
-                        By {property.landlord_profile.full_name}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-start gap-2 mb-3">
-                      <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <p className="text-sm text-gray-600 line-clamp-1">
-                        {property.address}, {property.city}
-                        {property.state && `, ${property.state}`}
-                      </p>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <p className="text-2xl font-bold text-gray-900">
+                  {/* Property Info */}
+                  <div className="p-4">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="text-sm font-semibold line-clamp-1 text-gray-900">{property.title}</h3>
+                      <p className="text-sm font-bold text-gray-900 whitespace-nowrap ml-2">
                         ₱{Number(property.price).toLocaleString()}
                       </p>
-                      <span className="text-sm text-gray-500">per month</span>
                     </div>
                     
-                    <div className="flex gap-4 mb-4 pb-4 border-b border-gray-200">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 640 512">
+                    <p className="text-xs text-gray-500 line-clamp-1 mb-3">
+                      {property.address}, {property.city}
+                    </p>
+                    
+                    <div className="flex gap-4 mb-3 text-xs text-gray-600">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 640 512">
                           <path d="M32 32c17.7 0 32 14.3 32 32V320H288V160c0-17.7 14.3-32 32-32H544c53 0 96 43 96 96V448c0 17.7-14.3 32-32 32s-32-14.3-32-32V416H352 320 64v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V64C0 46.3 14.3 32 32 32zm144 96a80 80 0 1 1 0 160 80 80 0 1 1 0-160z"/>
                         </svg>
-                        <span className="text-sm font-medium text-gray-700">{property.bedrooms} bed</span>
+                        <span>{property.bedrooms} bed</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 512 512">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 512 512">
                           <path d="M96 77.3c0-7.3 5.9-13.3 13.3-13.3c3.5 0 6.9 1.4 9.4 3.9l14.9 14.9C130 91.8 128 101.7 128 112c0 19.9 7.2 38 19.2 52c-5.3 9.2-4 21.1 3.8 29c9.4 9.4 24.6 9.4 33.9 0L289 89c9.4-9.4 9.4-24.6 0-33.9c-7.9-7.9-19.8-9.1-29-3.8C246 39.2 227.9 32 208 32c-10.3 0-20.2 2-29.2 5.5L163.9 22.6C149.4 8.1 129.7 0 109.3 0C66.6 0 32 34.6 32 77.3V256c-17.7 0-32 14.3-32 32s14.3 32 32 32H480c17.7 0 32-14.3 32-32s-14.3-32-32-32H96V77.3zM32 352v16c0 28.4 12.4 54 32 71.6V480c0 17.7 14.3 32 32 32s32-14.3 32-32V464H384v16c0 17.7 14.3 32 32 32s32-14.3 32-32V439.6c19.6-17.6 32-43.1 32-71.6V352H32z"/>
                         </svg>
-                        <span className="text-sm font-medium text-gray-700">{property.bathrooms} bath</span>
+                        <span>{property.bathrooms} bath</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex items-center gap-1">
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                         </svg>
-                        <span className="text-sm font-medium text-gray-700">{property.area_sqft} sqft</span>
+                        <span>{property.area_sqft} sqft</span>
                       </div>
                     </div>
                     
                     <button
-                      onClick={() => router.push(`/properties/${property.id}`)}
-                      className="w-full bg-black text-white py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/properties/${property.id}`);
+                      }}
+                      className="w-full bg-black text-white py-2 px-4 rounded-md text-xs font-semibold hover:bg-gray-800 transition-colors cursor-pointer"
                     >
                       View Details
                     </button>

@@ -187,7 +187,7 @@ export default function Navbar() {
                     setAuthMode('signin')
                     setShowAuthModal(true)
                   }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black border border-black font-medium"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black border border-black font-medium cursor-pointer"
                 >
                   Login
                 </button>
@@ -196,7 +196,7 @@ export default function Navbar() {
                     setAuthMode('signup')
                     setShowAuthModal(true)
                   }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black cursor-pointer"
                 >
                   Register
                 </button>

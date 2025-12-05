@@ -16,6 +16,7 @@ export default function PropertyDetail() {
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [landlordProfile, setLandlordProfile] = useState(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
@@ -244,16 +245,46 @@ export default function PropertyDetail() {
                     {message}
                   </div>
                 )}
+                
+                {/* Terms and Conditions Checkbox */}
+                <div className="mb-4">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      className="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
+                    />
+                    <span className="text-sm text-gray-700">
+                      I have read and agree to the{' '}
+                      <Link 
+                        href={`/terms?propertyId=${property.id}`}
+                        target="_blank"
+                        className="text-blue-600 hover:underline font-medium"
+                      >
+                        Terms & Conditions
+                      </Link>
+                      {' '}for this property.
+                    </span>
+                  </label>
+                </div>
+
                 <button
                   onClick={handleApply}
-                  disabled={submitting}
-                  className="w-full bg-gray-900 text-white py-4 px-6 rounded-lg text-base font-semibold disabled:opacity-50 hover:bg-black transition-colors cursor-pointer"
+                  disabled={submitting || !termsAccepted}
+                  className={`w-full py-4 px-6 rounded-lg text-base font-semibold transition-colors cursor-pointer ${
+                    termsAccepted 
+                      ? 'bg-gray-900 text-white hover:bg-black disabled:opacity-50' 
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
                 >
                   {submitting ? 'Submitting Application...' : 'Submit Application'}
                 </button>
-                <p className="text-xs text-gray-500 text-center mt-2">
-                  By submitting, you agree to our terms and conditions
-                </p>
+                {!termsAccepted && (
+                  <p className="text-xs text-red-500 text-center mt-2">
+                    Please accept the terms and conditions to proceed
+                  </p>
+                )}
               </div>
             )}
 
@@ -346,10 +377,11 @@ export default function PropertyDetail() {
           </div>
 
           {/* Description */}
-          <div>
+          <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Description</h2>
             <p className="text-gray-700 leading-relaxed">{property.description || 'No description provided.'}</p>
           </div>
+
         </div>
       </div>
 

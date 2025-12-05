@@ -102,7 +102,7 @@ export default function AIChatPage() {
           {/* Header */}
           <div className="bg-black p-4 text-white">
             <h1 className="text-xl font-bold">EaseRent AI Assistant</h1>
-            <p className="text-sm opacity-80">Ask me anything about properties, rentals, or maintenance</p>
+            <p className="text-sm opacity-80">Ask me anything</p>
           </div>
           
           {/* Messages Area */}
@@ -115,7 +115,7 @@ export default function AIChatPage() {
                   </svg>
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-1">How can I help you today?</h3>
-                <p className="text-sm">Ask me about properties, rental processes, maintenance, or any other questions you have.</p>
+                <p className="text-sm">Ask me about anything</p>
               </div>
             ) : (
               messages.map((msg, i) => (
