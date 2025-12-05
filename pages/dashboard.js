@@ -446,6 +446,87 @@ export default function Dashboard() {
 
       {/* Properties Section */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-12">
+        
+        {/* Tenant Current Occupancy Section - At Top */}
+        {profile.role === 'tenant' && tenantOccupancy && (
+          <div className="mb-8 bg-white border-2 border-black p-4 sm:p-6">
+            <h3 className="text-xl sm:text-2xl font-bold text-black mb-4 sm:mb-6">Your Current Residence</h3>
+            <div className="flex flex-col md:flex-row justify-between gap-4">
+              <div>
+                <h4 className="font-bold text-lg text-black">{tenantOccupancy.property?.title}</h4>
+                <p className="text-sm text-gray-600 mt-1">{tenantOccupancy.property?.address}, {tenantOccupancy.property?.city}</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  Landlord: <span className="font-medium text-black">{tenantOccupancy.landlord?.full_name}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Moved in: {new Date(tenantOccupancy.start_date).toLocaleDateString()}
+                </p>
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                {tenantOccupancy.status === 'pending_end' ? (
+                  <div className="px-4 py-3 bg-yellow-50 border-2 border-yellow-400 text-center">
+                    <p className="text-sm font-bold text-yellow-800">End Request Pending</p>
+                    <p className="text-xs text-yellow-600 mt-1">Waiting for landlord approval</p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowEndRequestModal(true)}
+                    className="px-6 py-3 bg-orange-500 text-white font-bold border-2 border-orange-500 hover:bg-orange-600 transition-colors"
+                  >
+                    Request to Leave
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Landlord: Pending End Requests Section - At Top */}
+        {profile.role === 'landlord' && pendingEndRequests.length > 0 && (
+          <div className="mb-8 bg-white border-2 border-black p-4 sm:p-6">
+            <h3 className="text-xl sm:text-2xl font-bold text-black mb-4 sm:mb-6">
+              Pending End Requests 
+              <span className="ml-2 px-2 py-1 bg-orange-500 text-white text-sm rounded">{pendingEndRequests.length}</span>
+            </h3>
+            <div className="space-y-4">
+              {pendingEndRequests.map(request => (
+                <div key={request.id} className="p-4 border-2 border-black flex flex-col sm:flex-row justify-between gap-4">
+                  <div>
+                    <h4 className="font-bold text-black">{request.property?.title}</h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Tenant: <span className="font-medium text-black">{request.tenant?.full_name}</span>
+                      {request.tenant?.phone && <span className="ml-2 text-gray-500">({request.tenant.phone})</span>}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Requested: {new Date(request.end_requested_at).toLocaleDateString()}
+                    </p>
+                    {request.end_request_reason && (
+                      <p className="text-sm text-gray-700 mt-2 p-2 bg-gray-50 border border-gray-200">
+                        <span className="font-medium">Reason:</span> {request.end_request_reason}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 sm:flex-col">
+                    <button
+                      onClick={() => approveEndRequest(request.id)}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-green-600 text-white font-bold text-sm hover:bg-green-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => rejectEndRequest(request.id)}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-red-600 text-white font-bold text-sm hover:bg-red-700"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 sm:mb-10">
           <div>
             <h2 className="text-2xl sm:text-4xl font-bold text-black mb-1 sm:mb-2">
@@ -872,57 +953,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        {/* FAQ Section - Tenant Only */}
-        {profile.role === 'tenant' && (
-          <div className="mt-12 bg-white border-2 border-black p-6">
-            <h3 className="text-2xl font-bold text-black mb-6">Frequently Asked Questions</h3>
-            <div className="space-y-4">
-              <div className="border-b-2 border-gray-200 pb-4">
-                <h4 className="font-bold text-black mb-2">How do I apply for a property?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  Click on "View Details" to see the full property information, then click "Apply" to submit your application. The landlord will review and contact you.
-                </p>
-              </div>
-              
-              <div className="border-b-2 border-gray-200 pb-4">
-                <h4 className="font-bold text-black mb-2">How do I schedule a property viewing?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  On the property details page, you'll find available time slots for viewing. Select your preferred date and time to book an appointment with the landlord.
-                </p>
-              </div>
-              
-              <div className="border-b-2 border-gray-200 pb-4">
-                <h4 className="font-bold text-black mb-2">How do I pay my rent?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  Go to the Payments section where you'll receive payment requests from your landlord. You can upload proof of payment and track your payment history.
-                </p>
-              </div>
-              
-              <div className="border-b-2 border-gray-200 pb-4">
-                <h4 className="font-bold text-black mb-2">How do I submit a maintenance request?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  Navigate to the Maintenance section from the Quick Actions menu. Fill out the form describing the issue and submit it. Your landlord will be notified immediately.
-                </p>
-              </div>
-              
-              <div className="border-b-2 border-gray-200 pb-4">
-                <h4 className="font-bold text-black mb-2">How can I contact my landlord?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  Use the Messages feature to chat directly with your landlord. You can send text messages, images, and files for any property-related communication.
-                </p>
-              </div>
-              
-              <div>
-                <h4 className="font-bold text-black mb-2">What if I need to move out?</h4>
-                <p className="text-sm text-black leading-relaxed">
-                  Contact your landlord through the messaging system to discuss your move-out date and process. Make sure to settle all outstanding payments before moving out.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Tenant End Request Modal */}
       {showEndRequestModal && tenantOccupancy && (
