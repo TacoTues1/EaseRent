@@ -175,9 +175,9 @@ export default function NewProperty() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-2xl mx-auto bg-white border-2 border-black p-6">
-        <h1 className="text-2xl font-bold mb-4">Add New Property</h1>
+    <div className="min-h-screen bg-white p-3 sm:p-6">
+      <div className="max-w-2xl mx-auto bg-white border-2 border-black p-4 sm:p-6">
+        <h1 className="text-xl sm:text-2xl font-bold mb-4">Add New Property</h1>
         {message && (
           <div className={`mb-4 p-3 border-2 ${
             message.includes('Error') || message.includes('error') || message.includes('denied')
@@ -219,7 +219,7 @@ export default function NewProperty() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Address</label>
               <input
@@ -244,7 +244,7 @@ export default function NewProperty() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">State</label>
               <input
@@ -267,7 +267,7 @@ export default function NewProperty() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Price (₱/month)</label>
               <input
@@ -292,7 +292,7 @@ export default function NewProperty() {
                 onChange={handleChange}
               />
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <label className="block text-sm font-medium mb-1">Bathrooms</label>
               <input
                 type="number"

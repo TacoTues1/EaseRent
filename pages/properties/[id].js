@@ -19,6 +19,8 @@ export default function PropertyDetail() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [landlordProfile, setLandlordProfile] = useState(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
+  const [hasActiveOccupancy, setHasActiveOccupancy] = useState(false)
+  const [occupiedPropertyTitle, setOccupiedPropertyTitle] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -36,7 +38,27 @@ export default function PropertyDetail() {
       .eq('id', userId)
       .single()
     
-    if (data) setProfile(data)
+    if (data) {
+      setProfile(data)
+      // Check if tenant already has an active occupancy
+      if (data.role === 'tenant') {
+        checkActiveOccupancy(userId)
+      }
+    }
+  }
+
+  async function checkActiveOccupancy(userId) {
+    const { data } = await supabase
+      .from('tenant_occupancies')
+      .select('*, property:properties(title)')
+      .eq('tenant_id', userId)
+      .eq('status', 'active')
+      .single()
+    
+    if (data) {
+      setHasActiveOccupancy(true)
+      setOccupiedPropertyTitle(data.property?.title || 'a property')
+    }
   }
 
   useEffect(() => {
@@ -246,44 +268,70 @@ export default function PropertyDetail() {
                   </div>
                 )}
                 
-                {/* Terms and Conditions Checkbox */}
-                <div className="mb-4">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={termsAccepted}
-                      onChange={(e) => setTermsAccepted(e.target.checked)}
-                      className="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
-                    />
-                    <span className="text-sm text-gray-700">
-                      I have read and agree to the{' '}
-                      <Link 
-                        href={`/terms?propertyId=${property.id}`}
-                        target="_blank"
-                        className="text-blue-600 hover:underline font-medium"
-                      >
-                        Terms & Conditions
-                      </Link>
-                      {' '}for this property.
-                    </span>
-                  </label>
-                </div>
+                {/* Block if tenant already has active occupancy */}
+                {hasActiveOccupancy ? (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <p className="font-semibold text-yellow-800">You already have an assigned property</p>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          You are currently assigned to <strong>{occupiedPropertyTitle}</strong>. 
+                          You cannot apply for another property until you end your current occupancy.
+                        </p>
+                        <button
+                          onClick={() => router.push('/dashboard')}
+                          className="mt-3 text-sm text-yellow-800 underline hover:text-yellow-900"
+                        >
+                          Go to Dashboard to manage your occupancy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Terms and Conditions Checkbox */}
+                    <div className="mb-4">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={termsAccepted}
+                          onChange={(e) => setTermsAccepted(e.target.checked)}
+                          className="mt-1 w-4 h-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
+                        />
+                        <span className="text-sm text-gray-700">
+                          I have read and agree to the{' '}
+                          <Link 
+                            href={`/terms?propertyId=${property.id}`}
+                            target="_blank"
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            Terms & Conditions
+                          </Link>
+                          {' '}for this property.
+                        </span>
+                      </label>
+                    </div>
 
-                <button
-                  onClick={handleApply}
-                  disabled={submitting || !termsAccepted}
-                  className={`w-full py-4 px-6 rounded-lg text-base font-semibold transition-colors cursor-pointer ${
-                    termsAccepted 
-                      ? 'bg-gray-900 text-white hover:bg-black disabled:opacity-50' 
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  {submitting ? 'Submitting Application...' : 'Submit Application'}
-                </button>
-                {!termsAccepted && (
-                  <p className="text-xs text-red-500 text-center mt-2">
-                    Please accept the terms and conditions to proceed
-                  </p>
+                    <button
+                      onClick={handleApply}
+                      disabled={submitting || !termsAccepted}
+                      className={`w-full py-4 px-6 rounded-lg text-base font-semibold transition-colors cursor-pointer ${
+                        termsAccepted 
+                          ? 'bg-gray-900 text-white hover:bg-black disabled:opacity-50' 
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {submitting ? 'Submitting Application...' : 'Submit Application'}
+                    </button>
+                    {!termsAccepted && (
+                      <p className="text-xs text-red-500 text-center mt-2">
+                        Please accept the terms and conditions to proceed
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}

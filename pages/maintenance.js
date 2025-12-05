@@ -10,6 +10,7 @@ export default function MaintenancePage() {
   const [profile, setProfile] = useState(null)
   const [requests, setRequests] = useState([])
   const [properties, setProperties] = useState([])
+  const [occupiedProperty, setOccupiedProperty] = useState(null) // Tenant's assigned property
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
@@ -84,16 +85,33 @@ export default function MaintenancePage() {
 
   async function loadProperties() {
     if (profile?.role === 'tenant') {
-      // Load only properties where tenant has an ACCEPTED application
-      const { data: acceptedApps } = await supabase
-        .from('applications')
+      // First check for actively occupied property (assigned by landlord)
+      const { data: occupancy } = await supabase
+        .from('tenant_occupancies')
         .select('property_id, property:properties(id, title)')
-        .eq('tenant', session.user.id)
-        .eq('status', 'accepted')
-      
-      // Extract property info from accepted applications
-      const approvedProperties = acceptedApps?.map(app => app.property).filter(Boolean) || []
-      setProperties(approvedProperties)
+        .eq('tenant_id', session.user.id)
+        .eq('status', 'active')
+        .single()
+
+      if (occupancy && occupancy.property) {
+        // Tenant has an assigned/occupied property - use only this
+        setOccupiedProperty(occupancy.property)
+        setProperties([occupancy.property])
+        // Auto-select this property in the form
+        setFormData(prev => ({ ...prev, property_id: occupancy.property.id }))
+      } else {
+        // Fallback: Load properties where tenant has an ACCEPTED application
+        const { data: acceptedApps } = await supabase
+          .from('applications')
+          .select('property_id, property:properties(id, title)')
+          .eq('tenant', session.user.id)
+          .eq('status', 'accepted')
+        
+        // Extract property info from accepted applications
+        const approvedProperties = acceptedApps?.map(app => app.property).filter(Boolean) || []
+        setProperties(approvedProperties)
+        setOccupiedProperty(null)
+      }
     } else if (profile?.role === 'landlord') {
       // Load landlord's own properties
       const { data } = await supabase
@@ -192,14 +210,14 @@ export default function MaintenancePage() {
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
   return (
-    <div className="min-h-screen bg-white p-6">
+    <div className="min-h-screen bg-white p-3 sm:p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-bold">
+            <h1 className="text-xl sm:text-2xl font-bold">
               {profile?.role === 'landlord' ? 'Maintenance Requests' : 'My Maintenance Requests'}
             </h1>
-            <p className="text-sm text-black">
+            <p className="text-xs sm:text-sm text-gray-600">
               {profile?.role === 'landlord' 
                 ? 'Manage maintenance requests from your tenants' 
                 : 'Submit and track your maintenance requests'}
@@ -208,7 +226,7 @@ export default function MaintenancePage() {
           {profile?.role === 'tenant' && (
             <button
               onClick={() => setShowForm(!showForm)}
-              className="px-4 py-2 bg-black text-white hover:bg-black"
+              className="w-full sm:w-auto px-4 py-2 bg-black text-white hover:bg-gray-800 rounded"
             >
               {showForm ? 'Cancel' : '+ New Request'}
             </button>
@@ -238,18 +256,14 @@ export default function MaintenancePage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Property</label>
-                  <select
-                    name="property_id"
-                    required
-                    className="w-full border-2 px-3 py-2"
-                    value={formData.property_id}
-                    onChange={e => setFormData({ ...formData, property_id: e.target.value })}
-                  >
-                    <option value="">Select a property</option>
-                    {properties.map(p => (
-                      <option key={p.id} value={p.id}>{p.title}</option>
-                    ))}
-                  </select>
+                  {/* Show occupied property as fixed (auto-selected) */}
+                  <div className="w-full border-2 border-green-500 bg-green-50 px-3 py-2 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
+                    <span className="font-medium">{occupiedProperty?.title || properties[0]?.title}</span>
+                    <span className="sm:ml-auto text-xs text-green-600 bg-green-100 px-2 py-1 rounded">Your Current Home</span>
+                  </div>
                 </div>
 
                 <div>
