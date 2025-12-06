@@ -132,6 +132,21 @@ export default function PropertyDetail() {
     }
 
     setSubmitting(true)
+    
+    // Check if tenant already has an application for this property
+    const { data: existingApp } = await supabase
+      .from('applications')
+      .select('id, status')
+      .eq('property_id', id)
+      .eq('tenant', session.user.id)
+      .single()
+
+    if (existingApp) {
+      setMessage(`You already have a ${existingApp.status} application for this property. You cannot submit multiple applications.`)
+      setSubmitting(false)
+      return
+    }
+
     const { error } = await supabase.from('applications').insert({
       property_id: id,
       tenant: session.user.id,
@@ -328,7 +343,7 @@ export default function PropertyDetail() {
                     </button>
                     {!termsAccepted && (
                       <p className="text-xs text-red-500 text-center mt-2">
-                        Please accept the terms and conditions to proceed
+                        Please accept and read the terms and conditions to proceed
                       </p>
                     )}
                   </>

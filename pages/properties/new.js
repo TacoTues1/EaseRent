@@ -23,6 +23,7 @@ export default function NewProperty() {
     bathrooms: 1,
     area_sqft: '',
     available: true,
+    status: 'available',
     terms_conditions: ''
   })
 
@@ -316,6 +317,26 @@ export default function NewProperty() {
               value={formData.area_sqft}
               onChange={handleChange}
             />
+          </div>
+
+          {/* Property Status Dropdown */}
+          <div className="p-4 bg-white border-2 border-black">
+            <label className="block text-sm font-medium mb-2">Property Status</label>
+            <select
+              name="status"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              className="w-full border-2 border-black px-3 py-2 bg-white font-medium"
+            >
+              <option value="available">✓ Available - Visible to tenants</option>
+              <option value="occupied">◐ Occupied - Has current tenant</option>
+              <option value="not available">✗ Not Available - Hidden from listings</option>
+            </select>
+            <p className="text-xs text-gray-600 mt-2">
+              {formData.status === 'available' && 'Property is open for applications'}
+              {formData.status === 'occupied' && 'Property has an assigned tenant'}
+              {formData.status === 'not available' && 'Property is hidden from all listings'}
+            </p>
           </div>
 
           {/* Image Upload Section */}

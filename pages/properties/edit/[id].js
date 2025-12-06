@@ -26,6 +26,7 @@ export default function EditProperty() {
     bathrooms: 1,
     area_sqft: '',
     available: true,
+    status: 'available',
     terms_conditions: ''
   })
 
@@ -96,6 +97,7 @@ export default function EditProperty() {
       bathrooms: data.bathrooms || 1,
       area_sqft: data.area_sqft || '',
       available: data.available ?? true,
+      status: data.status || 'available',
       terms_conditions: data.terms_conditions || ''
     })
 
@@ -372,22 +374,24 @@ export default function EditProperty() {
             />
           </div>
 
-          {/* Availability Toggle */}
-          <div className="flex items-center gap-3 p-4 bg-white border-2 border-black">
-            <input
-              type="checkbox"
-              id="available"
-              name="available"
-              checked={formData.available}
-              onChange={(e) => setFormData({ ...formData, available: e.target.checked })}
-              className="w-5 h-5 text-black"
-            />
-            <label htmlFor="available" className="text-sm font-medium cursor-pointer">
-              Property is available for rent
-              <span className="block text-xs text-black font-normal mt-1">
-                {formData.available ? '✓ This property will be visible to tenants' : '✗ This property will be hidden from tenants'}
-              </span>
-            </label>
+          {/* Property Status Dropdown */}
+          <div className="p-4 bg-white border-2 border-black">
+            <label className="block text-sm font-medium mb-2">Property Status</label>
+            <select
+              name="status"
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              className="w-full border-2 border-black px-3 py-2 bg-white font-medium"
+            >
+              <option value="available">✓ Available - Visible to tenants</option>
+              <option value="occupied">◐ Occupied - Has current tenant</option>
+              <option value="not available">✗ Not Available - Hidden from listings</option>
+            </select>
+            <p className="text-xs text-gray-600 mt-2">
+              {formData.status === 'available' && 'Property is open for applications'}
+              {formData.status === 'occupied' && 'Property has an assigned tenant'}
+              {formData.status === 'not available' && 'Property is hidden from all listings'}
+            </p>
           </div>
 
           {/* Image Upload Section */}

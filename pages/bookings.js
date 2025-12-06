@@ -102,7 +102,10 @@ export default function BookingsPage() {
       .order('booking_date', { ascending: true })
 
     // Apply filter
-    if (filter !== 'all') {
+    if (filter === 'pending_approval') {
+      // Show both 'pending' and 'pending_approval' statuses
+      query = query.in('status', ['pending', 'pending_approval'])
+    } else if (filter !== 'all') {
       query = query.eq('status', filter)
     }
 

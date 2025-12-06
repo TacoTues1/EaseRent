@@ -273,6 +273,13 @@ export default function Dashboard() {
       .update({ status: 'available' })
       .eq('id', occupancy.property_id)
 
+    // Delete the tenant's application for this property
+    await supabase
+      .from('applications')
+      .delete()
+      .eq('property_id', occupancy.property_id)
+      .eq('tenant', occupancy.tenant_id)
+
     // Notify tenant
     await createNotification({
       recipient: occupancy.tenant_id,
@@ -899,18 +906,47 @@ export default function Dashboard() {
                 <p className="text-sm font-medium text-black">{tenantOccupancy.property?.title}</p>
                 <p className="text-xs text-gray-600">{tenantOccupancy.property?.address}, {tenantOccupancy.property?.city}</p>
               </div>
+
+              {/* Important Reminder */}
+              <div className="mb-4 p-4 bg-yellow-50 border-2 border-yellow-400">
+                <h4 className="font-bold text-sm text-yellow-900 mb-2">⚠️ Important Reminders</h4>
+                <div className="text-xs text-yellow-800 space-y-1">
+                  <p>• <strong>30-Day Notice:</strong> Notify at least 30 days before leaving</p>
+                  <p>• <strong>Property Inspection:</strong> Landlord will inspect before approval</p>
+                  <p>• <strong>Return Condition:</strong> Property must be returned in original condition with all items intact</p>
+                  <p>• <strong>Damages:</strong> Repair/replacement costs may be deducted from deposit</p>
+                  <p>• <strong>Final Checks:</strong> Settle all bills and outstanding payments</p>
+                </div>
+              </div>
               
-              <p className="text-sm text-gray-600 mb-4">
-                Please provide a reason for your request to leave. Your landlord will be notified and must approve this request.
-              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Intended Move-Out Date</label>
+                <input
+                  type="date"
+                  value={endRequestReason.split('|')[1] || ''}
+                  onChange={(e) => {
+                    const reason = endRequestReason.split('|')[0] || ''
+                    setEndRequestReason(reason + '|' + e.target.value)
+                  }}
+                  min={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                  className="w-full p-2 border-2 border-black text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">Must be at least 30 days from today</p>
+              </div>
               
-              <textarea
-                value={endRequestReason}
-                onChange={(e) => setEndRequestReason(e.target.value)}
-                placeholder="Reason for leaving (e.g., moving to a new city, end of contract, etc.)"
-                className="w-full p-3 border-2 border-black text-sm resize-none"
-                rows={4}
-              />
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Reason for Leaving</label>
+                <textarea
+                  value={endRequestReason.split('|')[0] || ''}
+                  onChange={(e) => {
+                    const date = endRequestReason.split('|')[1] || ''
+                    setEndRequestReason(e.target.value + '|' + date)
+                  }}
+                  placeholder="e.g., Moving to a new city, end of contract, etc."
+                  className="w-full p-3 border-2 border-black text-sm resize-none"
+                  rows={3}
+                />
+              </div>
               
               <div className="flex gap-2 mt-4">
                 <button
