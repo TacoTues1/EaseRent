@@ -121,8 +121,14 @@ export default function Dashboard() {
       `)
       .eq('property_id', propertyId)
       .eq('status', 'accepted')
+      .not('tenant', 'is', null)
     
-    setAcceptedApplications(data || [])
+    // Filter out applications with null tenant profiles (deleted users)
+    const validApplications = (data || []).filter(app => 
+      app.tenant && app.tenant_profile && app.tenant_profile.full_name
+    )
+    
+    setAcceptedApplications(validApplications)
   }
 
   // Open assign tenant modal
@@ -134,6 +140,12 @@ export default function Dashboard() {
 
   // Assign tenant to property
   async function assignTenant(application) {
+    // Validate tenant exists
+    if (!application.tenant || !application.tenant_profile) {
+      toast.error('Invalid tenant - user may have been deleted')
+      return
+    }
+
     const { error } = await supabase
       .from('tenant_occupancies')
       .insert({
@@ -253,7 +265,7 @@ export default function Dashboard() {
     const occupancy = pendingEndRequests.find(o => o.id === occupancyId)
     if (!occupancy) return
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('tenant_occupancies')
       .update({
         status: 'ended',
@@ -261,11 +273,15 @@ export default function Dashboard() {
         end_request_status: 'approved'
       })
       .eq('id', occupancyId)
+      .select()
 
     if (error) {
-      toast.error('Failed to approve end request')
+      console.error('Error approving end request:', error)
+      toast.error(`Failed to approve: ${error.message || error.details || 'Unknown error'}`)
       return
     }
+
+    console.log('Approval successful:', data)
 
     // Update property status to available
     await supabase
