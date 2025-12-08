@@ -57,7 +57,7 @@ export default function ApplicationsPage() {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     if (data) setProfile(data)
   }

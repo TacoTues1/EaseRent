@@ -85,7 +85,7 @@ export default function TermsPage() {
         .from('profiles')
         .select('*')
         .eq('id', result.data.session.user.id)
-        .single()
+        .maybeSingle()
       if (profileData) {
         setProfile(profileData)
       }
@@ -97,7 +97,7 @@ export default function TermsPage() {
       .from('properties')
       .select('id, title, terms_conditions, landlord')
       .eq('id', propertyId)
-      .single()
+      .maybeSingle()
 
     if (data) {
       setProperty(data)

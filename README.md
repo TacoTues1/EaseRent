@@ -44,9 +44,12 @@ Create a `.env.local` file in the project root:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-public-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 Replace with your actual Supabase credentials from your project settings.
+
+> **Note**: The `SUPABASE_SERVICE_ROLE_KEY` is required for API routes (like email sending) to bypass Row Level Security. Find it in your Supabase project settings under "API" → "Service Role Key" (secret). **Never expose this key in client-side code!**
 
 ### 3. Set Up Database Schema
 

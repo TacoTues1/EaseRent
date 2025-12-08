@@ -71,7 +71,7 @@ export default function Dashboard() {
       `)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
-      .single()
+      .maybeSingle()
     
     setTenantOccupancy(data)
   }
@@ -363,7 +363,7 @@ export default function Dashboard() {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     if (data) {
       setProfile(data)
@@ -378,7 +378,7 @@ export default function Dashboard() {
           role: 'tenant' // Default role for new users
         })
         .select()
-        .single()
+        .maybeSingle()
       
       if (newProfile) setProfile(newProfile)
     }

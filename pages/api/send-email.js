@@ -1,5 +1,5 @@
 import { sendViewingApprovalEmail } from '../../lib/email'
-import { supabase } from '../../lib/supabaseClient'
+import { supabaseAdmin } from '../../lib/supabaseAdmin'
 
 export default async function handler(req, res) {
   // Enable CORS for development
@@ -23,9 +23,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Booking ID is required' })
     }
 
-    // Fetch booking details with related data
+    // Fetch booking details with related data using admin client (bypasses RLS)
     console.log('Fetching booking from database...')
-    const { data: booking, error: bookingError } = await supabase
+    const { data: booking, error: bookingError } = await supabaseAdmin
       .from('bookings')
       .select(`
         *,
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
         landlord_profile:profiles!bookings_landlord_fkey(id, full_name, phone)
       `)
       .eq('id', bookingId)
-      .single()
+      .maybeSingle()
 
     console.log('Booking query result:', { booking, bookingError })
 
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     // Get tenant email using RPC call or direct query
     // Since email is in auth.users, we need to query it via a database function
     // For now, let's use a workaround: query from auth.users via SQL
-    const { data: emailData, error: emailError } = await supabase
+    const { data: emailData, error: emailError } = await supabaseAdmin
       .rpc('get_user_email', { user_id: booking.tenant })
 
     let tenantEmail = emailData

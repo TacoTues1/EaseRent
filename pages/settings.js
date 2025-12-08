@@ -45,7 +45,7 @@ export default function Settings() {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     if (data) {
       setProfile(data)

@@ -82,7 +82,7 @@ export default function NewProperty() {
       .from('profiles')
       .select('role')
       .eq('id', result.data.session.user.id)
-      .single()
+      .maybeSingle()
     
     if (profileData) {
       setProfile(profileData)

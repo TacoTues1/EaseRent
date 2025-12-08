@@ -37,7 +37,7 @@ export default function PropertyDetail() {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     if (data) {
       setProfile(data)
@@ -54,7 +54,7 @@ export default function PropertyDetail() {
       .select('*, property:properties(title)')
       .eq('tenant_id', userId)
       .eq('status', 'active')
-      .single()
+      .maybeSingle()
     
     if (data) {
       setHasActiveOccupancy(true)

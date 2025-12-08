@@ -90,7 +90,7 @@ export default function EditProperty() {
       .from('profiles')
       .select('role')
       .eq('id', result.data.session.user.id)
-      .single()
+      .maybeSingle()
     
     if (profileData) {
       setProfile(profileData)
@@ -106,9 +106,9 @@ export default function EditProperty() {
       .from('properties')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
     
-    if (error) {
+    if (error || !data) {
       setMessage('Property not found')
       setTimeout(() => router.push('/dashboard'), 2000)
       return

@@ -39,7 +39,7 @@ export default function MaintenancePage() {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     if (data) setProfile(data)
   }
@@ -91,7 +91,7 @@ export default function MaintenancePage() {
         .select('property_id, property:properties(id, title)')
         .eq('tenant_id', session.user.id)
         .eq('status', 'active')
-        .single()
+        .maybeSingle()
 
       if (occupancy && occupancy.property) {
         // Tenant has an assigned/occupied property - use only this

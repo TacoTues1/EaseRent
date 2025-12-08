@@ -60,7 +60,7 @@ export default function PaymentsPage() {
       .from('profiles')
       .select('role')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
     
     setUserRole(data?.role || 'tenant')
   }
@@ -228,7 +228,7 @@ export default function PaymentsPage() {
         .from('properties')
         .select('title')
         .eq('id', formData.property_id)
-        .single()
+        .maybeSingle()
 
       await supabase.from('notifications').insert({
         recipient: formData.tenant,
