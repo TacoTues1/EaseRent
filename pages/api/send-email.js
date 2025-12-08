@@ -2,18 +2,29 @@ import { sendViewingApprovalEmail } from '../../lib/email'
 import { supabase } from '../../lib/supabaseClient'
 
 export default async function handler(req, res) {
+  // Enable CORS for development
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
     const { bookingId } = req.body
+    console.log('Received booking ID:', bookingId)
 
     if (!bookingId) {
       return res.status(400).json({ error: 'Booking ID is required' })
     }
 
     // Fetch booking details with related data
+    console.log('Fetching booking from database...')
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(`
@@ -25,9 +36,14 @@ export default async function handler(req, res) {
       .eq('id', bookingId)
       .single()
 
+    console.log('Booking query result:', { booking, bookingError })
+
     if (bookingError || !booking) {
       console.error('Error fetching booking:', bookingError)
-      return res.status(404).json({ error: 'Booking not found', details: bookingError })
+      return res.status(404).json({ 
+        error: 'Booking not found', 
+        details: bookingError?.message || 'No booking data returned'
+      })
     }
 
     // Get tenant email using RPC call or direct query
