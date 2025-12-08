@@ -205,7 +205,7 @@ export default function BookingsPage() {
         const result = await response.json()
         
         if (result.success) {
-          console.log('Email sent successfully to tenant:', booking.tenant_profile?.email)
+          console.log('Email sent successfully')
           toast.success('Booking approved! Email sent to tenant.')
         } else {
           console.error('Failed to send email:', result.error)

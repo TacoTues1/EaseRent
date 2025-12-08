@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       .select(`
         *,
         property:properties(id, title, address, city),
-        tenant_profile:profiles!bookings_tenant_fkey(id, full_name, email),
+        tenant_profile:profiles!bookings_tenant_fkey(id, full_name),
         landlord_profile:profiles!bookings_landlord_fkey(id, full_name, phone)
       `)
       .eq('id', bookingId)
@@ -27,12 +27,25 @@ export default async function handler(req, res) {
 
     if (bookingError || !booking) {
       console.error('Error fetching booking:', bookingError)
-      return res.status(404).json({ error: 'Booking not found' })
+      return res.status(404).json({ error: 'Booking not found', details: bookingError })
     }
 
-    // Check if tenant has an email
-    if (!booking.tenant_profile?.email) {
-      return res.status(400).json({ error: 'Tenant email not found' })
+    // Get tenant email using RPC call or direct query
+    // Since email is in auth.users, we need to query it via a database function
+    // For now, let's use a workaround: query from auth.users via SQL
+    const { data: emailData, error: emailError } = await supabase
+      .rpc('get_user_email', { user_id: booking.tenant })
+
+    let tenantEmail = emailData
+
+    // If RPC doesn't exist, try alternative: check if email exists in profiles metadata
+    if (emailError || !tenantEmail) {
+      console.log('RPC not available, email will need to be added to database')
+      // Return error for now - we'll create the RPC function
+      return res.status(400).json({ 
+        error: 'Cannot retrieve tenant email. Please create get_user_email function in Supabase.',
+        details: emailError?.message
+      })
     }
 
     // Determine time slot info
@@ -48,8 +61,8 @@ export default async function handler(req, res) {
 
     // Send email
     const emailResult = await sendViewingApprovalEmail({
-      to: booking.tenant_profile.email,
-      tenantName: booking.tenant_profile.full_name || 'Tenant',
+      to: tenantEmail,
+      tenantName: booking.tenant_profile?.full_name || 'Tenant',
       propertyTitle: booking.property?.title || 'Property',
       propertyAddress: `${booking.property?.address || ''}, ${booking.property?.city || ''}`.trim(),
       viewingDate: booking.booking_date,
