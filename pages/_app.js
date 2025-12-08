@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 import Navbar from '../components/Navbar'
 import Meta from '../components/Meta'
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Toaster } from 'react-hot-toast'
 
 function MyApp({ Component, pageProps }) {
@@ -57,6 +58,7 @@ function MyApp({ Component, pageProps }) {
       <Navbar />
       <Component {...pageProps} supabase={supabase} />
       <Analytics />
+      <SpeedInsights />
     </>
   )
 }
