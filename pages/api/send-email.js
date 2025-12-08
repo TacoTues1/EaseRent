@@ -32,6 +32,14 @@ export default async function handler(req, res) {
     })
   }
 
+  if (!supabaseAdmin) {
+    console.error('Supabase admin client is not initialized!')
+    return res.status(500).json({ 
+      error: 'Server configuration error',
+      details: 'Supabase admin client failed to initialize. Check environment variables.'
+    })
+  }
+
   try {
     const { bookingId } = req.body
     console.log('Received booking ID:', bookingId)
@@ -135,13 +143,15 @@ export default async function handler(req, res) {
     })
 
     if (!emailResult.success) {
-      console.error('Failed to send email:', emailResult.error)
+      console.error('Failed to send email via Resend')
+      console.error('Email error details:', JSON.stringify(emailResult.error, null, 2))
       return res.status(500).json({ 
         error: 'Failed to send email', 
-        details: emailResult.error 
+        details: emailResult.error?.message || emailResult.error || 'Unknown email error'
       })
     }
 
+    console.log('Email sent successfully!')
     return res.status(200).json({ 
       success: true, 
       message: 'Email sent successfully',
@@ -150,9 +160,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error in send-email API:', error)
+    console.error('Error stack:', error.stack)
     return res.status(500).json({ 
       error: 'Internal server error', 
-      details: error.message 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     })
   }
 }
