@@ -138,10 +138,10 @@ export default function BookingsPage() {
       .select('id, title, address, city')
       .in('id', bookingPropertyIds)
 
-    // Fetch tenant profiles
+    // Fetch tenant profiles (include email for email notifications)
     const { data: tenantProfiles } = await supabase
       .from('profiles')
-      .select('id, full_name, phone')
+      .select('id, full_name, phone, email')
       .in('id', tenantIds)
 
     // Create lookup maps
@@ -193,6 +193,7 @@ export default function BookingsPage() {
 
       // Send email notification to tenant
       try {
+        console.log('Sending email for booking:', booking.id)
         const response = await fetch('/api/send-email', {
           method: 'POST',
           headers: {
@@ -204,16 +205,17 @@ export default function BookingsPage() {
         const result = await response.json()
         
         if (result.success) {
-          console.log('Email sent successfully to tenant')
+          console.log('Email sent successfully to tenant:', booking.tenant_profile?.email)
+          toast.success('Booking approved! Email sent to tenant.')
         } else {
           console.error('Failed to send email:', result.error)
+          toast.success('Booking approved! (Email notification failed)')
         }
       } catch (emailError) {
         console.error('Error sending email:', emailError)
-        // Don't show error to user - email is secondary to the approval
+        toast.success('Booking approved! (Email notification unavailable)')
       }
 
-      toast.success('Booking approved! Email notification sent to tenant.')
       loadBookings()
     } else {
       console.error('Error approving booking:', error)
