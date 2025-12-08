@@ -168,54 +168,6 @@ export default function Home() {
       question: "How do I contact the landlord?",
       answer: "Use our built-in messaging system accessible from your dashboard. You can send text messages, share images, and exchange files for any property-related communication."
     },
-    {
-      id: 5,
-      question: "What if something needs repair?",
-      answer: "Submit a maintenance request through the Maintenance section in your dashboard. Describe the issue, upload photos if needed, and your landlord will be notified immediately."
-    },
-    {
-      id: 6,
-      question: "What documents do I need?",
-      answer: "Typically, you'll need a valid ID, proof of income or employment, and references. Specific requirements vary by landlord, so check the property listing for details."
-    }
-  ]
-
-  const handleFaqClick = (faq) => {
-    if (!showFaqChat) {
-      // First time opening - just show the chat with this FAQ
-      setSelectedFaq(faq)
-      setChatHistory([faq])
-      setShowFaqChat(true)
-    } else {
-      // Already open - add to history
-      setChatHistory(prev => [...prev, faq])
-      setSelectedFaq(faq)
-    }
-  }
-
-  const closeFaqChat = () => {
-    setShowFaqChat(false)
-    setSelectedFaq(null)
-    setChatHistory([])
-  }
-
-  const openPermitModal = (permit) => {
-    setSelectedPermit(permit)
-    setShowPermitModal(true)
-  }
-
-  const closePermitModal = () => {
-    setShowPermitModal(false)
-    setSelectedPermit(null)
-  }
-
-  const permits = [
-    {
-      id: 1,
-      title: 'BIR Registration',
-      subtitle: 'Tax Compliant',
-      image: '/permits/bir.jpeg'
-    }
   ]
 
   return (
@@ -373,45 +325,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      {/* Business Permits Section
-      <div className="bg-gradient-to-br from-gray-50 to-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-2">
-              Business Permits & Certifications
-            </h2>
-            <p className="text-gray-600 text-sm max-w-xl mx-auto">
-              Fully licensed and certified rental management platform
-            </p>
-          </div>
-
-          <div className="flex justify-center">
-            <div className="w-full max-w-md">
-              {permits.map((permit) => (
-                <div 
-                  key={permit.id}
-                  onClick={() => openPermitModal(permit)}
-                  className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all cursor-pointer group"
-                >
-                  <div className="aspect-video overflow-hidden flex items-center justify-center bg-gray-100">
-                    <img 
-                      src={permit.image} 
-                      alt={permit.title}
-                      className="h-full w-auto object-contain transform rotate-90 scale-110 group-hover:scale-125 transition-transform duration-300"
-                    />
-                  </div>
-                  <div className="p-4 text-center">
-                    <h3 className="text-base font-bold text-gray-900 mb-1">{permit.title}</h3>
-                    <p className="text-gray-600 text-xs">{permit.subtitle}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div> */}
-
       {/* Footer with FAQ */}
       <footer className="bg-gray-900 text-white py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">

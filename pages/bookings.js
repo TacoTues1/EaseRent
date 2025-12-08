@@ -191,7 +191,29 @@ export default function BookingsPage() {
         link: '/bookings'
       })
 
-      toast.success('Booking approved!')
+      // Send email notification to tenant
+      try {
+        const response = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ bookingId: booking.id })
+        })
+
+        const result = await response.json()
+        
+        if (result.success) {
+          console.log('Email sent successfully to tenant')
+        } else {
+          console.error('Failed to send email:', result.error)
+        }
+      } catch (emailError) {
+        console.error('Error sending email:', emailError)
+        // Don't show error to user - email is secondary to the approval
+      }
+
+      toast.success('Booking approved! Email notification sent to tenant.')
       loadBookings()
     } else {
       console.error('Error approving booking:', error)

@@ -102,33 +102,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           toast.success('Check your email! We sent you a 6-digit verification code.', {
             icon: '✓',
           })
-          
-          /* Old logic - removed to always require OTP
-          // Check if email confirmation is required
-          if (data.session) {
-            // User is auto-confirmed, create profile and redirect
-            const { error: profileError } = await supabase.from('profiles').insert({
-              id: data.user.id,
-              full_name: fullName,
-              role: 'tenant'
-            })
-            
-            if (profileError) {
-              console.error('Profile creation error:', profileError)
-              throw new Error('Account created but profile setup failed. Please contact support.')
-            }
-            
-            toast.success('Sign-up complete! Redirecting...')
-            setTimeout(() => {
-              onClose()
-              router.push('/dashboard')
-            }, 1500)
-          } else {
-            // Email confirmation required - show OTP input
-            setShowOtpInput(true)
-            toast.success('Check your email! We sent you a 6-digit verification code.')
-          }
-          */
         }
       } else {
         // Sign In

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast, { Toaster } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 
 export default function Messages() {
   const [session, setSession] = useState(null)
@@ -835,34 +835,6 @@ export default function Messages() {
 
   return (
     <div className="min-h-screen bg-white">    
-      <Toaster 
-        position="top-center"
-        reverseOrder={false}
-        gutter={8}
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-            padding: '16px',
-            borderRadius: '8px',
-          },
-          success: {
-            duration: 2000,
-            style: {
-              background: '#10b981',
-              color: '#fff',
-            },
-          },
-          error: {
-            duration: 3000,
-            style: {
-              background: '#ef4444',
-              color: '#fff',
-            },
-          },
-        }}
-      />
       {/* Header */}
       <div className="bg-white ">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4">

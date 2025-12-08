@@ -17,9 +17,14 @@ export default function EditProperty() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    building_no: '',
+    street: '',
     address: '',
     city: '',
     zip: '',
+    location_link: '',
+    owner_phone: '',
+    owner_email: '',
     price: '',
     bedrooms: 1,
     bathrooms: 1,
@@ -308,13 +313,40 @@ export default function EditProperty() {
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Building No. (Optional)</label>
+              <input
+                type="text"
+                name="building_no"
+                placeholder="e.g., Bldg 5, Unit 203"
+                className="w-full border-2 px-3 py-2"
+                value={formData.building_no}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Street No./Street</label>
+              <input
+                type="text"
+                name="street"
+                required
+                placeholder="e.g., 123 Main Street"
+                className="w-full border-2 px-3 py-2"
+                value={formData.street}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Address</label>
+              <label className="block text-sm font-medium mb-1">Barangay/District</label>
               <input
                 type="text"
                 name="address"
                 required
+                placeholder="e.g., Barangay San Roque"
                 className="w-full border-2 px-3 py-2"
                 value={formData.address}
                 onChange={handleChange}
@@ -326,6 +358,7 @@ export default function EditProperty() {
                 type="text"
                 name="city"
                 required
+                placeholder="e.g., Manila"
                 className="w-full border-2 px-3 py-2"
                 value={formData.city}
                 onChange={handleChange}
@@ -342,6 +375,49 @@ export default function EditProperty() {
               value={formData.zip}
               onChange={handleChange}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Google Maps Location Link (Preferred)
+              <span className="text-xs text-gray-600 ml-2">📍 Helps tenants find the property easily</span>
+            </label>
+            <input
+              type="url"
+              name="location_link"
+              placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/..."
+              className="w-full border-2 px-3 py-2"
+              value={formData.location_link}
+              onChange={handleChange}
+            />
+            <p className="text-xs text-gray-600 mt-1">
+              💡 <strong>How to get:</strong> Open Google Maps → Search your property → Click "Share" → Copy link
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Owner Contact Number</label>
+              <input
+                type="tel"
+                name="owner_phone"
+                placeholder="e.g., +63 912 345 6789"
+                className="w-full border-2 px-3 py-2"
+                value={formData.owner_phone}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Owner Email</label>
+              <input
+                type="email"
+                name="owner_email"
+                placeholder="e.g., owner@example.com"
+                className="w-full border-2 px-3 py-2"
+                value={formData.owner_email}
+                onChange={handleChange}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
