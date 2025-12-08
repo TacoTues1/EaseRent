@@ -145,19 +145,17 @@ export default async function handler(req, res) {
 
     console.log('✅ Successfully retrieved email, proceeding to send...')
 
-    // TEMPORARY: Resend free tier only sends to verified email
-    // In production, verify a domain at resend.com/domains
-    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'preview'
+    // TEMPORARY: Resend free tier restriction
+    // Override recipient to send all emails to verified address for testing
     const actualRecipient = tenantEmail
-    const testEmail = 'alfonzperez92@gmail.com' // Resend verified email
+    const testEmail = 'alfonzperez92@gmail.com'
     
-    // Use test email in development/preview, real email in production (after domain verification)
-    const emailTo = isDevelopment || !process.env.RESEND_DOMAIN_VERIFIED ? testEmail : tenantEmail
+    // Always use test email until domain is verified
+    const emailTo = testEmail
     
-    if (emailTo !== actualRecipient) {
-      console.log(`⚠️  TESTING MODE: Sending to ${emailTo} instead of ${actualRecipient}`)
-      console.log('To send to real users, verify a domain at resend.com/domains')
-    }
+    console.log(`⚠️  TESTING MODE: Sending to ${emailTo} instead of ${actualRecipient}`)
+    console.log('📧 Intended recipient:', actualRecipient)
+    console.log('To enable sending to real users: verify a domain at resend.com/domains')
 
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)
