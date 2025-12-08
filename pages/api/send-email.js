@@ -46,23 +46,19 @@ export default async function handler(req, res) {
       })
     }
 
-    // Get tenant email using RPC call or direct query
-    // Since email is in auth.users, we need to query it via a database function
-    // For now, let's use a workaround: query from auth.users via SQL
-    const { data: emailData, error: emailError } = await supabaseAdmin
-      .rpc('get_user_email', { user_id: booking.tenant })
-
-    let tenantEmail = emailData
-
-    // If RPC doesn't exist, try alternative: check if email exists in profiles metadata
-    if (emailError || !tenantEmail) {
-      console.log('RPC not available, email will need to be added to database')
-      // Return error for now - we'll create the RPC function
+    // Get tenant email from auth.users (works for all auth methods: email, Google, Facebook)
+    // Using admin client to access auth.users directly
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(booking.tenant)
+    
+    if (userError || !userData?.user?.email) {
+      console.error('Error fetching user email:', userError)
       return res.status(400).json({ 
-        error: 'Cannot retrieve tenant email. Please create get_user_email function in Supabase.',
-        details: emailError?.message
+        error: 'Cannot retrieve tenant email', 
+        details: userError?.message || 'User email not found'
       })
     }
+
+    const tenantEmail = userData.user.email
 
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)

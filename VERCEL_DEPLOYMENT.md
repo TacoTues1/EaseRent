@@ -76,8 +76,15 @@ git push origin main
 **4. Common Issues**
 - ❌ Missing `SUPABASE_SERVICE_ROLE_KEY` → Add it to Vercel
 - ❌ Wrong Resend API key → Verify in Resend dashboard
-- ❌ RPC function `get_user_email` not created → Check Supabase SQL editor
-- ❌ Email address not found → User may not have email in auth
+- ❌ Email address not found → User may not have completed signup
+
+**Note**: Email retrieval works for **all authentication methods**:
+- ✅ Email/Password signup
+- ✅ Google OAuth (email from Google account)
+- ✅ Facebook OAuth (email from Facebook account)
+- ✅ Any other OAuth provider configured in Supabase
+
+The API uses `supabaseAdmin.auth.admin.getUserById()` which retrieves the email from `auth.users` regardless of the authentication method used.
 
 ## 📝 Next Steps After Deployment
 
