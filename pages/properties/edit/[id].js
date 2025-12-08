@@ -19,7 +19,6 @@ export default function EditProperty() {
     description: '',
     address: '',
     city: '',
-    state: '',
     zip: '',
     price: '',
     bedrooms: 1,
@@ -27,8 +26,41 @@ export default function EditProperty() {
     area_sqft: '',
     available: true,
     status: 'available',
-    terms_conditions: ''
+    terms_conditions: '',
+    amenities: []
   })
+
+  const availableAmenities = [
+    'Kitchen',
+    'Wifi',
+    'Pool',
+    'TV',
+    'Elevator',
+    'Air conditioning',
+    'Heating',
+    'Washing machine',
+    'Dryer',
+    'Parking',
+    'Gym',
+    'Security',
+    'Balcony',
+    'Garden',
+    'Pet friendly',
+    'Furnished',
+    'Carbon monoxide alarm',
+    'Smoke alarm',
+    'Fire extinguisher',
+    'First aid kit'
+  ]
+
+  const toggleAmenity = (amenity) => {
+    setFormData(prev => ({
+      ...prev,
+      amenities: prev.amenities.includes(amenity)
+        ? prev.amenities.filter(a => a !== amenity)
+        : [...prev.amenities, amenity]
+    }))
+  }
 
   useEffect(() => {
     checkAuth()
@@ -98,7 +130,8 @@ export default function EditProperty() {
       area_sqft: data.area_sqft || '',
       available: data.available ?? true,
       status: data.status || 'available',
-      terms_conditions: data.terms_conditions || ''
+      terms_conditions: data.terms_conditions || '',
+      amenities: data.amenities || []
     })
 
     // Load existing images
@@ -300,27 +333,15 @@ export default function EditProperty() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">State</label>
-              <input
-                type="text"
-                name="state"
-                className="w-full border-2 px-3 py-2"
-                value={formData.state}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">ZIP Code</label>
-              <input
-                type="text"
-                name="zip"
-                className="w-full border-2 px-3 py-2"
-                value={formData.zip}
-                onChange={handleChange}
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">ZIP Code</label>
+            <input
+              type="text"
+              name="zip"
+              className="w-full border-2 px-3 py-2"
+              value={formData.zip}
+              onChange={handleChange}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -396,7 +417,7 @@ export default function EditProperty() {
 
           {/* Image Upload Section */}
           <div className="border-t pt-4">
-            <label className="block text-sm font-medium mb-3">Property Images</label>
+            <label className="block text-sm font-medium mb-3">Property Images (Max of 10 Images)</label>
             
             <div className="flex flex-wrap gap-2">
               {imageUrls.map((url, index) => (
@@ -452,6 +473,31 @@ export default function EditProperty() {
             <p className="mt-6 text-xs text-gray-500">
               Click boxes to upload images (max 5MB each)
             </p>
+          </div>
+
+          {/* Amenities Section */}
+          <div className="border-t pt-4 mt-4">
+            <label className="block text-sm font-medium mb-3">What this place offers</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {availableAmenities.map((amenity) => (
+                <label
+                  key={amenity}
+                  className={`flex items-center gap-2 p-2 border-2 rounded cursor-pointer transition-all ${
+                    formData.amenities.includes(amenity)
+                      ? 'border-black bg-gray-50'
+                      : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.amenities.includes(amenity)}
+                    onChange={() => toggleAmenity(amenity)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">{amenity}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           {/* Terms and Conditions Section */}

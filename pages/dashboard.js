@@ -706,24 +706,24 @@ export default function Dashboard() {
                         <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 640 512">
                           <path d="M32 32c17.7 0 32 14.3 32 32V320H288V160c0-17.7 14.3-32 32-32H544c53 0 96 43 96 96V448c0 17.7-14.3 32-32 32s-32-14.3-32-32V416H352 320 64v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V64C0 46.3 14.3 32 32 32zm144 96a80 80 0 1 1 0 160 80 80 0 1 1 0-160z"/>
                         </svg>
-                        <span className="text-xs font-medium text-black">{property.bedrooms}</span>
+                        <span className="text-xs font-medium text-black">{property.bedrooms} Bedrooms</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 512 512">
                           <path d="M96 77.3c0-7.3 5.9-13.3 13.3-13.3c3.5 0 6.9 1.4 9.4 3.9l14.9 14.9C130 91.8 128 101.7 128 112c0 19.9 7.2 38 19.2 52c-5.3 9.2-4 21.1 3.8 29c9.4 9.4 24.6 9.4 33.9 0L289 89c9.4-9.4 9.4-24.6 0-33.9c-7.9-7.9-19.8-9.1-29-3.8C246 39.2 227.9 32 208 32c-10.3 0-20.2 2-29.2 5.5L163.9 22.6C149.4 8.1 129.7 0 109.3 0C66.6 0 32 34.6 32 77.3V256c-17.7 0-32 14.3-32 32s14.3 32 32 32H480c17.7 0 32-14.3 32-32s-14.3-32-32-32H96V77.3zM32 352v16c0 28.4 12.4 54 32 71.6V480c0 17.7 14.3 32 32 32s32-14.3 32-32V464H384v16c0 17.7 14.3 32 32 32s32-14.3 32-32V439.6c19.6-17.6 32-43.1 32-71.6V352H32z"/>
                         </svg>
-                        <span className="text-xs font-medium text-black">{property.bathrooms}</span>
+                        <span className="text-xs font-medium text-black">{property.bathrooms} Bathrooms</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                         </svg>
-                        <span className="text-xs font-medium text-black">{property.area_sqft}</span>
+                        <span className="text-xs font-medium text-black">{property.area_sqft} Sqm</span>
                       </div>
                     </div>
                     
                     {property.description && (
-                      <p className="text-xs text-black mb-3 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-black mb-3 line-clamp-2 leading-relaxed whitespace-pre-line">
                         {property.description}
                       </p>
                     )}
@@ -736,6 +736,14 @@ export default function Dashboard() {
                         >
                           {profile.role === 'landlord' ? 'Edit' : 'View Details'}
                         </button>
+                        {profile.role === 'landlord' && (
+                          <button
+                            onClick={() => router.push(`/properties/${property.id}`)}
+                            className="flex-1 bg-gray-800 text-white py-2 px-3 text-xs font-semibold border-2 border-gray-800 hover:bg-gray-700 cursor-pointer"
+                          >
+                            View Details
+                          </button>
+                        )}
                         {profile.role === 'tenant' && property.status === 'available' && (
                           <button
                             onClick={() => router.push(`/properties/${property.id}`)}
@@ -748,10 +756,10 @@ export default function Dashboard() {
                       
                       {/* Landlord: Assign/End Tenant Occupancy */}
                       {profile.role === 'landlord' && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2">
                           {getPropertyOccupancy(property.id) ? (
                             <>
-                              <div className="flex-1 py-2 px-3 text-xs bg-blue-50 border-2 border-blue-300 flex items-center gap-2">
+                              <div className="py-2 px-3 text-xs bg-blue-50 border-2 border-blue-300 flex items-center gap-2">
                                 <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
@@ -761,16 +769,16 @@ export default function Dashboard() {
                               </div>
                               <button
                                 onClick={() => endOccupancy(property.id)}
-                                className="py-2 px-3 text-xs font-semibold bg-orange-500 text-white border-2 border-orange-500 hover:bg-orange-600"
+                                className="w-full py-2 px-3 text-xs font-semibold bg-orange-500 text-white border-2 border-orange-500 hover:bg-orange-600"
                                 title="End tenant occupancy"
                               >
-                                End
+                                End Occupancy
                               </button>
                             </>
                           ) : (
                             <button
                               onClick={() => openAssignModal(property)}
-                              className="flex-1 py-2 px-3 text-xs font-semibold bg-blue-600 text-white border-2 border-blue-600 hover:bg-blue-700 flex items-center justify-center gap-1"
+                              className="w-full py-2 px-3 text-xs font-semibold bg-blue-600 text-white border-2 border-blue-600 hover:bg-blue-700 flex items-center justify-center gap-1"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />

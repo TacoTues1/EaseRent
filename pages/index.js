@@ -374,7 +374,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Business Permits Section */}
+      {/* Business Permits Section
       <div className="bg-gradient-to-br from-gray-50 to-white py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
@@ -410,7 +410,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Footer with FAQ */}
       <footer className="bg-gray-900 text-white py-12">
@@ -418,15 +418,19 @@ export default function Home() {
           {/* FAQ Section */}
           <div className="mb-10">
             <h3 className="text-xl font-bold text-white mb-6 text-center">Frequently Asked Questions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {faqData.map((faq) => (
-                <button
-                  key={faq.id}
-                  onClick={() => handleFaqClick(faq)}
-                  className="text-left text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors"
-                >
-                  {faq.question}
-                </button>
+                <div key={faq.id} className="bg-gray-800 rounded-lg p-5 hover:bg-gray-750 transition-colors">
+                  <h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-start gap-2">
+                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    <span>{faq.question}</span>
+                  </h4>
+                  <p className="text-xs text-gray-300 leading-relaxed pl-7">
+                    {faq.answer}
+                  </p>
+                </div>
               ))}
             </div>
           </div>
