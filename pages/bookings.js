@@ -138,10 +138,10 @@ export default function BookingsPage() {
       .select('id, title, address, city')
       .in('id', bookingPropertyIds)
 
-    // Fetch tenant profiles (include email for email notifications)
+    // Fetch tenant profiles (no email field in profiles table)
     const { data: tenantProfiles } = await supabase
       .from('profiles')
-      .select('id, full_name, phone, email')
+      .select('id, full_name, phone')
       .in('id', tenantIds)
 
     // Create lookup maps
