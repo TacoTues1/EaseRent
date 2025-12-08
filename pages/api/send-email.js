@@ -145,6 +145,20 @@ export default async function handler(req, res) {
 
     console.log('✅ Successfully retrieved email, proceeding to send...')
 
+    // TEMPORARY: Resend free tier only sends to verified email
+    // In production, verify a domain at resend.com/domains
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'preview'
+    const actualRecipient = tenantEmail
+    const testEmail = 'alfonzperez92@gmail.com' // Resend verified email
+    
+    // Use test email in development/preview, real email in production (after domain verification)
+    const emailTo = isDevelopment || !process.env.RESEND_DOMAIN_VERIFIED ? testEmail : tenantEmail
+    
+    if (emailTo !== actualRecipient) {
+      console.log(`⚠️  TESTING MODE: Sending to ${emailTo} instead of ${actualRecipient}`)
+      console.log('To send to real users, verify a domain at resend.com/domains')
+    }
+
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)
     const hour = viewingDate.getHours()
@@ -158,7 +172,7 @@ export default async function handler(req, res) {
 
     // Send email
     const emailResult = await sendViewingApprovalEmail({
-      to: tenantEmail,
+      to: emailTo, // Use test email or real email based on environment
       tenantName: booking.tenant_profile?.full_name || 'Tenant',
       propertyTitle: booking.property?.title || 'Property',
       propertyAddress: `${booking.property?.address || ''}, ${booking.property?.city || ''}`.trim(),
