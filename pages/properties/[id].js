@@ -134,16 +134,33 @@ export default function PropertyDetail() {
 
     setSubmitting(true)
     
-    // Check if tenant already has an application for this property
-    const { data: existingApp } = await supabase
+    // Check if tenant has an active or pending application
+    // First check if there's an active occupancy
+    const { data: activeOccupancy } = await supabase
+      .from('tenant_occupancies')
+      .select('id, status')
+      .eq('property_id', id)
+      .eq('tenant_id', session.user.id)
+      .in('status', ['active', 'pending_end'])
+      .maybeSingle()
+
+    if (activeOccupancy) {
+      setMessage('You are currently occupying this property or have a pending end request. You cannot apply again until your occupancy ends.')
+      setSubmitting(false)
+      return
+    }
+
+    // Check if tenant has a pending application (not accepted ones from previous occupancies)
+    const { data: pendingApp } = await supabase
       .from('applications')
       .select('id, status')
       .eq('property_id', id)
       .eq('tenant', session.user.id)
-      .single()
+      .eq('status', 'pending')
+      .maybeSingle()
 
-    if (existingApp) {
-      setMessage(`You already have a ${existingApp.status} application for this property. You cannot submit multiple applications.`)
+    if (pendingApp) {
+      setMessage('You already have a pending application for this property. Please wait for the landlord to review it.')
       setSubmitting(false)
       return
     }
