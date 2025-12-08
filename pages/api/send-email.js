@@ -77,47 +77,73 @@ export default async function handler(req, res) {
     
     let tenantEmail = null
     
-    // Try using admin API first (requires service role key)
+    // Method 1: Try using admin API (most reliable)
     try {
+      console.log('Trying admin.getUserById...')
       const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(booking.tenant)
       
       if (userError) {
-        console.error('Admin API error:', userError)
+        console.error('Admin API error:', JSON.stringify(userError, null, 2))
       } else if (userData?.user?.email) {
         tenantEmail = userData.user.email
-        console.log('Email retrieved via admin API:', tenantEmail)
+        console.log('✅ Email retrieved via admin API:', tenantEmail)
+      } else {
+        console.error('❌ Admin API returned no email:', JSON.stringify(userData, null, 2))
       }
     } catch (adminError) {
-      console.error('Admin API exception:', adminError)
+      console.error('❌ Admin API exception:', adminError.message)
+      console.error('Stack:', adminError.stack)
     }
     
-    // Fallback: Try using RPC function if admin API failed
+    // Method 2: Try querying auth.users directly (fallback)
     if (!tenantEmail) {
-      console.log('Trying RPC function as fallback...')
+      console.log('Trying direct auth.users query...')
+      try {
+        const { data: authData, error: authError } = await supabaseAdmin
+          .from('auth.users')
+          .select('email')
+          .eq('id', booking.tenant)
+          .single()
+        
+        if (authError) {
+          console.error('Direct auth query error:', JSON.stringify(authError, null, 2))
+        } else if (authData?.email) {
+          tenantEmail = authData.email
+          console.log('✅ Email retrieved via direct query:', tenantEmail)
+        }
+      } catch (directError) {
+        console.error('❌ Direct query exception:', directError.message)
+      }
+    }
+    
+    // Method 3: Try RPC function as last resort
+    if (!tenantEmail) {
+      console.log('Trying RPC function as last fallback...')
       try {
         const { data: emailData, error: rpcError } = await supabaseAdmin
           .rpc('get_user_email', { user_id: booking.tenant })
         
         if (rpcError) {
-          console.error('RPC error:', rpcError)
+          console.error('RPC error:', JSON.stringify(rpcError, null, 2))
         } else if (emailData) {
           tenantEmail = emailData
-          console.log('Email retrieved via RPC:', tenantEmail)
+          console.log('✅ Email retrieved via RPC:', tenantEmail)
         }
       } catch (rpcException) {
-        console.error('RPC exception:', rpcException)
+        console.error('❌ RPC exception:', rpcException.message)
       }
     }
     
     if (!tenantEmail) {
-      console.error('Failed to retrieve tenant email through all methods')
+      console.error('❌ FAILED to retrieve tenant email through ALL methods')
+      console.error('Booking data:', JSON.stringify(booking, null, 2))
       return res.status(400).json({ 
         error: 'Cannot retrieve tenant email', 
-        details: 'Email not found in auth.users. Ensure SUPABASE_SERVICE_ROLE_KEY is set in Vercel environment variables.'
+        details: 'Failed to fetch email from auth.users. This user may not have an email address or the service role key may be incorrect.'
       })
     }
 
-    console.log('Successfully retrieved email, proceeding to send...')
+    console.log('✅ Successfully retrieved email, proceeding to send...')
 
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)
