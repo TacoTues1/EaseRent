@@ -15,6 +15,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Validate environment variables
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('SUPABASE_SERVICE_ROLE_KEY is not set!')
+    return res.status(500).json({ 
+      error: 'Server configuration error',
+      details: 'SUPABASE_SERVICE_ROLE_KEY environment variable is missing. Please add it to Vercel.'
+    })
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.error('RESEND_API_KEY is not set!')
+    return res.status(500).json({ 
+      error: 'Server configuration error',
+      details: 'RESEND_API_KEY environment variable is missing. Please add it to Vercel.'
+    })
+  }
+
   try {
     const { bookingId } = req.body
     console.log('Received booking ID:', bookingId)
@@ -48,17 +65,51 @@ export default async function handler(req, res) {
 
     // Get tenant email from auth.users (works for all auth methods: email, Google, Facebook)
     // Using admin client to access auth.users directly
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(booking.tenant)
+    console.log('Attempting to fetch user email for tenant:', booking.tenant)
     
-    if (userError || !userData?.user?.email) {
-      console.error('Error fetching user email:', userError)
+    let tenantEmail = null
+    
+    // Try using admin API first (requires service role key)
+    try {
+      const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(booking.tenant)
+      
+      if (userError) {
+        console.error('Admin API error:', userError)
+      } else if (userData?.user?.email) {
+        tenantEmail = userData.user.email
+        console.log('Email retrieved via admin API:', tenantEmail)
+      }
+    } catch (adminError) {
+      console.error('Admin API exception:', adminError)
+    }
+    
+    // Fallback: Try using RPC function if admin API failed
+    if (!tenantEmail) {
+      console.log('Trying RPC function as fallback...')
+      try {
+        const { data: emailData, error: rpcError } = await supabaseAdmin
+          .rpc('get_user_email', { user_id: booking.tenant })
+        
+        if (rpcError) {
+          console.error('RPC error:', rpcError)
+        } else if (emailData) {
+          tenantEmail = emailData
+          console.log('Email retrieved via RPC:', tenantEmail)
+        }
+      } catch (rpcException) {
+        console.error('RPC exception:', rpcException)
+      }
+    }
+    
+    if (!tenantEmail) {
+      console.error('Failed to retrieve tenant email through all methods')
       return res.status(400).json({ 
         error: 'Cannot retrieve tenant email', 
-        details: userError?.message || 'User email not found'
+        details: 'Email not found in auth.users. Ensure SUPABASE_SERVICE_ROLE_KEY is set in Vercel environment variables.'
       })
     }
 
-    const tenantEmail = userData.user.email
+    console.log('Successfully retrieved email, proceeding to send...')
 
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)
