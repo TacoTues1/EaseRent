@@ -88,6 +88,8 @@ export default function NotificationsPage() {
         router.push('/payments')
       } else if (notif.type === 'maintenance') {
         router.push('/maintenance')
+      } else if (notif.type === 'end_occupancy_request' || notif.type === 'end_request_approved' || notif.type === 'end_request_rejected') {
+        router.push('/dashboard')
       } else if (notif.type === 'application' || notif.type.includes('application_')) {
         router.push('/applications')
       } else if (notif.type === 'message') {

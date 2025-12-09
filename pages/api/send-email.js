@@ -24,11 +24,11 @@ export default async function handler(req, res) {
     })
   }
 
-  if (!process.env.RESEND_API_KEY) {
-    console.error('RESEND_API_KEY is not set!')
+  if (!process.env.BREVO_API_KEY) {
+    console.error('BREVO_API_KEY is not set!')
     return res.status(500).json({ 
       error: 'Server configuration error',
-      details: 'RESEND_API_KEY environment variable is missing. Please add it to Vercel.'
+      details: 'BREVO_API_KEY environment variable is missing. Please add it to Vercel.'
     })
   }
 
@@ -144,18 +144,7 @@ export default async function handler(req, res) {
     }
 
     console.log('✅ Successfully retrieved email, proceeding to send...')
-
-    // TEMPORARY: Resend free tier restriction
-    // Override recipient to send all emails to verified address for testing
-    const actualRecipient = tenantEmail
-    const testEmail = 'alfonzperez92@gmail.com'
-    
-    // Always use test email until domain is verified
-    const emailTo = testEmail
-    
-    console.log(`⚠️  TESTING MODE: Sending to ${emailTo} instead of ${actualRecipient}`)
-    console.log('📧 Intended recipient:', actualRecipient)
-    console.log('To enable sending to real users: verify a domain at resend.com/domains')
+    console.log('📧 Sending email to:', tenantEmail)
 
     // Determine time slot info
     const viewingDate = new Date(booking.booking_date)
@@ -170,7 +159,7 @@ export default async function handler(req, res) {
 
     // Send email
     const emailResult = await sendViewingApprovalEmail({
-      to: emailTo, // Use test email or real email based on environment
+      to: tenantEmail,
       tenantName: booking.tenant_profile?.full_name || 'Tenant',
       propertyTitle: booking.property?.title || 'Property',
       propertyAddress: `${booking.property?.address || ''}, ${booking.property?.city || ''}`.trim(),
@@ -181,7 +170,7 @@ export default async function handler(req, res) {
     })
 
     if (!emailResult.success) {
-      console.error('Failed to send email via Resend')
+      console.error('Failed to send email via Brevo')
       console.error('Email error details:', JSON.stringify(emailResult.error, null, 2))
       return res.status(500).json({ 
         error: 'Failed to send email', 
