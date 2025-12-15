@@ -174,7 +174,8 @@ export default function Navbar() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
-                <Link href="/" className="text-lg sm:text-xl font-bold text-black">
+                <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black">
+                  <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
                   EaseRent
                 </Link>
               </div>
@@ -218,7 +219,8 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-4 sm:gap-8">
-            <Link href="/dashboard" className="text-lg sm:text-xl font-bold text-black">
+            <Link href="/dashboard" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black">
+              <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
               EaseRent
             </Link>
             <div className="hidden md:flex gap-4 lg:gap-6 relative">
@@ -341,7 +343,7 @@ export default function Navbar() {
             </button>
 
             {/* Desktop AI Chat Button */}
-            <div className="hidden md:flex items-center">
+            {/* <div className="hidden md:flex items-center">
               <Link 
                 href="/ai-chat"
                 className="p-2 text-black hover:bg-gray-100 rounded-full transition-colors"
@@ -351,7 +353,7 @@ export default function Navbar() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
               </Link>
-            </div>
+            </div> */}
 
             {/* Desktop User Profile Dropdown */}
             <div className="hidden md:block relative">

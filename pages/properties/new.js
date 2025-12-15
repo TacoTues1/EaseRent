@@ -297,7 +297,7 @@ export default function NewProperty() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">City</label>
+              <label className="block text-sm font-medium mb-1">City/Municipality</label>
               <input
                 type="text"
                 name="city"

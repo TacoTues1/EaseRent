@@ -26,7 +26,7 @@ export default function BookingsPage() {
   useEffect(() => {
     if (session && profile) {
       if (profile.role !== 'landlord') {
-        toast.error('Only landlords can access this page')
+        toast.success('Please Check your Email for Viewing Details')
         router.push('/dashboard')
         return
       }

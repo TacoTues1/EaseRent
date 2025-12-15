@@ -423,7 +423,7 @@ export default function PropertyDetail() {
                   <div className="font-medium text-gray-800">{property.building_no}</div>
                 )}
                 {property.street && (
-                  <div>{property.street}, {property.address}{property.city} {property.zip}</div>
+                  <div>{property.street}, {property.address} {property.city} {property.zip}</div>
                 )}
                 {property.owner_phone && (
                   <div className="mt-2 flex items-center gap-1">
