@@ -281,8 +281,6 @@ export default function Dashboard() {
       return
     }
 
-    console.log('Approval successful:', data)
-
     // Update property status to available
     await supabase
       .from('properties')
@@ -747,7 +745,7 @@ export default function Dashboard() {
                         {profile.role === 'tenant' && property.status === 'available' && (
                           <button
                             onClick={() => router.push(`/properties/${property.id}`)}
-                            className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black"
+                            className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer"
                           >
                           Apply
                           </button>
@@ -806,7 +804,7 @@ export default function Dashboard() {
             {profile.role === 'tenant' && (
               <button
                 onClick={() => router.push('/maintenance')}
-                className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+                className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -824,7 +822,7 @@ export default function Dashboard() {
               <>
                 <button
                   onClick={() => router.push('/maintenance')}
-                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -839,7 +837,7 @@ export default function Dashboard() {
 
                 <button
                   onClick={() => router.push('/bookings')}
-                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -856,7 +854,7 @@ export default function Dashboard() {
 
             <button
               onClick={() => router.push('/payments')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
             >
               <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -873,7 +871,7 @@ export default function Dashboard() {
 
             <button
               onClick={() => router.push('/messages')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
             >
               <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -890,7 +888,7 @@ export default function Dashboard() {
 
             <button
               onClick={() => router.push('/settings')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors"
+              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
             >
               <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

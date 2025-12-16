@@ -231,17 +231,12 @@ export default function ApplicationsPage() {
   async function confirmDelete() {
     if (!applicationToDelete) return
 
-    console.log('Attempting to delete application:', applicationToDelete)
-    console.log('Current user:', session.user.id)
-    console.log('User role:', profile.role)
-
     const { error } = await supabase
       .from('applications')
       .delete()
       .eq('id', applicationToDelete)
 
     if (!error) {
-      console.log('Application deleted successfully')
       setShowDeleteModal(false)
       setApplicationToDelete(null)
       toast.success('Application deleted successfully')

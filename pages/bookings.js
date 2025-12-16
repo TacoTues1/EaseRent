@@ -50,48 +50,23 @@ export default function BookingsPage() {
   async function loadBookings() {
     setLoading(true)
 
-    console.log('Current user ID:', session.user.id)
-    console.log('Profile:', profile)
-
     // Get landlord's properties
     const { data: myProperties, error: propError } = await supabase
       .from('properties')
       .select('id, title, landlord')
       .eq('landlord', session.user.id)
 
-    console.log('My properties:', myProperties)
-
     if (propError) {
       console.error('Error loading properties:', propError)
     }
 
-    // Debug: Check ALL bookings to see what's in the database
-    const { data: allBookingsDebug } = await supabase
-      .from('bookings')
-      .select('*')
-      .order('created_at', { ascending: false })
-    console.log('ALL bookings in database:', allBookingsDebug)
-    
-    // Log each booking's details
-    allBookingsDebug?.forEach((booking, index) => {
-      console.log(`Booking ${index + 1}:`, {
-        id: booking.id,
-        property_id: booking.property_id,
-        status: booking.status,
-        tenant: booking.tenant,
-        booking_date: booking.booking_date
-      })
-    })
-
     if (!myProperties || myProperties.length === 0) {
-      console.log('No properties found for landlord')
       setBookings([])
       setLoading(false)
       return
     }
 
     const propertyIds = myProperties.map(p => p.id)
-    console.log('Property IDs:', propertyIds)
 
     // Build query - get bookings first
     // Include bookings with NULL property_id OR bookings for landlord's properties
@@ -111,9 +86,6 @@ export default function BookingsPage() {
 
     const { data: bookingsData, error } = await query
 
-    console.log('Bookings data for my properties:', bookingsData)
-    console.log('Current filter:', filter)
-
     if (error) {
       console.error('Error loading bookings:', error)
       toast.error('Failed to load bookings')
@@ -122,7 +94,6 @@ export default function BookingsPage() {
     }
 
     if (!bookingsData || bookingsData.length === 0) {
-      console.log('No bookings found for my properties with filter:', filter)
       setBookings([])
       setLoading(false)
       return
@@ -162,7 +133,6 @@ export default function BookingsPage() {
       tenant_profile: tenantMap[booking.tenant]
     }))
 
-    console.log('Enriched bookings:', enrichedBookings)
     setBookings(enrichedBookings)
     setLoading(false)
   }
@@ -193,7 +163,6 @@ export default function BookingsPage() {
 
       // Send email notification to tenant
       try {
-        console.log('Sending email for booking:', booking.id)
         const response = await fetch('/api/send-email', {
           method: 'POST',
           headers: {
@@ -205,7 +174,6 @@ export default function BookingsPage() {
         const result = await response.json()
         
         if (result.success) {
-          console.log('Email sent successfully')
           toast.success('Booking approved! Email sent to tenant.')
         } else {
           console.error('Failed to send email:', result.error)

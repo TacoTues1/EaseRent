@@ -102,8 +102,6 @@ export default function PropertyDetail() {
           
         if (!landlordError && landlordData) {
           setLandlordProfile(landlordData)
-        } else {
-          console.log("Could not load landlord profile:", landlordError)
         }
       }
     }

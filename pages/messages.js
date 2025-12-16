@@ -64,8 +64,6 @@ export default function Messages() {
             filter: `receiver_id=eq.${profile.id}`
           }, 
           async (payload) => {
-            console.log('🌐 Global message notification:', payload.new)
-            
             // Update unread count for this conversation
             loadUnreadCounts()
             
@@ -80,9 +78,7 @@ export default function Messages() {
             })
           }
         )
-        .subscribe((status) => {
-          console.log('🌐 Global subscription status:', status)
-        })
+        .subscribe()
 
       return () => {
         supabase.removeChannel(channel)
@@ -122,8 +118,6 @@ export default function Messages() {
             filter: `conversation_id=eq.${selectedConversation.id}`
           }, 
           async (payload) => {
-            console.log('📨 New message received:', payload.new)
-            
             // Fetch the complete message with sender details
             const { data: newMessage, error } = await supabase
               .from('messages')
@@ -135,21 +129,16 @@ export default function Messages() {
               .single()
             
             if (error) {
-              console.error('❌ Error fetching message details:', error)
               return
             }
-            
-            console.log('✅ Message details fetched:', newMessage)
             
             if (newMessage) {
               setMessages(prev => {
                 // Check if message already exists (avoid duplicates)
                 const exists = prev.some(m => m.id === newMessage.id)
                 if (exists) {
-                  console.log('⚠️ Message already exists, skipping')
                   return prev
                 }
-                console.log('➕ Adding new message to list')
                 return [...prev, newMessage]
               })
               
@@ -185,8 +174,6 @@ export default function Messages() {
             filter: `conversation_id=eq.${selectedConversation.id}`
           },
           async (payload) => {
-            console.log('🔄 Message updated (read status):', payload.new)
-            
             // Update the message in the local state
             setMessages(prev => prev.map(msg => 
               msg.id === payload.new.id 
@@ -195,18 +182,9 @@ export default function Messages() {
             ))
           }
         )
-        .subscribe((status, err) => {
-          console.log('🔌 Subscription status:', status)
-          if (err) {
-            console.error('❌ Subscription error:', err)
-          }
-          if (status === 'SUBSCRIBED') {
-            console.log('✅ Successfully subscribed to messages')
-          }
-        })
+        .subscribe()
 
       return () => {
-        console.log('🔌 Cleaning up subscription')
         supabase.removeChannel(channel)
       }
     }
@@ -301,7 +279,6 @@ export default function Messages() {
   }
 
   async function loadAllUsers() {
-    // console.log('Current session user ID:', session.user.id) // Debug log
     
     // Load all users except the current user
     const { data: users, error } = await supabase
@@ -315,8 +292,6 @@ export default function Messages() {
       return
     }
 
-    // console.log('Loaded users:', users) // Debug log
-    // console.log('Total users found:', users?.length || 0) // Debug log
     
     setAllUsers(users || [])
     setFilteredUsers(users || [])
@@ -580,7 +555,6 @@ export default function Messages() {
     const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
     const filePath = `${session.user.id}/${conversationId}/${fileName}`
 
-    console.log('📤 Uploading file:', file.name, 'to path:', filePath)
 
     const { data, error } = await supabase.storage
       .from('message-attachments')
@@ -590,11 +564,8 @@ export default function Messages() {
       })
 
     if (error) {
-      console.error('❌ Error uploading file:', error)
       throw error
     }
-
-    console.log('✅ File uploaded successfully:', data)
 
     // Create a signed URL that expires in 1 year
     const { data: signedUrlData, error: urlError } = await supabase.storage
@@ -602,7 +573,6 @@ export default function Messages() {
       .createSignedUrl(filePath, 31536000) // 1 year in seconds
 
     if (urlError) {
-      console.error('❌ Error creating signed URL:', urlError)
       // Fallback to public URL if signed URL fails
       const { data: urlData } = supabase.storage
         .from('message-attachments')
@@ -615,8 +585,6 @@ export default function Messages() {
         size: file.size
       }
     }
-
-    console.log('🔗 Signed URL:', signedUrlData.signedUrl)
 
     return {
       url: signedUrlData.signedUrl,

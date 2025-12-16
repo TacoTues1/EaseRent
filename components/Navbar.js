@@ -38,6 +38,34 @@ export default function Navbar() {
     }
   }, [])
 
+  // Subscribe to real-time notification changes for badge auto-update
+  useEffect(() => {
+    if (!session) return
+
+    const userId = session.user.id
+    
+    const channel = supabase
+      .channel('navbar-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient=eq.${userId}`
+        },
+        () => {
+          // Any change to notifications, reload the actual count from database
+          loadUnreadCount(userId)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [session])
+
   // Update underline position on route change
   useEffect(() => {
     if (typeof window !== 'undefined') {
