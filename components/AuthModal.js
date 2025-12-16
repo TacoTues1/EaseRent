@@ -171,7 +171,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       })
       
       if (error) throw error
-      // User will be redirected automatically - no email verification needed
+      // User will be redirected automatically
+      // Google provides: given_name (first), family_name (last) in user_metadata
     } catch (err) {
       toast.error(err.message || 'Failed to sign in with Google', {
         icon: '✕',
@@ -188,13 +189,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         provider: 'facebook',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
+          // Request first_name, middle_name, last_name from Facebook
           scopes: 'public_profile email',
           skipBrowserRedirect: false
         }
       })
       
       if (error) throw error
-      // User will be redirected automatically - no email verification needed
+      // User will be redirected automatically
+      // Facebook provides: first_name, middle_name, last_name in user_metadata
     } catch (err) {
       toast.error(err.message || 'Failed to sign in with Facebook', {
         icon: '✕',

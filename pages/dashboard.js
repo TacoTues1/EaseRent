@@ -24,10 +24,6 @@ export default function Dashboard() {
   const [showEndRequestsModal, setShowEndRequestsModal] = useState(false)
   // Property summaries (bills & maintenance)
   const [propertySummaries, setPropertySummaries] = useState({})
-  // OAuth name completion modal
-  const [showNameModal, setShowNameModal] = useState(false)
-  const [nameFormData, setNameFormData] = useState({ firstName: '', middleName: '', lastName: '' })
-  const [savingName, setSavingName] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -406,108 +402,54 @@ export default function Dashboard() {
     
     if (data) {
       setProfile(data)
-      // Check if OAuth user needs to complete their name (first_name is auto-generated from email or OAuth name)
-      // We detect this by checking if last_name is null (OAuth users often don't have proper last names)
-      if (!data.last_name || data.last_name === null) {
-        const user = session?.user || (await supabase.auth.getUser()).data.user
-        // Check if this is an OAuth user (has provider info in app_metadata)
-        const isOAuthUser = user?.app_metadata?.provider && user.app_metadata.provider !== 'email'
-        if (isOAuthUser) {
-          // Pre-fill with any available data from OAuth
-          const oauthName = user?.user_metadata?.full_name || user?.user_metadata?.name || ''
-          const nameParts = oauthName.split(' ')
-          setNameFormData({
-            firstName: nameParts[0] || data.first_name || '',
-            middleName: '',
-            lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
-          })
-          setShowNameModal(true)
+    } else {
+      // Profile doesn't exist (e.g., Google/Facebook sign-in user), create one
+      const user = session?.user || (await supabase.auth.getUser()).data.user
+      const metadata = user?.user_metadata || {}
+      
+      // Extract names from OAuth metadata
+      // Google provides: given_name, family_name, full_name/name
+      // Facebook provides: first_name, middle_name, last_name, name
+      let firstName = metadata.given_name || metadata.first_name || null
+      let middleName = metadata.middle_name || null
+      let lastName = metadata.family_name || metadata.last_name || null
+      
+      // Fallback: parse full_name/name if individual fields not available
+      if (!firstName || !lastName) {
+        const fullName = metadata.full_name || metadata.name || ''
+        const nameParts = fullName.trim().split(/\s+/)
+        
+        if (nameParts.length >= 1 && !firstName) {
+          firstName = nameParts[0]
+        }
+        if (nameParts.length >= 2 && !lastName) {
+          lastName = nameParts[nameParts.length - 1]
+        }
+        if (nameParts.length >= 3 && !middleName) {
+          // Everything between first and last is middle name
+          middleName = nameParts.slice(1, -1).join(' ')
         }
       }
-    } else {
-      // Profile doesn't exist (e.g., Google/Facebook sign-in user), show name modal
-      const user = session?.user || (await supabase.auth.getUser()).data.user
-      const isOAuthUser = user?.app_metadata?.provider && user.app_metadata.provider !== 'email'
       
-      if (isOAuthUser) {
-        // Pre-fill with OAuth name data
-        const oauthName = user?.user_metadata?.full_name || user?.user_metadata?.name || ''
-        const nameParts = oauthName.split(' ')
-        setNameFormData({
-          firstName: nameParts[0] || user?.email?.split('@')[0] || '',
-          middleName: '',
-          lastName: nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
-        })
-        // Create a temporary profile first, then show modal to complete it
-        const { data: newProfile } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            first_name: nameParts[0] || 'User',
-            middle_name: null,
-            last_name: null, // Null to trigger the modal
-            role: 'tenant'
-          })
-          .select()
-          .maybeSingle()
-        
-        if (newProfile) setProfile(newProfile)
-        setShowNameModal(true)
-      } else {
-        // Regular email signup - should already have proper names from AuthModal
-        const fullNameParts = (user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User').split(' ')
-        const { data: newProfile, error } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            first_name: fullNameParts[0] || 'User',
-            middle_name: fullNameParts.length > 2 ? fullNameParts.slice(1, -1).join(' ') : null,
-            last_name: fullNameParts.length > 1 ? fullNameParts[fullNameParts.length - 1] : null,
-            role: 'tenant'
-          })
-          .select()
-          .maybeSingle()
-        
-        if (newProfile) setProfile(newProfile)
+      // Final fallback to email if no name available
+      if (!firstName) {
+        firstName = user?.email?.split('@')[0] || 'User'
       }
+      
+      const { data: newProfile, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          first_name: firstName,
+          middle_name: middleName,
+          last_name: lastName,
+          role: 'tenant' // Default role for new users
+        })
+        .select()
+        .maybeSingle()
+      
+      if (newProfile) setProfile(newProfile)
     }
-  }
-
-  // Save OAuth user's complete name
-  async function handleSaveOAuthName(e) {
-    e.preventDefault()
-    if (!nameFormData.firstName || !nameFormData.lastName) {
-      toast.error('Please enter your first and last name')
-      return
-    }
-    
-    setSavingName(true)
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        first_name: nameFormData.firstName.trim(),
-        middle_name: nameFormData.middleName.trim() || null,
-        last_name: nameFormData.lastName.trim()
-      })
-      .eq('id', session.user.id)
-    
-    if (error) {
-      toast.error('Failed to save your name. Please try again.')
-      setSavingName(false)
-      return
-    }
-    
-    // Reload profile with updated data
-    const { data: updatedProfile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .maybeSingle()
-    
-    if (updatedProfile) setProfile(updatedProfile)
-    setShowNameModal(false)
-    setSavingName(false)
-    toast.success('Profile updated successfully!')
   }
 
   async function loadProperties() {
@@ -579,60 +521,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* OAuth Name Completion Modal */}
-      {showNameModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 px-4">
-          <div className="absolute inset-0 bg-black opacity-50"></div>
-          <div className="bg-white border-2 border-black p-6 w-full max-w-md relative z-10 rounded-xl">
-            <h2 className="text-2xl font-bold mb-2 text-black">Complete Your Profile</h2>
-            <p className="text-sm text-gray-600 mb-4">Please enter your full name to continue.</p>
-            
-            <form onSubmit={handleSaveOAuthName} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">First Name</label>
-                  <input 
-                    className="w-full border-2 border-black px-3 py-2 rounded-md" 
-                    value={nameFormData.firstName}
-                    onChange={e => setNameFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                    placeholder="Juan"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Last Name</label>
-                  <input 
-                    className="w-full border-2 border-black px-3 py-2 rounded-md" 
-                    value={nameFormData.lastName}
-                    onChange={e => setNameFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                    placeholder="Dela Cruz"
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Middle Name <span className="text-gray-500 text-xs">(Leave blank if N/A)</span>
-                </label>
-                <input 
-                  className="w-full border-2 border-black px-3 py-2 rounded-md" 
-                  value={nameFormData.middleName}
-                  onChange={e => setNameFormData(prev => ({ ...prev, middleName: e.target.value }))}
-                  placeholder="Santos (optional)"
-                />
-              </div>
-              <button 
-                type="submit" 
-                disabled={savingName} 
-                className="w-full bg-black text-white py-2 border-2 border-black disabled:opacity-50 cursor-pointer rounded-xl"
-              >
-                {savingName ? 'Saving...' : 'Save & Continue'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Hero Section */}
       <div className="relative bg-black text-white py-8 sm:py-16">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
