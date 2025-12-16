@@ -5,7 +5,9 @@ import { useRouter } from 'next/router'
 export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [middleName, setMiddleName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
@@ -25,7 +27,9 @@ export default function AuthPage() {
         if (data.user) {
           await supabase.from('profiles').insert({
             id: data.user.id,
-            full_name: fullName,
+            first_name: firstName,
+            middle_name: middleName || null,
+            last_name: lastName,
             role: 'tenant' // Always tenant for public signup
           })
         }
@@ -70,15 +74,36 @@ export default function AuthPage() {
         {message && <div className="mb-3 text-sm text-red-600">{message}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           {isSignUp && (
-            <div>
-              <label className="block text-sm">Full Name</label>
-              <input 
-                className="w-full border rounded px-3 py-2" 
-                value={fullName} 
-                onChange={e => setFullName(e.target.value)}
-                required
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm">First Name</label>
+                  <input 
+                    className="w-full border rounded px-3 py-2" 
+                    value={firstName} 
+                    onChange={e => setFirstName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm">Last Name</label>
+                  <input 
+                    className="w-full border rounded px-3 py-2" 
+                    value={lastName} 
+                    onChange={e => setLastName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm">Middle Name (Leave blank if N/A)</label>
+                <input 
+                  className="w-full border rounded px-3 py-2" 
+                  value={middleName} 
+                  onChange={e => setMiddleName(e.target.value)}
+                />
+              </div>
+            </>
           )}
           <div>
             <label className="block text-sm">Email</label>

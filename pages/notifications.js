@@ -238,7 +238,7 @@ export default function NotificationsPage() {
                   </div>
                   <button
                     onClick={(e) => deleteNotification(notif.id, e)}
-                    className="flex-shrink-0 p-2 text-black-colors"
+                    className="flex-shrink-0 p-2 text-black-colors cursor-pointer"
                     title="Delete notification"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,20 +256,20 @@ export default function NotificationsPage() {
       {deleteConfirm && (
         <div className="fixed inset-0  backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white border-2 border-black max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-black mb-2">Delete Notification</h3>
+            <h3 className="text-lg font-bold text-black mb-2 ">Delete Notification</h3>
             <p className="text-black mb-6">
               Are you sure you want to delete this notification? This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={cancelDelete}
-                className="px-4 py-2 border-2 border-black text-black bg-white hover:bg-gray-100 font-medium"
+                className="px-4 py-2 border-2 border-black text-black bg-white hover:bg-gray-100 font-medium cursor-pointer rounded-full"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 font-medium"
+                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 font-medium cursor-pointer rounded-full"
               >
                 Delete
               </button>

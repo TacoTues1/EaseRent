@@ -54,7 +54,7 @@ export default function MaintenancePage() {
   async function loadRequests() {
     let query = supabase
       .from('maintenance_requests')
-      .select('*, properties(title, landlord), tenant_profile:profiles!maintenance_requests_tenant_fkey(full_name)')
+      .select('*, properties(title, landlord), tenant_profile:profiles!maintenance_requests_tenant_fkey(first_name, middle_name, last_name)')
       .order('created_at', { ascending: false })
 
     // If tenant, show only their requests
@@ -191,7 +191,7 @@ export default function MaintenancePage() {
       if (property && property.landlord) {
         const template = NotificationTemplates.newMaintenanceRequest(
           property.title,
-          profile?.full_name || 'A tenant'
+          profile?.first_name ? `${profile.first_name} ${profile.last_name}` : 'A tenant'
         )
         await createNotification({
           recipient: property.landlord,
@@ -335,7 +335,7 @@ export default function MaintenancePage() {
                       <p className="text-sm text-black">{req.properties?.title}</p>
                       {profile?.role === 'landlord' && req.tenant_profile && (
                         <p className="text-sm text-black">
-                          Tenant: {req.tenant_profile.full_name}
+                          Tenant: {req.tenant_profile.first_name} {req.tenant_profile.last_name}
                         </p>
                       )}
                     </div>

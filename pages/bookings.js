@@ -10,7 +10,7 @@ export default function BookingsPage() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [bookings, setBookings] = useState([])
-  const [filter, setFilter] = useState('pending_approval') // pending_approval, approved, rejected, all
+  const [filter, setFilter] = useState('all') // all, pending_approval, approved, rejected
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -112,7 +112,7 @@ export default function BookingsPage() {
     // Fetch tenant profiles (no email field in profiles table)
     const { data: tenantProfiles } = await supabase
       .from('profiles')
-      .select('id, full_name, phone')
+      .select('id, first_name, middle_name, last_name, phone')
       .in('id', tenantIds)
 
     // Create lookup maps
@@ -332,18 +332,18 @@ export default function BookingsPage() {
         {/* Filter Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
           <button
-            onClick={() => setFilter('pending_approval')}
-            className={`px-4 py-2 font-medium text-sm ${
-              filter === 'pending_approval'
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 font-medium text-sm cursor-pointer rounded-full ${
+              filter === 'all'
                 ? 'bg-black text-white'
                 : 'bg-white text-black border-2 border-black'
             }`}
           >
-            Pending ({pendingCount})
+            All ({bookings.length})
           </button>
           <button
             onClick={() => setFilter('approved')}
-            className={`px-4 py-2 font-medium text-sm ${
+            className={`px-4 py-2 font-medium text-sm cursor-pointer rounded-full ${
               filter === 'approved'
                 ? 'bg-black text-white'
                 : 'bg-white text-black border-2 border-black'
@@ -352,24 +352,24 @@ export default function BookingsPage() {
             Approved ({approvedCount})
           </button>
           <button
+            onClick={() => setFilter('pending_approval')}
+            className={`px-4 py-2 font-medium text-sm cursor-pointer rounded-full ${
+              filter === 'pending_approval'
+                ? 'bg-black text-white'
+                : 'bg-white text-black border-2 border-black'
+            }`}
+          >
+            Pending ({pendingCount})
+          </button>
+          <button
             onClick={() => setFilter('rejected')}
-            className={`px-4 py-2 font-medium text-sm ${
+            className={`px-4 py-2 font-medium text-sm cursor-pointer rounded-full ${
               filter === 'rejected'
                 ? 'bg-black text-white'
                 : 'bg-white text-black border-2 border-black'
             }`}
           >
             Rejected ({rejectedCount})
-          </button>
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 font-medium text-sm ${
-              filter === 'all'
-                ? 'bg-black text-white'
-                : 'bg-white text-black border-2 border-black'
-            }`}
-          >
-            All ({bookings.length})
           </button>
         </div>
 
@@ -381,128 +381,100 @@ export default function BookingsPage() {
             </svg>
             <h3 className="text-lg font-bold text-black mb-2">No {filter !== 'all' ? filter : ''} bookings found</h3>
             <p className="text-black">
+              {filter === 'all' && 'No booking requests yet'}
               {filter === 'pending' && 'No pending viewing requests at the moment'}
               {filter === 'approved' && 'No approved viewings yet'}
               {filter === 'rejected' && 'No rejected bookings'}
-              {filter === 'all' && 'No booking requests yet'}
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
             {bookings.map((booking) => {
               const timeInfo = getTimeSlotInfo(booking.booking_date)
               const bookingDate = new Date(booking.booking_date)
               const isPast = bookingDate < new Date()
               
               return (
-                <div key={booking.id} className="bg-white border-2 border-black p-4">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-bold text-black text-lg">{booking.property?.title}</h3>
+                <div key={booking.id} className="bg-white p-4 hover:bg-gray-50 transition-colors">
+                  {/* Main row */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    {/* Status dot */}
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      booking.status === 'approved' ? 'bg-green-500' :
+                      booking.status === 'rejected' ? 'bg-red-500' :
+                      'bg-yellow-500'
+                    }`}></div>
+                    
+                    {/* Property & Tenant info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-black truncate">{booking.property?.title}</span>
                         {getStatusBadge(booking.status)}
                       </div>
-                      <p className="text-sm text-gray-600 mb-1">
-                        {booking.property?.address}, {booking.property?.city}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 mt-1">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          {booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}
+                        </span>
+                        {booking.tenant_profile?.phone && (
+                          <span className="text-xs">{booking.tenant_profile.phone}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    {/* Tenant Info */}
-                    <div className="bg-gray-50 p-3 border border-gray-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span className="font-semibold text-sm">Tenant Information</span>
+                    
+                    {/* Date & Time */}
+                    <div className="flex items-center gap-3 text-sm flex-shrink-0">
+                      <div className="text-right">
+                        <p className="font-medium text-black">
+                          {bookingDate.toLocaleDateString('en-US', { 
+                            weekday: 'short',
+                            month: 'short', 
+                            day: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-xs text-gray-500">{timeInfo.time}</p>
                       </div>
-                      <p className="text-sm text-black font-medium">{booking.tenant_profile?.full_name}</p>
-                      {booking.tenant_profile?.phone && (
-                        <p className="text-xs text-gray-600">📱 {booking.tenant_profile.phone}</p>
-                      )}
-                    </div>
-
-                    {/* Date & Time Info */}
-                    <div className="bg-gray-50 p-3 border border-gray-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="w-4 h-4 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span className="font-semibold text-sm">Viewing Schedule</span>
-                      </div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg">{timeInfo.emoji}</span>
-                        <div>
-                          <p className="text-sm font-medium text-black">
-                            {bookingDate.toLocaleDateString('en-US', { 
-                              weekday: 'short',
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric' 
-                            })}
-                          </p>
-                          <p className="text-xs text-gray-600">{timeInfo.time} • {timeInfo.label}</p>
-                        </div>
-                      </div>
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded ${
+                        timeInfo.label === 'Morning' ? 'bg-yellow-100 text-yellow-800' : 'bg-orange-100 text-orange-800'
+                      }`}>
+                        {timeInfo.label}
+                      </span>
                       {isPast && (
-                        <p className="text-xs text-red-600 font-semibold mt-1">⚠️ Past date</p>
+                        <span className="text-xs text-red-600 font-medium">Past</span>
                       )}
                     </div>
-                  </div>
-
-                  {/* Notes */}
-                  {booking.notes && (
-                    <div className="bg-blue-50 border border-blue-200 p-3 mb-4">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                        </svg>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-blue-900 mb-1">Tenant's Notes:</p>
-                          <p className="text-sm text-blue-800">{booking.notes}</p>
-                        </div>
+                    
+                    {/* Action Buttons */}
+                    {(booking.status === 'pending' || booking.status === 'pending_approval') && (
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => approveBooking(booking)}
+                          className="p-2 text-green-600 hover:bg-green-100 rounded transition-colors cursor-pointer"
+                          title="Approve"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => rejectBooking(booking)}
+                          className="p-2 text-red-600 hover:bg-red-100 rounded transition-colors cursor-pointer"
+                          title="Reject"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Action Buttons */}
-                  {(booking.status === 'pending' || booking.status === 'pending_approval') && (
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => approveBooking(booking)}
-                        className="px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 font-medium text-xs flex items-center gap-1.5"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => rejectBooking(booking)}
-                        className="px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 font-medium text-xs flex items-center gap-1.5"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                        Reject
-                      </button>
-                    </div>
-                  )}
-
-                  {booking.status === 'approved' && (
-                    <div className="bg-green-50 border border-green-200 p-3 text-center">
-                      <p className="text-sm text-green-800 font-medium">
-                        ✓ Viewing approved - Tenant has been notified
-                      </p>
-                    </div>
-                  )}
-
-                  {booking.status === 'rejected' && (
-                    <div className="bg-red-50 border border-red-200 p-3 text-center">
-                      <p className="text-sm text-red-800 font-medium">
-                        ✕ Viewing rejected - Tenant has been notified
-                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Notes (if any) */}
+                  {booking.notes && (
+                    <div className="mt-2 ml-5 pl-3 border-l-2 border-gray-200">
+                      <p className="text-xs text-gray-500 italic">"{booking.notes}"</p>
                     </div>
                   )}
                 </div>

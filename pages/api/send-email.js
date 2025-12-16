@@ -53,8 +53,8 @@ export default async function handler(req, res) {
       .select(`
         *,
         property:properties(id, title, address, city),
-        tenant_profile:profiles!bookings_tenant_fkey(id, full_name),
-        landlord_profile:profiles!bookings_landlord_fkey(id, full_name, phone)
+        tenant_profile:profiles!bookings_tenant_fkey(id, first_name, middle_name, last_name),
+        landlord_profile:profiles!bookings_landlord_fkey(id, first_name, middle_name, last_name, phone)
       `)
       .eq('id', bookingId)
       .maybeSingle()
@@ -133,13 +133,13 @@ export default async function handler(req, res) {
     // Send email
     const emailResult = await sendViewingApprovalEmail({
       to: tenantEmail,
-      tenantName: booking.tenant_profile?.full_name || 'Tenant',
+      tenantName: booking.tenant_profile?.first_name ? `${booking.tenant_profile.first_name} ${booking.tenant_profile.last_name}` : 'Tenant',
       propertyTitle: booking.property?.title || 'Property',
       propertyAddress: `${booking.property?.address || ''}, ${booking.property?.city || ''}`,
       // propertyAddress: `${booking.property?.address || ''}, ${booking.property?.city || ''}`.trim(),
       viewingDate: booking.booking_date,
       timeSlot: timeSlot,
-      landlordName: booking.landlord_profile?.full_name || 'Landlord',
+      landlordName: booking.landlord_profile?.first_name ? `${booking.landlord_profile.first_name} ${booking.landlord_profile.last_name}` : 'Landlord',
       landlordPhone: booking.landlord_profile?.phone || 'Not provided'
     })
 

@@ -128,7 +128,9 @@ export default function Navbar() {
           .from('profiles')
           .insert({
             id: userId,
-            full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User',
+            first_name: user?.user_metadata?.first_name || user?.email?.split('@')[0] || 'User',
+            middle_name: user?.user_metadata?.middle_name || 'N/A',
+            last_name: user?.user_metadata?.last_name || '',
             role: 'tenant' // Default role for new users
           })
           .select()
@@ -216,7 +218,7 @@ export default function Navbar() {
                     setAuthMode('signin')
                     setShowAuthModal(true)
                   }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black border border-black font-medium cursor-pointer"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black  font-medium cursor-pointer"
                 >
                   Login
                 </button>
@@ -225,7 +227,7 @@ export default function Navbar() {
                     setAuthMode('signup')
                     setShowAuthModal(true)
                   }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black cursor-pointer"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black cursor-pointer rounded-xl"
                 >
                   Register
                 </button>
@@ -244,9 +246,9 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center gap-4 sm:gap-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <div className="flex items-center gap-4 sm:gap-8 flex-shrink-0">
             <Link href="/dashboard" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black">
               <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
               EaseRent
@@ -264,7 +266,7 @@ export default function Navbar() {
               
               <Link 
                 href="/dashboard" 
-                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/dashboard') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/dashboard') ? 'active text-black font-semibold' : 'text-black'}`}
               >
                 Dashboard
               </Link>
@@ -272,25 +274,25 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/properties/new" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/properties/new') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/properties/new') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     Add Property
                   </Link>
                   <Link 
                     href="/applications" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     Applications
                   </Link>
                   <Link 
                     href="/bookings" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/bookings') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/bookings') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     Bookings
                   </Link>
                   <Link 
                     href="/schedule" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/schedule') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/schedule') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     Schedule
                   </Link>
@@ -300,13 +302,13 @@ export default function Navbar() {
                 <>
                   <Link 
                     href="/applications" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     My Applications
                   </Link>
                   <Link 
                     href="/maintenance" 
-                    className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/maintenance') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/maintenance') ? 'active text-black font-semibold' : 'text-black'}`}
                   >
                     Maintenance
                   </Link>
@@ -314,19 +316,19 @@ export default function Navbar() {
               )}
               <Link 
                 href="/payments" 
-                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/payments') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/payments') ? 'active text-black font-semibold' : 'text-black'}`}
               >
                 Payments
               </Link>
               <Link 
                 href="/messages" 
-                className={`nav-link pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/messages') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/messages') ? 'active text-black font-semibold' : 'text-black'}`}
               >
                 Messages
               </Link>
               <Link 
                 href="/notifications" 
-                className={`nav-link relative pb-1 transition-colors duration-200 text-sm lg:text-base ${isActive('/notifications') ? 'active text-black font-semibold' : 'text-black hover:text-gray-600'}`}
+                className={`nav-link relative pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/notifications') ? 'active text-black font-semibold' : 'text-black'}`}
               >
                 Notifications
                 {unreadCount > 0 && (
@@ -338,7 +340,7 @@ export default function Navbar() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             {/* Mobile AI Chat Button */}
             <Link 
               href="/ai-chat"
@@ -356,10 +358,10 @@ export default function Navbar() {
               className="md:hidden flex items-center gap-2 p-1.5 sm:p-2 border border-black"
             >
               <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
-                {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="md:hidden">
-                <div className="font-medium text-black text-sm">{profile?.full_name?.split(' ')[0] || 'User'}</div>
+                <div className="font-medium text-black text-sm">{profile?.first_name || 'User'}</div>
               </div>
               <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {showMobileMenu ? (
@@ -387,14 +389,14 @@ export default function Navbar() {
             <div className="hidden md:block relative">
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-3 px-3 py-2 border border-black"
+                className="flex items-center gap-3 px-3 py-2 border border-black cursor-pointer rounded-md"
               >
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
-                    {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                    {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
                   </div>
                   <div className="text-left">
-                    <div className="font-medium text-black text-sm">{profile?.full_name || 'User'}</div>
+                    <div className="font-medium text-black text-sm">{profile?.first_name} {profile?.last_name || ''}</div>
                     <div className="text-black text-xs capitalize">{profile?.role || 'tenant'}</div>
                   </div>
                 </div>
@@ -413,15 +415,15 @@ export default function Navbar() {
               <>
                 {/* Backdrop */}
                 <div 
-                  className="fixed inset-0 z-40" 
+                  className="fixed inset-0 z-40 cursor-pointer" 
                   onClick={() => setShowDropdown(false)}
                 />
                 
                 {/* Dropdown Content */}
-                <div className="absolute right-0 mt-2 w-56 bg-white border-2 border-black py-2 z-50">
+                <div className="absolute right-0 mt-2 w-56 bg-white border-2 border-black py-2 z-50 rounded-md">
                   {/* User Info */}
                   <div className="px-4 py-3 border-b-2 border-black">
-                    <div className="font-medium text-black">{profile?.full_name || 'User'}</div>
+                    <div className="font-medium text-black">{profile?.first_name} {profile?.last_name}</div>
                     <div className="text-sm text-black">{session?.user?.email}</div>
                     <div className="mt-1">
                       <span className={`inline-block px-2 py-0.5 text-xs font-medium border border-black ${
@@ -441,7 +443,7 @@ export default function Navbar() {
                       onClick={() => setShowDropdown(false)}
                       className="flex items-center gap-3 px-4 py-2 text-sm text-black"
                     >
-                      <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
@@ -453,7 +455,7 @@ export default function Navbar() {
                         setShowDropdown(false)
                         handleSignOut()
                       }}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-black w-full text-left"
+                      className="flex items-center gap-3 px-4 py-2 text-sm text-black w-full text-left cursor-pointer"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -484,10 +486,10 @@ export default function Navbar() {
             <div className="px-4 py-4 border-b-2 border-black bg-white">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-semibold text-lg">
-                {profile?.full_name?.charAt(0).toUpperCase() || 'U'}
+                {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <div>2
-                <div className="font-medium text-black">{profile?.full_name || 'User'}</div>
+              <div>
+                <div className="font-medium text-black">{profile?.first_name} {profile?.last_name}</div>
                 <div className="text-sm text-black">{session?.user?.email}</div>
               </div>
             </div>
@@ -598,7 +600,7 @@ export default function Navbar() {
               onClick={() => setShowMobileMenu(false)}
               className="flex items-center gap-3 px-3 py-2 text-black border border-black"
             >
-              <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>

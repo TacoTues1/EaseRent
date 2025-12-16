@@ -177,7 +177,7 @@ export default function PropertyDetail() {
       if (property.landlord) {
         const template = NotificationTemplates.newApplication(
           property.title,
-          profile?.full_name || 'A tenant'
+          profile?.first_name ? `${profile.first_name} ${profile.last_name}` : 'A tenant'
         )
         await createNotification({
           recipient: property.landlord,
@@ -263,12 +263,12 @@ export default function PropertyDetail() {
               <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Property Owner</h3>
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-white font-bold">
-                  {landlordProfile?.full_name 
-                  ? landlordProfile.full_name.charAt(0).toUpperCase() 
+                  {landlordProfile?.first_name 
+                  ? landlordProfile.first_name.charAt(0).toUpperCase() 
                   : 'L'}
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">{landlordProfile?.full_name || 'Property Owner'}</p>
+                  <p className="font-semibold text-gray-900">{landlordProfile?.first_name ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Property Owner'}</p>
                   <p className="text-sm text-gray-500">Property Owner</p>
                 </div>
               </div>

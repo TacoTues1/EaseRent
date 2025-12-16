@@ -22,6 +22,8 @@ export default function Dashboard() {
   // Landlord end requests
   const [pendingEndRequests, setPendingEndRequests] = useState([])
   const [showEndRequestsModal, setShowEndRequestsModal] = useState(false)
+  // Property summaries (bills & maintenance)
+  const [propertySummaries, setPropertySummaries] = useState({})
   const router = useRouter()
 
   useEffect(() => {
@@ -54,11 +56,46 @@ export default function Dashboard() {
       if (profile.role === 'landlord') {
         loadOccupancies()
         loadPendingEndRequests()
+        loadPropertySummaries()
       } else if (profile.role === 'tenant') {
         loadTenantOccupancy()
       }
     }
   }, [profile])
+
+  // Load property summaries (pending bills & maintenance requests)
+  async function loadPropertySummaries() {
+    // Get landlord's properties
+    const { data: myProps } = await supabase
+      .from('properties')
+      .select('id, title')
+      .eq('landlord', session.user.id)
+    
+    if (!myProps || myProps.length === 0) return
+
+    const summaries = {}
+    for (const prop of myProps) {
+      // Get pending/awaiting payment requests (pending = unpaid, pending_confirmation = awaiting landlord confirmation)
+      const { data: bills } = await supabase
+        .from('payment_requests')
+        .select('id, rent_amount, water_bill, electrical_bill, other_bills, due_date, status')
+        .eq('property_id', prop.id)
+        .in('status', ['pending', 'pending_confirmation'])
+      
+      // Get open maintenance requests (pending or in_progress)
+      const { data: maintenance } = await supabase
+        .from('maintenance_requests')
+        .select('id, title, priority, status')
+        .eq('property_id', prop.id)
+        .in('status', ['pending', 'in_progress'])
+      
+      summaries[prop.id] = {
+        pendingBills: bills || [],
+        maintenanceRequests: maintenance || []
+      }
+    }
+    setPropertySummaries(summaries)
+  }
 
   // Load tenant's current occupancy
   async function loadTenantOccupancy() {
@@ -67,7 +104,7 @@ export default function Dashboard() {
       .select(`
         *,
         property:properties(id, title, address, city),
-        landlord:profiles!tenant_occupancies_landlord_id_fkey(id, full_name)
+        landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)
       `)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
@@ -82,7 +119,7 @@ export default function Dashboard() {
       .from('tenant_occupancies')
       .select(`
         *,
-        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, full_name, phone),
+        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone),
         property:properties(id, title, address)
       `)
       .eq('landlord_id', session.user.id)
@@ -97,7 +134,7 @@ export default function Dashboard() {
       .from('tenant_occupancies')
       .select(`
         *,
-        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, full_name),
+        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name),
         property:properties(id, title)
       `)
       .eq('landlord_id', session.user.id)
@@ -117,7 +154,7 @@ export default function Dashboard() {
       .from('applications')
       .select(`
         *,
-        tenant_profile:profiles!applications_tenant_fkey(id, full_name, phone)
+        tenant_profile:profiles!applications_tenant_fkey(id, first_name, middle_name, last_name, phone)
       `)
       .eq('property_id', propertyId)
       .eq('status', 'accepted')
@@ -125,7 +162,7 @@ export default function Dashboard() {
     
     // Filter out applications with null tenant profiles (deleted users)
     const validApplications = (data || []).filter(app => 
-      app.tenant && app.tenant_profile && app.tenant_profile.full_name
+      app.tenant && app.tenant_profile && app.tenant_profile.first_name
     )
     
     setAcceptedApplications(validApplications)
@@ -177,7 +214,7 @@ export default function Dashboard() {
       link: '/maintenance'
     })
 
-    toast.success(`${application.tenant_profile?.full_name} assigned to property!`)
+    toast.success(`${application.tenant_profile?.first_name} ${application.tenant_profile?.last_name} assigned to property!`)
     setShowAssignModal(false)
     loadProperties()
     loadOccupancies()
@@ -249,7 +286,7 @@ export default function Dashboard() {
       recipient: tenantOccupancy.landlord_id,
       actor: session.user.id,
       type: 'end_occupancy_request',
-      message: `${profile.full_name} has requested to end their occupancy at "${tenantOccupancy.property?.title}". Please review and approve/reject.`,
+      message: `${profile.first_name} ${profile.last_name} has requested to end their occupancy at "${tenantOccupancy.property?.title}". Please review and approve/reject.`,
       link: '/dashboard'
     })
 
@@ -368,11 +405,14 @@ export default function Dashboard() {
     } else {
       // Profile doesn't exist (e.g., Google sign-in user), create one
       const user = session?.user || (await supabase.auth.getUser()).data.user
+      const fullNameParts = (user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User').split(' ')
       const { data: newProfile, error } = await supabase
         .from('profiles')
         .insert({
           id: userId,
-          full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User',
+          first_name: fullNameParts[0] || 'User',
+          middle_name: fullNameParts.length > 2 ? fullNameParts.slice(1, -1).join(' ') : null,
+          last_name: fullNameParts.length > 1 ? fullNameParts[fullNameParts.length - 1] : null,
           role: 'tenant' // Default role for new users
         })
         .select()
@@ -387,7 +427,7 @@ export default function Dashboard() {
     
     let query = supabase
       .from('properties')
-      .select('*, landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)')
+      .select('*, landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)')
       .order('created_at', { ascending: false })
 
     // If landlord, show their own properties (all statuses)
@@ -455,7 +495,7 @@ export default function Dashboard() {
       <div className="relative bg-black text-white py-8 sm:py-16">
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-2 sm:mb-3">
-            Welcome, {profile.full_name}!
+            Welcome, {profile.first_name} {profile.last_name}!
           </h1>
           <p className="text-sm sm:text-xl max-w-2xl leading-relaxed">
             {profile.role === 'landlord' 
@@ -477,7 +517,7 @@ export default function Dashboard() {
                 <h4 className="font-bold text-lg text-black">{tenantOccupancy.property?.title}</h4>
                 <p className="text-sm text-gray-600 mt-1">{tenantOccupancy.property?.address}, {tenantOccupancy.property?.city}</p>
                 <p className="text-sm text-gray-600 mt-1">
-                  Landlord: <span className="font-medium text-black">{tenantOccupancy.landlord?.full_name}</span>
+                  Landlord: <span className="font-medium text-black">{tenantOccupancy.landlord?.first_name} {tenantOccupancy.landlord?.last_name}</span>
                 </p>
                 <p className="text-xs text-gray-500 mt-2">
                   Moved in: {new Date(tenantOccupancy.start_date).toLocaleDateString()}
@@ -516,7 +556,7 @@ export default function Dashboard() {
                   <div>
                     <h4 className="font-bold text-black">{request.property?.title}</h4>
                     <p className="text-sm text-gray-600 mt-1">
-                      Tenant: <span className="font-medium text-black">{request.tenant?.full_name}</span>
+                      Tenant: <span className="font-medium text-black">{request.tenant?.first_name} {request.tenant?.last_name}</span>
                       {request.tenant?.phone && <span className="ml-2 text-gray-500">({request.tenant.phone})</span>}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
@@ -675,9 +715,9 @@ export default function Dashboard() {
                     <h3 className="text-lg font-bold mb-2 line-clamp-1 text-black">{property.title}</h3>
                     
                     {/* Landlord Name - Only show for tenants */}
-                    {profile?.role === 'tenant' && property.landlord_profile?.full_name && (
+                    {profile?.role === 'tenant' && property.landlord_profile?.first_name && (
                       <p className="text-xs text-gray-500 mb-2">
-                        By {property.landlord_profile.full_name}
+                        By {property.landlord_profile.first_name} {property.landlord_profile.last_name}
                       </p>
                     )}
                     
@@ -730,14 +770,14 @@ export default function Dashboard() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handlePropertyAction(property.id)}
-                          className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer"
+                          className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer rounded-full"
                         >
                           {profile.role === 'landlord' ? 'Edit' : 'View Details'}
                         </button>
                         {profile.role === 'landlord' && (
                           <button
                             onClick={() => router.push(`/properties/${property.id}`)}
-                            className="flex-1 bg-gray-800 text-white py-2 px-3 text-xs font-semibold border-2 border-gray-800 hover:bg-gray-700 cursor-pointer"
+                            className="flex-1 bg-gray-800 text-white py-2 px-3 text-xs font-semibold border-2 border-gray-800 hover:bg-gray-700 cursor-pointer rounded-full"
                           >
                             View Details
                           </button>
@@ -745,7 +785,7 @@ export default function Dashboard() {
                         {profile.role === 'tenant' && property.status === 'available' && (
                           <button
                             onClick={() => router.push(`/properties/${property.id}`)}
-                            className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer"
+                            className="flex-1 bg-black text-white py-2 px-3 text-xs font-semibold border-2 border-black cursor-pointer rounded-full"
                           >
                           Apply
                           </button>
@@ -762,12 +802,12 @@ export default function Dashboard() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                                 <span className="font-medium text-blue-800 truncate">
-                                  {getPropertyOccupancy(property.id)?.tenant?.full_name}
+                                  {getPropertyOccupancy(property.id)?.tenant?.first_name} {getPropertyOccupancy(property.id)?.tenant?.last_name}
                                 </span>
                               </div>
                               <button
                                 onClick={() => endOccupancy(property.id)}
-                                className="w-full py-2 px-3 text-xs font-semibold bg-orange-500 text-white border-2 border-orange-500 hover:bg-orange-600"
+                                className="w-full py-2 px-3 text-xs font-semibold bg-orange-500 text-white border-2 border-orange-500 hover:bg-orange-600 rounded-full cursor-pointer"
                                 title="End tenant occupancy"
                               >
                                 End Occupancy
@@ -776,7 +816,7 @@ export default function Dashboard() {
                           ) : (
                             <button
                               onClick={() => openAssignModal(property)}
-                              className="w-full py-2 px-3 text-xs font-semibold bg-blue-600 text-white border-2 border-blue-600 hover:bg-blue-700 flex items-center justify-center gap-1"
+                              className="w-full py-2 px-3 text-xs font-semibold bg-blue-600 text-white border-2 border-blue-600 hover:bg-blue-700 flex items-center justify-center gap-1 cursor-pointer rounded-full"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -794,114 +834,64 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Quick Links Section */}
-        <div className="mt-12">
-          <div className="mb-6">
-            <h3 className="text-2xl font-bold text-black mb-2">Quick Actions</h3>
-            <p className="text-sm text-black">Access frequently used features</p>
+        {/* Property Summary - Bills & Maintenance (Landlord only) */}
+        {profile.role === 'landlord' && properties.length > 0 && (
+          <div className="mt-8">
+            <h3 className="text-lg font-medium text-black mb-4">Property Overview</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {properties.map((property) => {
+                const occupancy = getPropertyOccupancy(property.id)
+                const summary = propertySummaries[property.id] || { pendingBills: [], maintenanceRequests: [] }
+                
+                return (
+                  <div key={property.id} className="border border-gray-200 p-3">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-medium text-sm truncate">{property.title}</h4>
+                      {occupancy ? (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5">Occupied</span>
+                      ) : (
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5">Vacant</span>
+                      )}
+                    </div>
+                    
+                    {occupancy ? (
+                      <div className="space-y-2 text-xs">
+                        <div className="flex items-center gap-2 text-gray-600">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          {occupancy.tenant?.first_name} {occupancy.tenant?.last_name}
+                        </div>
+                        
+                        {/* Pending Bills */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Pending Bills:</span>
+                          {summary.pendingBills.length > 0 ? (
+                            <span className="text-orange-600 font-medium">{summary.pendingBills.length}</span>
+                          ) : (
+                            <span className="text-green-600">None</span>
+                          )}
+                        </div>
+                        
+                        {/* Maintenance Requests */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Maintenance:</span>
+                          {summary.maintenanceRequests.length > 0 ? (
+                            <span className="text-red-600 font-medium">{summary.maintenanceRequests.length} open</span>
+                          ) : (
+                            <span className="text-green-600">None</span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No tenant assigned</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {profile.role === 'tenant' && (
-              <button
-                onClick={() => router.push('/maintenance')}
-                className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <div className="font-bold text-base mb-1 text-black">Maintenance</div>
-                <div className="text-xs text-black leading-relaxed">
-                  Submit request
-                </div>
-              </button>
-            )}
-
-            {profile.role === 'landlord' && (
-              <>
-                <button
-                  onClick={() => router.push('/maintenance')}
-                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                    </svg>
-                  </div>
-                  <div className="font-bold text-base mb-1 text-black">Maintenance</div>
-                  <div className="text-xs text-black leading-relaxed">
-                    View requests
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => router.push('/bookings')}
-                  className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="font-bold text-base mb-1 text-black">Bookings</div>
-                  <div className="text-xs text-black leading-relaxed">
-                    Manage viewings
-                  </div>
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => router.push('/payments')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <div className="font-bold text-base mb-1 text-black">Payments</div>
-              <div className="text-xs text-black leading-relaxed">
-                {profile.role === 'landlord' 
-                  ? 'Track income' 
-                  : 'Payment history'}
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/messages')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-              </div>
-              <div className="font-bold text-base mb-1 text-black">Messages</div>
-              <div className="text-xs text-black leading-relaxed">
-                {profile.role === 'landlord' 
-                  ? 'Chat with tenants' 
-                  : 'Chat with landlords'}
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/settings')}
-              className="p-4 bg-white border-2 border-black text-left hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              <div className="w-10 h-10 mb-3 bg-black flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <div className="font-bold text-base mb-1 text-black">Settings</div>
-              <div className="text-xs text-black leading-relaxed">
-                Account settings
-              </div>
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Tenant End Request Modal */}
@@ -1034,7 +1024,7 @@ export default function Dashboard() {
                       onClick={() => assignTenant(app)}
                     >
                       <div>
-                        <p className="font-medium">{app.tenant_profile?.full_name}</p>
+                        <p className="font-medium">{app.tenant_profile?.first_name} {app.tenant_profile?.last_name}</p>
                         <p className="text-xs text-gray-500">{app.tenant_profile?.phone || 'No phone'}</p>
                       </div>
                       <button className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">

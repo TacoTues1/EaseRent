@@ -7,7 +7,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [middleName, setMiddleName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [isSignUp, setIsSignUp] = useState(initialMode === 'signup')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState(null)
@@ -27,7 +29,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       setEmail('')
       setPassword('')
       setConfirmPassword('')
-      setFullName('')
+      setFirstName('')
+      setMiddleName('')
+      setLastName('')
       setShowPassword(false)
       setShowConfirmPassword(false)
       setShowOtpInput(false)
@@ -76,7 +80,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           options: {
             emailRedirectTo: window.location.origin,
             data: {
-              full_name: fullName
+              first_name: firstName,
+              middle_name: middleName || 'N/A',
+              last_name: lastName
             }
           }
         })
@@ -223,7 +229,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         if (!existingProfile) {
           const { error: profileError } = await supabase.from('profiles').insert({
             id: data.user.id,
-            full_name: fullName,
+            first_name: firstName,
+            middle_name: middleName || 'N/A',
+            last_name: lastName,
             role: 'tenant'
           })
 
@@ -282,10 +290,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       <div className="absolute inset-0 bg-black opacity-50"></div>
       
       {/* Modal content */}
-      <div className="bg-white border-2 border-black p-6 w-full max-w-md relative z-10">
+      <div className="bg-white border-2 border-black p-6 w-full max-w-md relative z-10 rounded-xl">
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 text-black text-2xl"
+          className="absolute top-4 right-4 text-black text-2xl cursor-pointer"
         >
           ×
         </button>
@@ -310,7 +318,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
               <label className="block text-sm font-medium mb-1">Verification Code</label>
               <input 
                 type="text"
-                className="w-full border-2 border-black px-3 py-2 text-center text-2xl tracking-widest" 
+                className="w-full border-2 border-black px-3 py-2 text-center text-2xl tracking-widest rounded-md" 
                 value={otp} 
                 onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="000000"
@@ -326,7 +334,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
             <button 
               type="submit" 
               disabled={loading || otp.length !== 6} 
-              className="w-full bg-black text-white py-2 border-2 border-black disabled:opacity-50"
+              className="w-full bg-black text-white py-2 border-2 border-black disabled:opacity-50 cursor-pointer rounded-xl"
             >
               {loading ? 'Verifying...' : 'Verify Email'}
             </button>
@@ -336,7 +344,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
                 type="button"
                 onClick={handleResendOtp}
                 disabled={loading}
-                className="text-sm text-black underline disabled:opacity-50"
+                className="text-sm text-black underline disabled:opacity-50 cursor-pointer"
               >
                 Resend code
               </button>
@@ -350,7 +358,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
                   setOtp('')
                   setMessage(null)
                 }}
-                className="text-sm text-black underline"
+                className="text-sm text-black underline cursor-pointer"
               >
                 ← Back to sign up
               </button>
@@ -359,24 +367,51 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
-            <div>
-              <label className="block text-sm font-medium mb-1">Full Name</label>
-              <input 
-                className="w-full border-2 border-black px-3 py-2" 
-                value={fullName} 
-                onChange={e => setFullName(e.target.value)}
-                required
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">First Name</label>
+                  <input 
+                    className="w-full border-2 border-black px-3 py-2 rounded-md" 
+                    value={firstName} 
+                    onChange={e => setFirstName(e.target.value)}
+                    placeholder="Juan"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Last Name</label>
+                  <input 
+                    className="w-full border-2 border-black px-3 py-2 rounded-md" 
+                    value={lastName} 
+                    onChange={e => setLastName(e.target.value)}
+                    placeholder="Dela Cruz"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Middle Name <span className="text-gray-500 text-xs">(Leave blank if N/A)</span></label>
+                <input 
+                  className="w-full border-2 border-black px-3 py-2 rounded-md" 
+                  value={middleName} 
+                  onChange={e => setMiddleName(e.target.value)}
+                  placeholder="Santos (optional)"
+                />
+              </div>
+            </>
           )}
           
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1">
+              {isSignUp ? 'Email (Active Email Address)' : 'Email'}
+            </label>
             <input 
               type="email"
-              className="w-full border-2 border-black px-3 py-2" 
+              className="w-full border-2 border-black px-3 py-2 rounded-md" 
               value={email} 
               onChange={e => setEmail(e.target.value)}
+              placeholder={isSignUp ? 'example@email.com' : ''}
               required
             />
           </div>
@@ -386,7 +421,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
             <div className="relative">
               <input 
                 type={showPassword ? "text" : "password"}
-                className="w-full border-2 border-black px-3 py-2 pr-10" 
+                className="w-full border-2 border-black px-3 py-2 pr-10 rounded-md" 
                 value={password} 
                 onChange={e => setPassword(e.target.value)}
                 required
@@ -395,7 +430,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-black p-1"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-black p-1 cursor-pointer rounded-md"
               >
                 {showPassword ? (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -432,7 +467,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
               <div className="relative">
                 <input 
                   type={showConfirmPassword ? "text" : "password"}
-                  className="w-full border-2 border-black px-3 py-2 pr-10" 
+                  className="w-full border-2 border-black px-3 py-2 pr-10 rounded-md" 
                   value={confirmPassword} 
                   onChange={e => setConfirmPassword(e.target.value)}
                   required
@@ -461,7 +496,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           <button 
             type="submit" 
             disabled={loading} 
-            className="w-full bg-black text-white py-2 border-2 border-black disabled:opacity-50 cursor-pointer"
+            className="w-full bg-black text-white py-2 border-2 border-black disabled:opacity-50 cursor-pointer rounded-xl"
           >
             {loading ? 'Please wait...' : (isSignUp ? 'Sign Up' : 'Sign In')}
           </button>
@@ -479,7 +514,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
             <button
               onClick={handleGoogleSignIn}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 bg-white border-1 border-black text-black py-2 px-4 disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-3 bg-white border-1 border-black text-black py-2 px-4 disabled:opacity-50 cursor-pointer rounded-xl"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -505,7 +540,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
             <button
               onClick={handleFacebookSignIn}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 bg-[#1877F2] border-2 border-[#1877F2] text-white py-2 px-4 disabled:opacity-50 mt-3 hover:bg-[#166FE5] cursor-pointer"
+              className="w-full flex items-center justify-center gap-3 bg-[#1877F2] border-2 border-[#1877F2] text-white py-2 px-4 disabled:opacity-50 mt-3 hover:bg-[#166FE5] cursor-pointer rounded-xl"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="white">
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>

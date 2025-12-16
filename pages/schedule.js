@@ -13,6 +13,7 @@ export default function SchedulePage() {
   const [selectedDateSlots, setSelectedDateSlots] = useState({}) // { 'date': 'morning' or 'afternoon' or null }
   const [activeDate, setActiveDate] = useState(null) // Currently clicked date to show time options
   const [submitting, setSubmitting] = useState(false)
+  const [searchDate, setSearchDate] = useState('') // Date filter for searching
 
   // Define time slots
   const TIME_SLOTS = {
@@ -261,11 +262,43 @@ export default function SchedulePage() {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-black text-white hover:bg-gray-800 font-medium border-2 border-black"
+            className="px-4 py-2 bg-black text-white hover:bg-gray-800 font-medium border-2 border-black rounded-full cursor-pointer"
           >
             + Add Available Time
           </button>
         </div>
+
+        {/* Date Search Filter */}
+        {timeSlots.length > 0 && (
+          <div className="flex items-center gap-3 mb-4">
+            <div className="relative flex-1 max-w-xs">
+              <input
+                type="date"
+                value={searchDate}
+                onChange={(e) => setSearchDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-black cursor-pointer"
+              />
+            </div>
+            {searchDate && (
+              <button
+                onClick={() => setSearchDate('')}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-black cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+            <span className="text-sm text-gray-500">
+              {(() => {
+                const filtered = timeSlots.filter(slot => {
+                  if (!searchDate) return true
+                  const slotDate = new Date(slot.start_time).toISOString().split('T')[0]
+                  return slotDate === searchDate
+                })
+                return `${filtered.length} of ${timeSlots.length} slots`
+              })()}
+            </span>
+          </div>
+        )}
 
         {/* Time Slots List */}
         <div className="space-y-4">
@@ -278,8 +311,14 @@ export default function SchedulePage() {
               <p className="text-black mb-4">Add your first available time slot for property viewings</p>
             </div>
           ) : (
-            <div className="grid gap-4">
-              {timeSlots.map((slot) => {
+            <div className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+              {timeSlots
+                .filter(slot => {
+                  if (!searchDate) return true
+                  const slotDate = new Date(slot.start_time).toISOString().split('T')[0]
+                  return slotDate === searchDate
+                })
+                .map((slot) => {
                 const timeSlotInfo = getTimeSlotLabel(slot.start_time, slot.end_time)
                 const dateStr = new Date(slot.start_time).toLocaleDateString('en-US', { 
                   weekday: 'short', 
@@ -291,52 +330,38 @@ export default function SchedulePage() {
                 return (
                   <div 
                     key={slot.id} 
-                    className={`border-2 border-black p-4 ${slot.is_booked ? 'bg-gray-100' : 'bg-white'}`}
+                    className={`px-4 py-3 flex items-center justify-between gap-4 ${slot.is_booked ? 'bg-gray-50' : 'bg-white'} hover:bg-gray-50 transition-colors`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-3">
-                          {slot.is_booked ? (
-                            <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-semibold">
-                              Booked
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold">
-                              Available
-                            </span>
-                          )}
-                          <span className={`px-3 py-1 text-sm font-semibold ${timeSlotInfo.color}`}>
-                            {timeSlotInfo.label}
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      {/* Status indicator */}
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${slot.is_booked ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                      
+                      {/* Date & Time info */}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 flex-1 min-w-0">
+                        <span className="text-sm font-medium text-black">{dateStr}</span>
+                        <span className="text-sm text-gray-500">{timeSlotInfo.time}</span>
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${timeSlotInfo.color}`}>
+                          {timeSlotInfo.label}
+                        </span>
+                        {slot.is_booked && (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                            Booked
                           </span>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm">
-                            <svg className="w-4 h-4 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="font-medium">Date:</span>
-                            <span>{dateStr}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm">
-                            <svg className="w-4 h-4 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="font-medium">Time:</span>
-                            <span>{timeSlotInfo.time}</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
-
-                      {!slot.is_booked && (
-                        <button
-                          onClick={() => deleteTimeSlot(slot.id)}
-                          className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 font-medium text-sm self-start"
-                        >
-                          Delete
-                        </button>
-                      )}
                     </div>
+
+                    {!slot.is_booked && (
+                      <button
+                        onClick={() => deleteTimeSlot(slot.id)}
+                        className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0 transition-colors cursor-pointer"
+                        title="Delete"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )
               })}

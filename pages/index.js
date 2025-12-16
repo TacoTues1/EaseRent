@@ -68,7 +68,7 @@ export default function Home() {
       .from('properties')
       .select(`
         *,
-        landlord_profile:profiles!properties_landlord_fkey(id, full_name, role)
+        landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)
       `)
       .order('created_at', { ascending: false })
       .limit(6)

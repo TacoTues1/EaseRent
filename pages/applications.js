@@ -80,7 +80,7 @@ export default function ApplicationsPage() {
           .select(`
             *,
             property:properties(title, address, city, price),
-            tenant_profile:profiles(full_name, phone)
+            tenant_profile:profiles(first_name, middle_name, last_name, phone)
           `)
           .in('property_id', propertyIds)
           .order('submitted_at', { ascending: false })
@@ -160,7 +160,7 @@ export default function ApplicationsPage() {
         .select(`
           *,
           property:properties(title, address, city),
-          tenant_profile:profiles(full_name, phone),
+          tenant_profile:profiles(first_name, middle_name, last_name, phone),
           application:applications(id)
         `)
         .in('property_id', propertyIds)
@@ -336,7 +336,7 @@ export default function ApplicationsPage() {
       }
 
       // Send notification to landlord
-      const notificationMessage = `${profile.full_name} has requested a viewing for ${selectedApplication.property?.title} on ${new Date(bookingDateTime).toLocaleString()}. Please approve or reject.`
+      const notificationMessage = `${profile.first_name} ${profile.last_name} has requested a viewing for ${selectedApplication.property?.title} on ${new Date(bookingDateTime).toLocaleString()}. Please approve or reject.`
       
       await createNotification({
         recipient: selectedApplication.property.landlord,
@@ -468,10 +468,10 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="bg-white border-2 border-black mb-4 sm:mb-6 p-2 flex flex-wrap gap-2">
+        <div className="bg-white border-2 border-black mb-4 sm:mb-6 p-2 flex flex-wrap gap-2 rounded-xl">
           <button
             onClick={() => setFilter('all')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
               filter === 'all' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -481,7 +481,7 @@ export default function ApplicationsPage() {
           </button>
           <button
             onClick={() => setFilter('pending')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
               filter === 'pending' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -491,7 +491,7 @@ export default function ApplicationsPage() {
           </button>
           <button
             onClick={() => setFilter('accepted')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
               filter === 'accepted' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -501,7 +501,7 @@ export default function ApplicationsPage() {
           </button>
           <button
             onClick={() => setFilter('rejected')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-[4px] cursor-pointer ${
+            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
               filter === 'rejected' 
                 ? 'bg-black text-white' 
                 : 'text-black'
@@ -561,7 +561,7 @@ export default function ApplicationsPage() {
               const isExpanded = expandedApplications[app.id]
               
               return (
-                <div key={app.id} className="bg-white border-2 border-black p-2 sm:p-3">
+                <div key={app.id} className="bg-white border-2 border-black p-2 sm:p-3 rounded-xl">
                   {/* Compact Header - Always Visible */}
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                     <div className="flex-1">
@@ -618,7 +618,7 @@ export default function ApplicationsPage() {
                         <div className="bg-gray-50 p-2 rounded text-xs">
                           <p className="font-semibold text-black mb-1">Applicant:</p>
                           <div className="space-y-0.5">
-                            <p className="text-black">{app.tenant_profile.full_name}</p>
+                            <p className="text-black">{app.tenant_profile.first_name} {app.tenant_profile.last_name}</p>
                             {app.tenant_profile.email && (
                               <p className="text-black break-all">{app.tenant_profile.email}</p>
                             )}
@@ -664,7 +664,7 @@ export default function ApplicationsPage() {
                     {/* View Details Toggle */}
                     <button
                       onClick={() => toggleApplicationDetails(app.id)}
-                      className="px-2 py-1 border border-black text-black hover:bg-gray-100 text-[10px] sm:text-xs font-medium flex items-center gap-1"
+                      className="px-2 py-1 border border-black text-black hover:bg-gray-100 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
                     >
                       {isExpanded ? (
                         <>
@@ -688,13 +688,13 @@ export default function ApplicationsPage() {
                       <>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'accepted')}
-                          className="px-2 sm:px-3 py-1 bg-green-600 text-white hover:bg-green-700 text-[10px] sm:text-xs font-medium"
+                          className="px-2 sm:px-3 py-1 bg-green-600 text-white hover:bg-green-700 text-[10px] sm:text-xs font-medium cursor-pointer rounded-full"
                         >
                           ✓ Accept
                         </button>
                         <button
                           onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                          className="px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium"
+                          className="px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium cursor-pointer rounded-full"
                         >
                           ✕ Reject
                         </button>
@@ -705,7 +705,7 @@ export default function ApplicationsPage() {
                     {profile.role === 'tenant' && app.status === 'accepted' && !app.hasBooking && (
                       <button
                         onClick={() => openBookingModal(app)}
-                        className="px-2 sm:px-3 py-1 bg-black text-white hover:bg-gray-800 text-[10px] sm:text-xs font-medium flex items-center gap-1"
+                        className="px-2 sm:px-3 py-1 bg-black text-white hover:bg-gray-800 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
                       >
                         <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -718,7 +718,7 @@ export default function ApplicationsPage() {
                     {app.status !== 'accepted' && (
                       <button
                         onClick={() => deleteApplication(app.id)}
-                        className="ml-auto px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium flex items-center gap-1"
+                        className="ml-auto px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
                         title="Delete application"
                       >
                         <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -762,7 +762,7 @@ export default function ApplicationsPage() {
                   <label className="block text-xs sm:text-sm font-medium text-black mb-2">
                     Select Available Time Slot *
                   </label>
-                  <div className="space-y-2 max-h-60 overflow-y-auto border-2 border-black p-2">
+                  <div className="space-y-2 max-h-60 overflow-y-auto border-2 border-black p-2 rounded-sm">
                     {availableTimeSlots.map((slot) => {
                       const startTime = new Date(slot.start_time)
                       const startHour = startTime.getHours()
@@ -788,7 +788,7 @@ export default function ApplicationsPage() {
                       return (
                         <label
                           key={slot.id}
-                          className={`block p-2 border-2 cursor-pointer transition-colors ${
+                          className={`block p-2 border-2 cursor-pointer transition-colors rounded-full ${
                             selectedTimeSlot === slot.id
                               ? 'border-black bg-black text-white'
                               : 'border-gray-300 hover:border-black'
@@ -853,7 +853,7 @@ export default function ApplicationsPage() {
                   onChange={(e) => setBookingNotes(e.target.value)}
                   rows={3}
                   placeholder="Any specific requirements or questions..."
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black placeholder-gray-400 focus:outline-none text-sm sm:text-base"
+                  className="w-full px-3 py-2 bg-white border-2 border-black text-black placeholder-gray-400 focus:outline-none text-sm sm:text-base rounded-sm"
                 />
               </div>
 
@@ -861,14 +861,14 @@ export default function ApplicationsPage() {
                 <button
                   type="button"
                   onClick={closeBookingModal}
-                  className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base cursor-pointer rounded-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingBooking || availableTimeSlots.length === 0}
-                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base cursor-pointer rounded-full"
                 >
                   {submittingBooking ? 'Sending Request...' : 'Request Viewing'}
                 </button>
@@ -956,7 +956,7 @@ export default function ApplicationsPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
                         <span className="font-medium text-xs">Tenant:</span>
-                        <span className="text-xs">{booking.tenant_profile?.full_name}</span>
+                        <span className="text-xs">{booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}</span>
                       </div>
 
                       <div className="flex items-center gap-2">

@@ -32,6 +32,8 @@ export default function NewProperty() {
     amenities: []
   })
 
+  const [showAllAmenities, setShowAllAmenities] = useState(false)
+
   const availableAmenities = [
     'Kitchen',
     'Wifi',
@@ -213,353 +215,321 @@ export default function NewProperty() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-6">
-      <div className="max-w-2xl mx-auto bg-white border-2 border-black p-4 sm:p-6">
-        <h1 className="text-xl sm:text-2xl font-bold mb-4">Add New Property</h1>
-        {message && (
-          <div className={`mb-4 p-3 border-2 ${
-            message.includes('Error') || message.includes('error') || message.includes('denied')
-              ? 'bg-white text-black border-black rounded-[4px]'
-              : message.includes('successfully') || message.includes('complete')
-              ? 'bg-black text-white border-black'
-              : 'bg-white text-black border-black'
-          }`}>
-            <div className="font-medium">{message}</div>
-            {message.includes('Storage bucket not set up') && (
-              <div className="mt-2 text-sm">
-                <strong>Quick fix:</strong> See <code className="bg-white border border-black px-1">BUCKET_ERROR_FIX.txt</code> for setup instructions (takes 3 minutes).
-              </div>
-            )}
-          </div>
-        )}
+    <div className="h-[calc(100vh-64px)] bg-white p-3 overflow-hidden">
+      <div className="h-full max-w-7xl mx-auto bg-white p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-xl md:text-2xl font-bold">Add New Property</h1>
+          {message && (
+            <div className={`px-3 py-1.5 text-sm ${
+              message.includes('Error') || message.includes('error') || message.includes('denied')
+                ? 'bg-white text-black border border-gray-300'
+                : message.includes('successfully') || message.includes('complete')
+                ? 'bg-black text-white'
+                : 'bg-white text-black border border-gray-300'
+            }`}>
+              {message}
+            </div>
+          )}
+        </div>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Title</label>
-            <input
-              type="text"
-              name="title"
-              required
-              className="w-full border-2 border-black px-3 py-2"
-              value={formData.title}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Description</label>
-            <textarea
-              name="description"
-              rows="4"
-              className="w-full border-2 border-black px-3 py-2"
-              value={formData.description}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="h-[calc(100%-60px)] flex gap-6">
+          {/* Left Panel */}
+          <div className="flex-1 flex flex-col gap-3">
+            {/* Title */}
             <div>
-              <label className="block text-sm font-medium mb-1">Building No. (Optional)</label>
+              <label className="block text-sm font-medium mb-1">Title *</label>
               <input
                 type="text"
-                name="building_no"
-                placeholder="e.g., Bldg 5, Unit 203"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.building_no}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Street No./Street</label>
-              <input
-                type="text"
-                name="street"
+                name="title"
                 required
-                placeholder="e.g., 123 Main Street"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.street}
+                className="w-full border border-gray-300 px-3 py-2 text-sm"
+                value={formData.title}
                 onChange={handleChange}
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Address Row */}
+            <div className="grid grid-cols-4 gap-2">
+              <div>
+                <label className="block text-sm font-medium mb-1">Bldg No.</label>
+                <input
+                  type="text"
+                  name="building_no"
+                  placeholder="Bldg 5"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.building_no}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Street *</label>
+                <input
+                  type="text"
+                  name="street"
+                  required
+                  placeholder="123 Main St"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.street}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Barangay *</label>
+                <input
+                  type="text"
+                  name="address"
+                  required
+                  placeholder="San Roque"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.address}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">City *</label>
+                <input
+                  type="text"
+                  name="city"
+                  required
+                  placeholder="Manila"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.city}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            {/* ZIP, Maps, Contact Row */}
+            <div className="grid grid-cols-4 gap-2">
+              <div>
+                <label className="block text-sm font-medium mb-1">ZIP*</label>
+                <input
+                  type="text"
+                  name="zip"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.zip}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Google map Link(Preffered)</label>
+                <input
+                  type="url"
+                  name="location_link"
+                  placeholder="https://maps.app.goo.gl/..."
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.location_link}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone*</label>
+                <input
+                  type="tel"
+                  name="owner_phone"
+                  placeholder="+63 912..."
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.owner_phone}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Email*</label>
+                <input
+                  type="email"
+                  name="owner_email"
+                  placeholder="owner@email.com"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.owner_email}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            {/* Property Details Row */}
+            <div className="grid grid-cols-5 gap-2">
+              <div>
+                <label className="block text-sm font-medium mb-1">Price ₱/mo *</label>
+                <input
+                  type="number"
+                  name="price"
+                  required
+                  min="0"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.price}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Beds</label>
+                <input
+                  type="number"
+                  name="bedrooms"
+                  min="0"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.bedrooms}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Baths</label>
+                <input
+                  type="number"
+                  name="bathrooms"
+                  min="0"
+                  step="0.5"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.bathrooms}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Sqft</label>
+                <input
+                  type="number"
+                  name="area_sqft"
+                  min="0"
+                  className="w-full border border-gray-300 px-3 py-2 text-sm"
+                  value={formData.area_sqft}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Status</label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full border border-gray-300 px-3 py-2 text-sm bg-white cursor-pointer"
+                >
+                  <option value="available">✓ Available</option>
+                  <option value="occupied">◐ Occupied</option>
+                  <option value="not available">✗ Not Available</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Description */}
             <div>
-              <label className="block text-sm font-medium mb-1">Barangay/District</label>
-              <input
-                type="text"
-                name="address"
-                required
-                placeholder="e.g., Barangay San Roque"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.address}
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <textarea
+                name="description"
+                rows="4"
+                className="w-full border border-gray-300 px-3 py-2 text-sm"
+                value={formData.description}
                 onChange={handleChange}
               />
             </div>
+
+            {/* Terms */}
             <div>
-              <label className="block text-sm font-medium mb-1">City/Municipality</label>
-              <input
-                type="text"
-                name="city"
-                required
-                placeholder="e.g., Manila"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.city}
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-sm font-medium">Terms & Conditions</label>
+                <a href="/terms" target="_blank" className="text-sm text-blue-600 hover:underline cursor-pointer">View Template →</a>
+              </div>
+              <textarea
+                name="terms_conditions"
+                rows="3"
+                className="w-full border border-gray-300 px-3 py-2 text-sm"
+                placeholder="Custom terms for this property..."
+                value={formData.terms_conditions}
                 onChange={handleChange}
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">ZIP Code</label>
-            <input
-              type="text"
-              name="zip"
-              className="w-full border-2 border-black px-3 py-2"
-              value={formData.zip}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Google Maps Location Link (Preferred)
-              <span className="text-xs text-gray-600 ml-2">📍 Helps tenants find the property easily</span>
-            </label>
-            <input
-              type="url"
-              name="location_link"
-              placeholder="https://maps.app.goo.gl/... or https://www.google.com/maps/..."
-              className="w-full border-2 border-black px-3 py-2"
-              value={formData.location_link}
-              onChange={handleChange}
-            />
-            <p className="text-xs text-gray-600 mt-1">
-              💡 <strong>How to get:</strong> Open Google Maps → Search your property → Click "Share" → Copy link
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Right Panel */}
+          <div className="w-80 flex flex-col gap-3">
+            {/* Images */}
             <div>
-              <label className="block text-sm font-medium mb-1">Owner Contact Number</label>
-              <input
-                type="tel"
-                name="owner_phone"
-                placeholder="e.g., +63 912 345 6789"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.owner_phone}
-                onChange={handleChange}
-              />
+              <label className="block text-sm font-medium mb-2">Property Images</label>
+              <div className="flex flex-wrap gap-2">
+                {imageUrls.map((url, index) => (
+                  <div key={index} className="relative">
+                    <label className="cursor-pointer block">
+                      <div className={`w-12 h-12 border flex items-center justify-center text-sm ${
+                        url ? 'bg-green-100 border-green-600' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'
+                      } ${uploadingImages[index] ? 'animate-pulse bg-yellow-50' : ''}`}>
+                        {uploadingImages[index] ? '...' : url ? '✓' : '+'}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, index)}
+                        disabled={uploadingImages[index]}
+                      />
+                    </label>
+                    {url && imageUrls.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeImageUrlField(index)}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center cursor-pointer"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+                {imageUrls.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={addImageUrlField}
+                    className="w-12 h-12 border border-dashed border-gray-400 flex items-center justify-center text-gray-400 hover:border-gray-600 cursor-pointer"
+                  >+</button>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Owner Email</label>
-              <input
-                type="email"
-                name="owner_email"
-                placeholder="e.g., owner@example.com"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.owner_email}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Price (₱/month)</label>
-              <input
-                type="number"
-                name="price"
-                required
-                min="0"
-                step="0.01"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.price}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Bedrooms</label>
-              <input
-                type="number"
-                name="bedrooms"
-                min="0"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.bedrooms}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-sm font-medium mb-1">Bathrooms</label>
-              <input
-                type="number"
-                name="bathrooms"
-                min="0"
-                step="0.5"
-                className="w-full border-2 border-black px-3 py-2"
-                value={formData.bathrooms}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Area (sqft)</label>
-            <input
-              type="number"
-              name="area_sqft"
-              min="0"
-              className="w-full border-2 border-black px-3 py-2"
-              value={formData.area_sqft}
-              onChange={handleChange}
-            />
-          </div>
-
-          {/* Property Status Dropdown */}
-          <div className="p-4 bg-white border-2 border-black">
-            <label className="block text-sm font-medium mb-2">Property Status</label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              className="w-full border-2 border-black px-3 py-2 bg-white font-medium"
-            >
-              <option value="available">✓ Available - Visible to tenants</option>
-              <option value="occupied">◐ Occupied - Has current tenant</option>
-              <option value="not available">✗ Not Available - Hidden from listings</option>
-            </select>
-            <p className="text-xs text-gray-600 mt-2">
-              {formData.status === 'available' && 'Property is open for applications'}
-              {formData.status === 'occupied' && 'Property has an assigned tenant'}
-              {formData.status === 'not available' && 'Property is hidden from all listings'}
-            </p>
-          </div>
-
-          {/* Image Upload Section */}
-          <div className="border-t-2 border-black pt-4">
-            <label className="block text-sm font-medium mb-3">Property Images</label>
-            
-            <div className="flex flex-wrap gap-2">
-              {imageUrls.map((url, index) => (
-                <div key={index} className="relative">
-                  <label className="cursor-pointer block">
-                    <div className={`w-14 h-14 border-2 border-black flex items-center justify-center transition-all ${
-                      url ? 'bg-green-100 border-green-600' : 'bg-gray-50 hover:bg-gray-100'
-                    } ${uploadingImages[index] ? 'animate-pulse bg-yellow-50' : ''}`}>
-                      {uploadingImages[index] ? (
-                        <span className="text-xs">...</span>
-                      ) : url ? (
-                        <span className="text-green-600 text-lg">✓</span>
-                      ) : (
-                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-500">{index + 1}</span>
+            {/* Amenities */}
+            <div className="flex-1 overflow-y-auto">
+              <label className="block text-sm font-medium mb-2">Amenities</label>
+              <div className="grid grid-cols-2 gap-1">
+                {(showAllAmenities ? availableAmenities : availableAmenities.slice(0, 10)).map((amenity) => (
+                  <label
+                    key={amenity}
+                    className={`flex items-center gap-2 px-2 py-1.5 border cursor-pointer text-xs ${
+                      formData.amenities.includes(amenity)
+                        ? 'border-gray-600 bg-gray-100'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
                     <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handleImageUpload(e, index)}
-                      disabled={uploadingImages[index]}
+                      type="checkbox"
+                      checked={formData.amenities.includes(amenity)}
+                      onChange={() => toggleAmenity(amenity)}
+                      className="w-3 h-3 cursor-pointer"
                     />
+                    {amenity}
                   </label>
-                  {url && imageUrls.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeImageUrlField(index)}
-                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hover:bg-red-600"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-              
-              {imageUrls.length < 10 && (
-                <button
-                  type="button"
-                  onClick={addImageUrlField}
-                  className="w-14 h-14 border-2 border-dashed border-gray-300 flex items-center justify-center hover:border-black hover:bg-gray-50 transition-all"
-                >
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              )}
+                ))}
+                {availableAmenities.length > 10 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllAmenities(!showAllAmenities)}
+                    className="col-span-2 py-1.5 text-sm text-black underline cursor-pointer text-center"
+                  >
+                    {showAllAmenities ? 'Show Less' : `See More (${availableAmenities.length - 10} more)`}
+                  </button>
+                )}
+              </div>
             </div>
-            
-            <p className="mt-6 text-xs text-gray-500">
-              Click boxes to upload images (max 5MB each)
-            </p>
-          </div>
 
-          {/* Amenities Section */}
-          <div className="border-t pt-4 mt-4">
-            <label className="block text-sm font-medium mb-3">What this place offers</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {availableAmenities.map((amenity) => (
-                <label
-                  key={amenity}
-                  className={`flex items-center gap-2 p-2 border-2 rounded cursor-pointer transition-all ${
-                    formData.amenities.includes(amenity)
-                      ? 'border-black bg-gray-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.amenities.includes(amenity)}
-                    onChange={() => toggleAmenity(amenity)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">{amenity}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Terms and Conditions Section */}
-          <div className="border-t pt-4 mt-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium">Terms & Conditions</label>
-              <a
-                href="/terms"
-                target="_blank"
-                className="text-xs text-blue-600 hover:underline"
+            {/* Buttons */}
+            <div className="flex gap-2 pt-2 border-t border-gray-200">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-black text-white text-sm font-medium disabled:opacity-50 cursor-pointer rounded-full"
               >
-                View Default Template →
-              </a>
+                {loading ? 'Creating...' : 'Create Property'}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="px-4 py-2 bg-white text-black border border-gray-300 text-sm font-medium cursor-pointer rounded-full"
+              >
+                Cancel
+              </button>
             </div>
-            <p className="text-xs text-gray-500 mb-2">
-              Customize the terms for this property. Leave empty to use the default terms.
-            </p>
-            <textarea
-              name="terms_conditions"
-              rows="8"
-              className="w-full border-2 px-3 py-2 text-sm font-mono"
-              placeholder="Enter custom terms and conditions for this property...\n\nExample:\n1. Lease Duration: 1 year minimum\n2. Monthly rent: ₱XX,XXX\n3. Security deposit: 1 month\n..."
-              value={formData.terms_conditions}
-              onChange={handleChange}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-black text-white border-2 border-black disabled:opacity-50 rounded-[4px]"
-            >
-              {loading ? 'Creating...' : 'Create Property'}
-            </button>
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="px-6 py-2 bg-white text-black border-2 border-black rounded-[4px]"
-            >
-              Cancel
-            </button>
           </div>
         </form>
       </div>

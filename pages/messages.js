@@ -89,10 +89,11 @@ export default function Messages() {
   useEffect(() => {
     // Filter users based on search query
     if (searchQuery.trim()) {
-      const filtered = allUsers.filter(user => 
-        user.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.phone?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      const filtered = allUsers.filter(user => {
+        const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase()
+        return fullName.includes(searchQuery.toLowerCase()) ||
+          user.phone?.toLowerCase().includes(searchQuery.toLowerCase())
+      })
       setFilteredUsers(filtered)
     } else {
       setFilteredUsers(allUsers)
@@ -123,7 +124,7 @@ export default function Messages() {
               .from('messages')
               .select(`
                 *,
-                sender:profiles!messages_sender_id_fkey(full_name, role)
+                sender:profiles!messages_sender_id_fkey(first_name, middle_name, last_name, role)
               `)
               .eq('id', payload.new.id)
               .single()
@@ -239,7 +240,7 @@ export default function Messages() {
       // Fetch all profiles at once
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, first_name, middle_name, last_name, role')
         .in('id', Array.from(userIds))
 
       if (profileError) {
@@ -283,9 +284,9 @@ export default function Messages() {
     // Load all users except the current user
     const { data: users, error } = await supabase
       .from('profiles')
-      .select('id, full_name, role, phone')
+      .select('id, first_name, middle_name, last_name, role, phone')
       .neq('id', session.user.id)
-      .order('full_name')
+      .order('first_name')
 
     if (error) {
       console.error('Error loading users:', error)
@@ -358,7 +359,7 @@ export default function Messages() {
       // Get profiles for this conversation
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, first_name, middle_name, last_name, role')
         .in('id', [existingDb.landlord_id, existingDb.tenant_id])
 
       const profileMap = {}
@@ -423,7 +424,7 @@ export default function Messages() {
         // Get profiles
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, full_name, role')
+          .select('id, first_name, middle_name, last_name, role')
           .in('id', [retryConv.landlord_id, retryConv.tenant_id])
 
         const profileMap = {}
@@ -451,7 +452,7 @@ export default function Messages() {
       // Get profiles for the new conversation
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, first_name, middle_name, last_name, role')
         .in('id', [newConv.landlord_id, newConv.tenant_id])
 
       const profileMap = {}
@@ -479,7 +480,7 @@ export default function Messages() {
       .from('messages')
       .select(`
         *,
-        sender:profiles!messages_sender_id_fkey(full_name, role)
+        sender:profiles!messages_sender_id_fkey(first_name, middle_name, last_name, role)
       `)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
@@ -647,7 +648,8 @@ export default function Messages() {
             read: false,
             created_at: new Date().toISOString(),
             sender: {
-              full_name: profile.full_name,
+              first_name: profile.first_name,
+              last_name: profile.last_name,
               role: profile.role
             }
           }
@@ -678,7 +680,7 @@ export default function Messages() {
           } else {
             // Replace optimistic message with real one
             setMessages(prev => prev.map(m => 
-              m.id === optimisticMessage.id ? { ...data, sender: { full_name: profile.full_name, role: profile.role } } : m
+              m.id === optimisticMessage.id ? { ...data, sender: { first_name: profile.first_name, last_name: profile.last_name, role: profile.role } } : m
             ))
           }
         }
@@ -697,7 +699,8 @@ export default function Messages() {
           read: false,
           created_at: new Date().toISOString(),
           sender: {
-            full_name: profile.full_name,
+            first_name: profile.first_name,
+            last_name: profile.last_name,
             role: profile.role
           }
         }
@@ -726,7 +729,7 @@ export default function Messages() {
           setNewMessage(messageText)
         } else {
           setMessages(prev => prev.map(m => 
-            m.id === optimisticMessage.id ? { ...data, sender: { full_name: profile.full_name, role: profile.role } } : m
+            m.id === optimisticMessage.id ? { ...data, sender: { first_name: profile.first_name, last_name: profile.last_name, role: profile.role } } : m
           ))
         }
       }
@@ -902,7 +905,7 @@ export default function Messages() {
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-xs sm:text-sm text-black truncate">{user.full_name}</div>
+                            <div className="font-semibold text-xs sm:text-sm text-black truncate">{user.first_name} {user.last_name}</div>
                             {user.phone && (
                               <div className="text-xs text-black mt-1 truncate">📱 {user.phone}</div>
                             )}
@@ -929,7 +932,7 @@ export default function Messages() {
               ) : (
                 <div className="flex-1 overflow-y-auto">
                   {conversations.map(conv => {
-                    const otherPerson = conv.other_user?.full_name || 'Unknown User'
+                    const otherPerson = conv.other_user ? `${conv.other_user.first_name || ''} ${conv.other_user.last_name || ''}`.trim() : 'Unknown User'
                     const unreadCount = unreadCounts[conv.id] || 0
                     const hasUnread = unreadCount > 0
                     
@@ -993,7 +996,7 @@ export default function Messages() {
                       </button>
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-black text-sm sm:text-base truncate">
-                          {selectedConversation.other_user?.full_name || 'Unknown User'}
+                          {selectedConversation.other_user ? `${selectedConversation.other_user.first_name || ''} ${selectedConversation.other_user.last_name || ''}`.trim() : 'Unknown User'}
                         </div>
                         {selectedConversation.property?.title && (
                           <div className="text-xs sm:text-sm text-black truncate">
@@ -1035,7 +1038,8 @@ export default function Messages() {
                       const isOwn = msg.sender_id === session.user.id
                       const hasFile = msg.file_url && msg.file_name
                       const isImage = msg.file_type?.startsWith('image/')
-                      const senderName = msg.sender?.full_name || (isOwn ? profile.full_name : selectedConversation.other_user?.full_name) || 'Unknown'
+                      const getSenderFullName = (sender) => sender ? `${sender.first_name || ''} ${sender.last_name || ''}`.trim() : null
+                      const senderName = getSenderFullName(msg.sender) || (isOwn ? `${profile.first_name} ${profile.last_name}` : getSenderFullName(selectedConversation.other_user)) || 'Unknown'
                       const senderInitials = senderName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
                       
                       // Find the latest message sent by current user (for "Seen" status)

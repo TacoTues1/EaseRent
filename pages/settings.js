@@ -12,7 +12,9 @@ export default function Settings() {
   const [message, setMessage] = useState({ type: '', text: '' })
 
   // Form state
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [middleName, setMiddleName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
 
   useEffect(() => {
@@ -49,7 +51,9 @@ export default function Settings() {
     
     if (data) {
       setProfile(data)
-      setFullName(data.full_name || '')
+      setFirstName(data.first_name || '')
+      setMiddleName(data.middle_name || '')
+      setLastName(data.last_name || '')
       setPhone(data.phone || '')
     }
     setLoading(false)
@@ -63,7 +67,9 @@ export default function Settings() {
     const { error } = await supabase
       .from('profiles')
       .update({
-        full_name: fullName,
+        first_name: firstName,
+        middle_name: middleName || 'N/A',
+        last_name: lastName,
         phone: phone
       })
       .eq('id', session.user.id)
@@ -140,18 +146,47 @@ export default function Settings() {
               <p className="text-xs text-black mt-1">Email cannot be changed</p>
             </div>
 
-            {/* Full Name */}
+            {/* Name Fields */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  First Name
+                </label>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border-2 border-black focus:outline-none"
+                  placeholder="Juan"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-black mb-2">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  className="w-full px-4 py-2 border-2 border-black focus:outline-none"
+                  placeholder="Dela Cruz"
+                />
+              </div>
+            </div>
+
+            {/* Middle Name */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-black mb-2">
-                Full Name
+                Middle Name <span className="text-gray-500 text-xs">(Leave blank if N/A)</span>
               </label>
               <input
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
+                value={middleName === 'N/A' ? '' : middleName}
+                onChange={(e) => setMiddleName(e.target.value)}
                 className="w-full px-4 py-2 border-2 border-black focus:outline-none"
-                placeholder="Enter your full name"
+                placeholder="Santos (optional)"
               />
             </div>
 
