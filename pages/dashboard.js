@@ -401,45 +401,48 @@ export default function Dashboard() {
       .maybeSingle()
     
     if (data) {
-      // Check if profile has incomplete name data (from previous OAuth login)
-      if (!data.last_name || data.last_name === null || data.last_name === '') {
-        const user = session?.user || (await supabase.auth.getUser()).data.user
+      const user = session?.user || (await supabase.auth.getUser()).data.user
+      const emailPrefix = user?.email?.split('@')[0] || ''
+      
+      // Check if profile name looks like it came from email (contains numbers or matches email prefix)
+      // This means OAuth name wasn't properly extracted before
+      const nameNeedsUpdate = !data.first_name || 
+                              data.first_name === emailPrefix ||
+                              /\d/.test(data.first_name) // contains numbers like "joeltuala15"
+      
+      if (nameNeedsUpdate) {
         const metadata = user?.user_metadata || {}
         const identityData = user?.identities?.[0]?.identity_data || {}
         
-        console.log('Updating incomplete profile. OAuth data:', { metadata, identityData })
-        
-        // Try to get names from OAuth
+        // Get the actual name from OAuth (not email)
         let firstName = identityData.given_name || metadata.given_name || 
-                        identityData.first_name || metadata.first_name || data.first_name
-        let middleName = identityData.middle_name || metadata.middle_name || data.middle_name
+                        identityData.first_name || metadata.first_name || 
+                        identityData.name || metadata.name || 
+                        identityData.full_name || metadata.full_name || null
+        let middleName = identityData.middle_name || metadata.middle_name || null
         let lastName = identityData.family_name || metadata.family_name || 
                        identityData.last_name || metadata.last_name || null
         
-        // Fallback: parse full_name
-        if (!lastName) {
-          const fullName = identityData.full_name || metadata.full_name || 
-                           identityData.name || metadata.name || ''
-          const nameParts = fullName.trim().split(/\s+/)
+        // If we have a full name with spaces, parse it
+        if (firstName && firstName.includes(' ')) {
+          const nameParts = firstName.trim().split(/\s+/)
+          firstName = nameParts[0]
           if (nameParts.length >= 2) {
             lastName = nameParts[nameParts.length - 1]
-            if (!firstName || firstName === data.first_name) {
-              firstName = nameParts[0]
-            }
-            if (nameParts.length >= 3 && !middleName) {
-              middleName = nameParts.slice(1, -1).join(' ')
-            }
+          }
+          if (nameParts.length >= 3) {
+            middleName = nameParts.slice(1, -1).join(' ')
           }
         }
         
-        // Update profile if we found better name data
-        if (lastName) {
+        // Only update if we found a real name (not from email)
+        if (firstName && firstName !== emailPrefix && !/\d/.test(firstName)) {
           const { data: updatedProfile } = await supabase
             .from('profiles')
             .update({
               first_name: firstName,
               middle_name: middleName || null,
-              last_name: lastName
+              last_name: lastName || null
             })
             .eq('id', userId)
             .select()
@@ -458,33 +461,24 @@ export default function Dashboard() {
       const metadata = user?.user_metadata || {}
       const identityData = user?.identities?.[0]?.identity_data || {}
       
-      // Debug: log the metadata to see what Google/Facebook actually provides
-      console.log('OAuth user_metadata:', metadata)
-      console.log('OAuth identity_data:', identityData)
-      
       // Extract names from OAuth metadata
-      // Google stores names in identity_data AND user_metadata
       // Try identity_data first (more reliable), then user_metadata
       let firstName = identityData.given_name || metadata.given_name || 
-                      identityData.first_name || metadata.first_name || null
+                      identityData.first_name || metadata.first_name || 
+                      identityData.name || metadata.name ||
+                      identityData.full_name || metadata.full_name || null
       let middleName = identityData.middle_name || metadata.middle_name || null
       let lastName = identityData.family_name || metadata.family_name || 
                      identityData.last_name || metadata.last_name || null
       
-      // Fallback: parse full_name/name if individual fields not available
-      if (!firstName || !lastName) {
-        const fullName = identityData.full_name || metadata.full_name || 
-                         identityData.name || metadata.name || ''
-        const nameParts = fullName.trim().split(/\s+/)
-        
-        if (nameParts.length >= 1 && !firstName) {
-          firstName = nameParts[0]
-        }
+      // If firstName contains spaces (it's actually a full name), parse it
+      if (firstName && firstName.includes(' ')) {
+        const nameParts = firstName.trim().split(/\s+/)
+        firstName = nameParts[0]
         if (nameParts.length >= 2 && !lastName) {
           lastName = nameParts[nameParts.length - 1]
         }
         if (nameParts.length >= 3 && !middleName) {
-          // Everything between first and last is middle name
           middleName = nameParts.slice(1, -1).join(' ')
         }
       }
@@ -494,15 +488,13 @@ export default function Dashboard() {
         firstName = user?.email?.split('@')[0] || 'User'
       }
       
-      console.log('Extracted names:', { firstName, middleName, lastName })
-      
       const { data: newProfile, error } = await supabase
         .from('profiles')
         .insert({
           id: userId,
           first_name: firstName,
-          middle_name: middleName,
-          last_name: lastName,
+          middle_name: middleName || null,
+          last_name: lastName || null,
           role: 'tenant' // Default role for new users
         })
         .select()
