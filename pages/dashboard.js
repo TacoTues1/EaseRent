@@ -401,22 +401,80 @@ export default function Dashboard() {
       .maybeSingle()
     
     if (data) {
+      // Check if profile has incomplete name data (from previous OAuth login)
+      if (!data.last_name || data.last_name === null || data.last_name === '') {
+        const user = session?.user || (await supabase.auth.getUser()).data.user
+        const metadata = user?.user_metadata || {}
+        const identityData = user?.identities?.[0]?.identity_data || {}
+        
+        console.log('Updating incomplete profile. OAuth data:', { metadata, identityData })
+        
+        // Try to get names from OAuth
+        let firstName = identityData.given_name || metadata.given_name || 
+                        identityData.first_name || metadata.first_name || data.first_name
+        let middleName = identityData.middle_name || metadata.middle_name || data.middle_name
+        let lastName = identityData.family_name || metadata.family_name || 
+                       identityData.last_name || metadata.last_name || null
+        
+        // Fallback: parse full_name
+        if (!lastName) {
+          const fullName = identityData.full_name || metadata.full_name || 
+                           identityData.name || metadata.name || ''
+          const nameParts = fullName.trim().split(/\s+/)
+          if (nameParts.length >= 2) {
+            lastName = nameParts[nameParts.length - 1]
+            if (!firstName || firstName === data.first_name) {
+              firstName = nameParts[0]
+            }
+            if (nameParts.length >= 3 && !middleName) {
+              middleName = nameParts.slice(1, -1).join(' ')
+            }
+          }
+        }
+        
+        // Update profile if we found better name data
+        if (lastName) {
+          const { data: updatedProfile } = await supabase
+            .from('profiles')
+            .update({
+              first_name: firstName,
+              middle_name: middleName || null,
+              last_name: lastName
+            })
+            .eq('id', userId)
+            .select()
+            .maybeSingle()
+          
+          if (updatedProfile) {
+            setProfile(updatedProfile)
+            return
+          }
+        }
+      }
       setProfile(data)
     } else {
       // Profile doesn't exist (e.g., Google/Facebook sign-in user), create one
       const user = session?.user || (await supabase.auth.getUser()).data.user
       const metadata = user?.user_metadata || {}
+      const identityData = user?.identities?.[0]?.identity_data || {}
+      
+      // Debug: log the metadata to see what Google/Facebook actually provides
+      console.log('OAuth user_metadata:', metadata)
+      console.log('OAuth identity_data:', identityData)
       
       // Extract names from OAuth metadata
-      // Google provides: given_name, family_name, full_name/name
-      // Facebook provides: first_name, middle_name, last_name, name
-      let firstName = metadata.given_name || metadata.first_name || null
-      let middleName = metadata.middle_name || null
-      let lastName = metadata.family_name || metadata.last_name || null
+      // Google stores names in identity_data AND user_metadata
+      // Try identity_data first (more reliable), then user_metadata
+      let firstName = identityData.given_name || metadata.given_name || 
+                      identityData.first_name || metadata.first_name || null
+      let middleName = identityData.middle_name || metadata.middle_name || null
+      let lastName = identityData.family_name || metadata.family_name || 
+                     identityData.last_name || metadata.last_name || null
       
       // Fallback: parse full_name/name if individual fields not available
       if (!firstName || !lastName) {
-        const fullName = metadata.full_name || metadata.name || ''
+        const fullName = identityData.full_name || metadata.full_name || 
+                         identityData.name || metadata.name || ''
         const nameParts = fullName.trim().split(/\s+/)
         
         if (nameParts.length >= 1 && !firstName) {
@@ -435,6 +493,8 @@ export default function Dashboard() {
       if (!firstName) {
         firstName = user?.email?.split('@')[0] || 'User'
       }
+      
+      console.log('Extracted names:', { firstName, middleName, lastName })
       
       const { data: newProfile, error } = await supabase
         .from('profiles')
