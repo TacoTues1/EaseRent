@@ -20,59 +20,6 @@ export default function NotificationsPage() {
     })
   }, [])
 
-  useEffect(() => {
-    if (session) {
-      loadNotifications()
-      
-      // Subscribe to real-time notifications
-      const channel = supabase
-        .channel('notifications-page')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'notifications',
-            filter: `recipient=eq.${session.user.id}`
-          },
-          (payload) => {
-            setNotifications(prev => [payload.new, ...prev])
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'notifications',
-            filter: `recipient=eq.${session.user.id}`
-          },
-          (payload) => {
-            setNotifications(prev =>
-              prev.map(n => n.id === payload.new.id ? payload.new : n)
-            )
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'notifications',
-            filter: `recipient=eq.${session.user.id}`
-          },
-          (payload) => {
-            setNotifications(prev => prev.filter(n => n.id !== payload.old.id))
-          }
-        )
-        .subscribe()
-
-      return () => {
-        supabase.removeChannel(channel)
-      }
-    }
-  }, [session])
-
   async function loadNotifications() {
     const { data } = await supabase
       .from('notifications')
