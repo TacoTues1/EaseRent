@@ -146,7 +146,7 @@ export default function SchedulePage() {
       
       // Set the time slot for this date (allows changing from morning to afternoon or vice versa)
       newState[dateStr] = timeSlot
-      setActiveDate(null) // Close the time slot picker after selection
+      setActiveDate(null)
       
       return newState
     })

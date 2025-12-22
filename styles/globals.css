@@ -58,3 +58,27 @@ div[role="status"] [data-icon] {
   will-change: auto !important;
 }
 
+/* Mobile navbar responsiveness */
+@media (max-width: 399px) {
+  .xs\:inline {
+    display: none !important;
+  }
+  .xs\:hidden {
+    display: block !important;
+  }
+}
+
+@media (min-width: 400px) {
+  .xs\:inline {
+    display: inline !important;
+  }
+  .xs\:hidden {
+    display: none !important;
+  }
+}
+
+/* Navbar transition for mobile menu */
+nav .nav-link {
+  transition: color 0.2s ease, font-weight 0.2s ease !important;
+}
+

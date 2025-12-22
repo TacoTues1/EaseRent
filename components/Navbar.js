@@ -248,10 +248,10 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <div className="flex items-center gap-4 sm:gap-8 flex-shrink-0">
-            <Link href="/dashboard" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black">
+          <div className="flex items-center gap-2 sm:gap-4 lg:gap-8 flex-shrink-0">
+            <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 text-base sm:text-lg font-bold text-black">
               <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
-              EaseRent
+              <span className="hidden xs:inline">EaseRent</span>
             </Link>
             <div className="hidden md:flex gap-4 lg:gap-6 relative">
               {/* Sliding underline indicator */}
@@ -272,12 +272,6 @@ export default function Navbar() {
               </Link>
               {profile?.role === 'landlord' && (
                 <>
-                  <Link 
-                    href="/properties/new" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/properties/new') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
-                    Add Property
-                  </Link>
                   <Link 
                     href="/applications" 
                     className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black'}`}
@@ -340,14 +334,14 @@ export default function Navbar() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             {/* Mobile AI Chat Button */}
             <Link 
               href="/ai-chat"
               className="md:hidden p-1.5 text-black hover:bg-gray-100 rounded-full transition-colors"
               title="AI Chat"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
             </Link>
@@ -355,19 +349,19 @@ export default function Navbar() {
             {/* Mobile menu button */}
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="md:hidden flex items-center gap-2 p-1.5 sm:p-2 border border-black"
+              className="md:hidden flex items-center gap-1 sm:gap-2 p-1 sm:p-1.5 border border-black rounded-md"
             >
-              <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-black text-white flex items-center justify-center font-semibold text-sm sm:text-base">
                 {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <div className="md:hidden">
-                <div className="font-medium text-black text-sm">{profile?.first_name || 'User'}</div>
-              </div>
-              <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="hidden xs:inline font-medium text-black text-xs sm:text-sm max-w-[60px] truncate">
+                {profile?.first_name || 'User'}
+              </span>
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {showMobileMenu ? (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 )}
               </svg>
             </button>

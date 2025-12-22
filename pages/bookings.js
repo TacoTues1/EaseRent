@@ -171,12 +171,21 @@ export default function BookingsPage() {
           body: JSON.stringify({ bookingId: booking.id })
         })
 
-        const result = await response.json()
-        
-        if (result.success) {
+        let result = null
+        const contentType = response.headers.get('content-type') || ''
+
+        // Only try to parse JSON if the response looks like JSON
+        if (contentType.includes('application/json')) {
+          result = await response.json()
+        } else {
+          const text = await response.text()
+          console.error('Non‑JSON response from /api/send-email:', text)
+        }
+
+        if (response.ok && result?.success) {
           toast.success('Booking approved! Email sent to tenant.')
         } else {
-          console.error('Failed to send email:', result.error)
+          console.error('Failed to send email:', result?.error || `HTTP ${response.status}`)
           toast.success('Booking approved! (Email notification failed)')
         }
       } catch (emailError) {
