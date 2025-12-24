@@ -243,20 +243,7 @@ export default function ApplicationsPage() {
       loadApplications()
     } else {
       console.error('Error deleting application:', error)
-      console.error('Error details:', JSON.stringify(error, null, 2))
-      
-      let errorMessage = 'Failed to delete application. '
-      if (error.message) {
-        errorMessage += error.message
-      }
-      if (error.hint) {
-        errorMessage += '\n\nHint: ' + error.hint
-      }
-      if (error.details) {
-        errorMessage += '\n\nDetails: ' + error.details
-      }
-      
-      toast.error(errorMessage)
+      toast.error('Failed to delete application')
     }
   }
 
@@ -322,10 +309,7 @@ export default function ApplicationsPage() {
         .select()
         .single()
 
-      if (bookingError) {
-        console.error('Booking error details:', bookingError)
-        throw bookingError
-      }
+      if (bookingError) throw bookingError
 
       // If a time slot was selected, mark it as booked
       if (timeSlotId) {
@@ -351,20 +335,7 @@ export default function ApplicationsPage() {
       loadApplications()
     } catch (err) {
       console.error('Error creating booking:', err)
-      console.error('Error details:', JSON.stringify(err, null, 2))
-      
-      let errorMessage = 'Failed to schedule viewing. '
-      if (err.message) {
-        errorMessage += err.message
-      }
-      if (err.hint) {
-        errorMessage += '\n\nHint: ' + err.hint
-      }
-      if (err.details) {
-        errorMessage += '\n\nDetails: ' + err.details
-      }
-      
-      toast.error(errorMessage)
+      toast.error('Failed to schedule viewing')
     } finally {
       setSubmittingBooking(false)
     }
@@ -439,295 +410,238 @@ export default function ApplicationsPage() {
     }
   }
 
-  // Get minimum date (today)
-  const getMinDate = () => {
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  }
-
   if (!session || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="inline-block animate-spin h-12 w-12 border-b-2 border-black"></div>
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+        <div className="text-gray-500">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-6">
+    <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-4 sm:mb-6">
-          <h1 className="text-xl sm:text-2xl font-bold mb-2">
-            {profile.role === 'landlord' ? 'Tenant Applications' : 'My Applications'}
-          </h1>
-          <p className="text-xs sm:text-sm text-black">
-            {profile.role === 'landlord' 
-              ? 'Review and manage tenant applications for your properties' 
-              : 'Track the status of your rental applications'}
-          </p>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div>
+             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+               {profile.role === 'landlord' ? 'Tenant Applications' : 'My Applications'}
+             </h1>
+             <p className="text-gray-500 text-sm mt-1">
+               {profile.role === 'landlord' 
+                ? 'Review and manage tenant applications for your properties.' 
+                : 'Track the status of your rental applications.'}
+             </p>
+          </div>
         </div>
 
         {/* Filter Tabs */}
-        <div className="bg-white border-2 border-black mb-4 sm:mb-6 p-2 flex flex-wrap gap-2 rounded-xl">
-          <button
-            onClick={() => setFilter('all')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
-              filter === 'all' 
-                ? 'bg-black text-white' 
-                : 'text-black'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('pending')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
-              filter === 'pending' 
-                ? 'bg-black text-white' 
-                : 'text-black'
-            }`}
-          >
-            Pending
-          </button>
-          <button
-            onClick={() => setFilter('accepted')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
-              filter === 'accepted' 
-                ? 'bg-black text-white' 
-                : 'text-black'
-            }`}
-          >
-            Accepted
-          </button>
-          <button
-            onClick={() => setFilter('rejected')}
-            className={`flex-1 min-w-[calc(50%-0.25rem)] sm:min-w-0 px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-full cursor-pointer ${
-              filter === 'rejected' 
-                ? 'bg-black text-white' 
-                : 'text-black'
-            }`}
-          >
-            Rejected
-          </button>
+        <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto">
+           {['all', 'pending', 'accepted', 'rejected'].map((tab) => (
+             <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all uppercase tracking-wide ${
+                  filter === tab 
+                    ? 'bg-black text-white' 
+                    : 'bg-transparent text-gray-500 hover:text-black'
+                }`}
+             >
+                {tab}
+             </button>
+           ))}
         </div>
 
         {/* Landlord: Pending Booking Requests Banner */}
         {profile.role === 'landlord' && pendingBookings.length > 0 && (
-          <div className="mb-4 sm:mb-6 bg-yellow-50 border-2 border-yellow-600 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="font-semibold text-black">
-                    {pendingBookings.length} Pending Viewing {pendingBookings.length === 1 ? 'Request' : 'Requests'}
-                  </p>
-                  <p className="text-sm text-black">Tenants are waiting for your approval</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowBookingsListModal(true)}
-                className="px-4 py-2 bg-yellow-600 text-white font-medium hover:bg-yellow-700 whitespace-nowrap"
-              >
-                View Requests ({pendingBookings.length})
-              </button>
+          <div className="mb-8 bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+               <div className="w-10 h-10 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+               </div>
+               <div>
+                  <h3 className="font-bold text-gray-900 text-sm">
+                    {pendingBookings.length} Pending Viewing Request{pendingBookings.length !== 1 && 's'}
+                  </h3>
+                  <p className="text-xs text-gray-500">Tenants are waiting for your approval.</p>
+               </div>
             </div>
+            <button
+              onClick={() => setShowBookingsListModal(true)}
+              className="px-4 py-2.5 bg-black text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-900 transition-colors"
+            >
+              View Requests
+            </button>
           </div>
         )}
 
         {/* Applications List */}
-        <div className="space-y-2">
+        <div className="space-y-4">
           {loading ? (
-            <div className="text-center py-12 bg-white">
-              <div className="inline-block animate-spin h-12 w-12"></div>
-              <p className="mt-4 text-black">Loading applications...</p>
+            <div className="text-center py-20">
+              <p className="text-gray-400 text-sm">Loading applications...</p>
             </div>
           ) : applications.length === 0 ? (
-            <div className="text-center py-12 bg-white">
-              <p className="text-black mb-2">
-                {filter === 'all' 
-                  ? 'No applications yet' 
-                  : `No ${filter} applications`}
-              </p>
-              <p className="text-sm text-black">
-                {profile.role === 'landlord' 
-                  ? 'Applications from tenants will appear here' 
-                  : 'Apply to properties to see them here'}
-              </p>
+            <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
+               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+               </div>
+               <h3 className="text-gray-900 font-bold mb-1">No applications found</h3>
+               <p className="text-gray-500 text-sm">
+                  {filter === 'all' 
+                    ? 'There are no applications to show right now.' 
+                    : `No applications with status "${filter}".`}
+               </p>
             </div>
           ) : (
             applications.map(app => {
               const isExpanded = expandedApplications[app.id]
               
               return (
-                <div key={app.id} className="bg-white border-2 border-black p-2 sm:p-3 rounded-xl">
-                  {/* Compact Header - Always Visible */}
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                <div key={app.id} className="bg-white border border-gray-100 p-5 md:p-6 rounded-2xl shadow-sm transition-all">
+                  {/* Card Header */}
+                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className="text-sm sm:text-base font-bold text-black leading-tight">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-lg font-bold text-gray-900">
                           {app.property?.title}
                         </h3>
-                        <span className={`px-2 py-0.5 text-[10px] sm:text-xs font-semibold whitespace-nowrap ${
-                          app.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                          app.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                          app.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-700'
+                        <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full border ${
+                          app.status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                          app.status === 'accepted' ? 'bg-green-50 text-green-700 border-green-100' :
+                          app.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' :
+                          'bg-gray-50 text-gray-600 border-gray-200'
                         }`}>
-                          {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                          {app.status}
                         </span>
                       </div>
                       
-                      <p className="text-xs text-gray-600 mb-1">
-                        {app.property?.city}
+                      <p className="text-sm text-gray-500 mb-3">
+                        {app.property?.address}, {app.property?.city}
                       </p>
                       
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm sm:text-base font-bold text-black">
-                          ₱{Number(app.property?.price).toLocaleString()}
-                        </p>
-                        <span className="text-gray-400">•</span>
-                        <p className="text-[10px] sm:text-xs text-gray-500">
-                          {new Date(app.submitted_at).toLocaleDateString()}
-                        </p>
+                      <div className="flex items-center gap-4 text-xs font-medium text-gray-400">
+                        <span className="text-black">₱{Number(app.property?.price).toLocaleString()}/mo</span>
+                        <span>•</span>
+                        <span>Applied {new Date(app.submitted_at).toLocaleDateString()}</span>
                       </div>
 
-                      {/* Booking Status for Tenants - Compact */}
+                      {/* Compact Booking Status */}
                       {profile.role === 'tenant' && app.status === 'accepted' && app.hasBooking && !isExpanded && (
-                        <div className="flex items-center gap-1 text-[10px] sm:text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded mt-1 w-fit">
-                          <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Viewing: {new Date(app.latestBooking.booking_date).toLocaleDateString()}</span>
+                        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-800 text-xs font-medium rounded-lg border border-green-100">
+                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                           Viewing scheduled for {new Date(app.latestBooking.booking_date).toLocaleDateString()}
                         </div>
                       )}
                     </div>
+
+                    <div className="flex items-center gap-2">
+                         <button
+                           onClick={() => toggleApplicationDetails(app.id)}
+                           className="px-4 py-2 bg-gray-50 text-black border border-gray-200 text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                         >
+                           {isExpanded ? 'Hide Details' : 'View Details'}
+                         </button>
+                    </div>
                   </div>
 
-                  {/* Expandable Details Section */}
+                  {/* Expanded Content */}
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
-                      {/* Full Address */}
-                      <div className="text-xs text-gray-600">
-                        <span className="font-medium">Address:</span> {app.property?.address}, {app.property?.city}
-                      </div>
-
-                      {/* Applicant Info for Landlords */}
-                      {profile.role === 'landlord' && app.tenant_profile && (
-                        <div className="bg-gray-50 p-2 rounded text-xs">
-                          <p className="font-semibold text-black mb-1">Applicant:</p>
-                          <div className="space-y-0.5">
-                            <p className="text-black">{app.tenant_profile.first_name} {app.tenant_profile.last_name}</p>
-                            {app.tenant_profile.email && (
-                              <p className="text-black break-all">{app.tenant_profile.email}</p>
-                            )}
-                            {app.tenant_profile.phone && (
-                              <p className="text-black">{app.tenant_profile.phone}</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Application Message */}
-                      {app.message && (
-                        <div className="bg-blue-50 p-2 rounded text-xs">
-                          <p className="font-semibold text-black mb-0.5">
-                            {profile.role === 'landlord' ? 'Message:' : 'Your message:'}
-                          </p>
-                          <p className="text-black break-words">{app.message}</p>
-                        </div>
-                      )}
-
-                      {/* Booking Details for Tenants */}
-                      {profile.role === 'tenant' && app.status === 'accepted' && app.hasBooking && (
-                        <div className="bg-green-50 p-2 rounded text-xs">
-                          <p className="font-semibold text-black mb-0.5">Viewing Details:</p>
-                          <p className="text-black">
-                            {new Date(app.latestBooking.booking_date).toLocaleString()}
-                          </p>
-                          <p className="text-black">
-                            Status: {app.latestBooking.status.replace('_', ' ').toUpperCase()}
-                          </p>
-                          {app.latestBooking.notes && (
-                            <p className="text-black mt-1">
-                              <span className="font-medium">Notes:</span> {app.latestBooking.notes}
-                            </p>
+                    <div className="mt-6 pt-6 border-t border-gray-50 grid grid-cols-1 md:grid-cols-2 gap-6">
+                       
+                       {/* Left: Message & Info */}
+                       <div className="space-y-4">
+                          {/* Applicant Info (Landlord View) */}
+                          {profile.role === 'landlord' && app.tenant_profile && (
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Applicant</h4>
+                              <p className="text-sm font-bold text-gray-900">{app.tenant_profile.first_name} {app.tenant_profile.last_name}</p>
+                              <div className="mt-1 space-y-0.5 text-xs text-gray-500">
+                                {app.tenant_profile.email && <p>{app.tenant_profile.email}</p>}
+                                {app.tenant_profile.phone && <p>{app.tenant_profile.phone}</p>}
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      )}
+
+                          {/* Message */}
+                          {app.message && (
+                            <div className="bg-white p-4 rounded-xl border border-gray-100">
+                               <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                                 {profile.role === 'landlord' ? 'Message' : 'Your Note'}
+                               </h4>
+                               <p className="text-sm text-gray-600 leading-relaxed">{app.message}</p>
+                            </div>
+                          )}
+                       </div>
+
+                       {/* Right: Actions & Status */}
+                       <div className="space-y-4">
+                          
+                          {/* Viewing Details (Tenant View) */}
+                          {profile.role === 'tenant' && app.status === 'accepted' && app.hasBooking && (
+                             <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-green-800 mb-3">Viewing Details</h4>
+                                <div className="space-y-2 text-sm">
+                                   <div className="flex justify-between">
+                                      <span className="text-green-700">Date</span>
+                                      <span className="font-bold text-green-900">{new Date(app.latestBooking.booking_date).toLocaleDateString()}</span>
+                                   </div>
+                                   <div className="flex justify-between">
+                                      <span className="text-green-700">Time</span>
+                                      <span className="font-bold text-green-900">{new Date(app.latestBooking.booking_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                   </div>
+                                   <div className="flex justify-between pt-2 border-t border-green-200 mt-2">
+                                      <span className="text-green-700">Status</span>
+                                      <span className="font-bold text-green-900 uppercase text-xs tracking-wide bg-white px-2 py-0.5 rounded-full">
+                                        {app.latestBooking.status.replace('_', ' ')}
+                                      </span>
+                                   </div>
+                                </div>
+                             </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-col gap-2">
+                             {/* Landlord Actions */}
+                             {profile.role === 'landlord' && app.status === 'pending' && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    onClick={() => updateApplicationStatus(app.id, 'accepted')}
+                                    className="px-4 py-3 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-green-700 transition-colors"
+                                  >
+                                    Accept Application
+                                  </button>
+                                  <button
+                                    onClick={() => updateApplicationStatus(app.id, 'rejected')}
+                                    className="px-4 py-3 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700 transition-colors"
+                                  >
+                                    Reject Application
+                                  </button>
+                                </div>
+                             )}
+
+                             {/* Tenant Schedule Button */}
+                             {profile.role === 'tenant' && app.status === 'accepted' && !app.hasBooking && (
+                                <button
+                                  onClick={() => openBookingModal(app)}
+                                  className="w-full px-4 py-3 bg-black text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-900 transition-colors shadow-lg shadow-gray-100"
+                                >
+                                  Schedule Viewing
+                                </button>
+                             )}
+
+                             {/* Delete Button */}
+                             {app.status !== 'accepted' && (
+                                <button
+                                  onClick={() => deleteApplication(app.id)}
+                                  className="w-full px-4 py-3 text-red-600 bg-red-50 hover:bg-red-100 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                                >
+                                  Delete Application
+                                </button>
+                             )}
+                          </div>
+                       </div>
                     </div>
                   )}
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-200">
-                    {/* View Details Toggle */}
-                    <button
-                      onClick={() => toggleApplicationDetails(app.id)}
-                      className="px-2 py-1 border border-black text-black hover:bg-gray-100 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
-                    >
-                      {isExpanded ? (
-                        <>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                          <span className="hidden sm:inline">Hide</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                          <span className="hidden sm:inline">Details</span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Landlord Actions */}
-                    {profile.role === 'landlord' && app.status === 'pending' && (
-                      <>
-                        <button
-                          onClick={() => updateApplicationStatus(app.id, 'accepted')}
-                          className="px-2 sm:px-3 py-1 bg-green-600 text-white hover:bg-green-700 text-[10px] sm:text-xs font-medium cursor-pointer rounded-full"
-                        >
-                          ✓ Accept
-                        </button>
-                        <button
-                          onClick={() => updateApplicationStatus(app.id, 'rejected')}
-                          className="px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium cursor-pointer rounded-full"
-                        >
-                          ✕ Reject
-                        </button>
-                      </>
-                    )}
-
-                    {/* Tenant Actions */}
-                    {profile.role === 'tenant' && app.status === 'accepted' && !app.hasBooking && (
-                      <button
-                        onClick={() => openBookingModal(app)}
-                        className="px-2 sm:px-3 py-1 bg-black text-white hover:bg-gray-800 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
-                      >
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span className="hidden sm:inline">Schedule</span>
-                      </button>
-                    )}
-
-                    {/* Delete button - hidden for accepted applications */}
-                    {app.status !== 'accepted' && (
-                      <button
-                        onClick={() => deleteApplication(app.id)}
-                        className="ml-auto px-2 sm:px-3 py-1 bg-red-600 text-white hover:bg-red-700 text-[10px] sm:text-xs font-medium flex items-center gap-1 cursor-pointer rounded-full"
-                        title="Delete application"
-                      >
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span className="hidden sm:inline">Delete</span>
-                      </button>
-                    )}
-                  </div>
                 </div>
               )
             })
@@ -737,61 +651,40 @@ export default function ApplicationsPage() {
 
       {/* Booking Modal */}
       {showBookingModal && selectedApplication && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-md w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg sm:text-xl font-bold text-black">Schedule Property Viewing</h3>
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Schedule Viewing</h3>
               <button
                 onClick={closeBookingModal}
-                className="text-black flex-shrink-0"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
 
-            <div className="mb-4 p-2 sm:p-3 bg-white">
-              <p className="font-medium text-black text-sm sm:text-base break-words">{selectedApplication.property?.title}</p>
-              <p className="text-xs sm:text-sm text-black break-words">{selectedApplication.property?.address}, {selectedApplication.property?.city}</p>
+            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <p className="font-bold text-gray-900 text-sm">{selectedApplication.property?.title}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{selectedApplication.property?.address}</p>
             </div>
 
-            <form onSubmit={submitBooking} className="space-y-4">
+            <form onSubmit={submitBooking} className="space-y-5">
               {availableTimeSlots.length > 0 ? (
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-black mb-2">
-                    Select Available Time Slot *
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+                    Available Time Slots
                   </label>
-                  <div className="space-y-2 max-h-60 overflow-y-auto border-2 border-black p-2 rounded-sm">
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                     {availableTimeSlots.map((slot) => {
                       const startTime = new Date(slot.start_time)
-                      const startHour = startTime.getHours()
-                      
-                      // Determine time slot label
-                      let timeLabel = 'Custom'
-                      let timeRange = `${startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - ${new Date(slot.end_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
-                      let badgeColor = 'bg-purple-100 text-purple-800'
-                      let emoji = '⏰'
-                      
-                      if (startHour === 8) {
-                        timeLabel = 'Morning'
-                        timeRange = '8AM - 11AM'
-                        badgeColor = 'bg-yellow-100 text-yellow-800'
-                        emoji = '🌅'
-                      } else if (startHour === 13) {
-                        timeLabel = 'Afternoon'
-                        timeRange = '1PM - 5:30PM'
-                        badgeColor = 'bg-orange-100 text-orange-800'
-                        emoji = '☀️'
-                      }
                       
                       return (
                         <label
                           key={slot.id}
-                          className={`block p-2 border-2 cursor-pointer transition-colors rounded-full ${
+                          className={`block p-3 border rounded-xl cursor-pointer transition-all ${
                             selectedTimeSlot === slot.id
-                              ? 'border-black bg-black text-white'
-                              : 'border-gray-300 hover:border-black'
+                              ? 'border-black bg-black text-white shadow-md'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
                           }`}
                         >
                           <input
@@ -800,75 +693,55 @@ export default function ApplicationsPage() {
                             value={slot.id}
                             checked={selectedTimeSlot === slot.id}
                             onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                            className="sr-only"
+                            className="hidden"
                             required
                           />
-                          <div className="flex justify-between items-center gap-2">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-base flex-shrink-0">{emoji}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-sm truncate">
-                                  {startTime.toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric'
-                                  })} • {timeRange}
-                                </div>
-                              </div>
-                              <span className={`px-2 py-0.5 text-xs font-semibold flex-shrink-0 ${
-                                selectedTimeSlot === slot.id 
-                                  ? 'bg-white text-black' 
-                                  : badgeColor
-                              }`}>
-                                {timeLabel}
-                              </span>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                                selectedTimeSlot === slot.id ? 'border-white bg-white' : 'border-gray-300'
+                            }`}>
+                                {selectedTimeSlot === slot.id && <div className="w-2 h-2 rounded-full bg-black"></div>}
                             </div>
-                            {selectedTimeSlot === slot.id && (
-                              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
+                            <div className="flex-1">
+                                <div className="text-sm font-bold">
+                                  {startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                </div>
+                                <div className={`text-xs ${selectedTimeSlot === slot.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                                  {startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(slot.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </div>
+                            </div>
                           </div>
                         </label>
                       )
                     })}
                   </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    Choose your preferred viewing time
-                  </p>
                 </div>
               ) : (
-                <div className="p-4 bg-gray-100 border-2 border-black">
-                  <p className="text-sm text-black">
-                    No available time slots yet. The landlord hasn't set up viewing times for this property. Please contact the landlord directly.
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl text-center">
+                  <p className="text-sm text-gray-500">
+                    No time slots available. Please contact the landlord directly.
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs sm:text-sm font-medium text-black mb-1">
-                  Additional Notes (Optional)
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
+                  Notes
                 </label>
                 <textarea
                   value={bookingNotes}
                   onChange={(e) => setBookingNotes(e.target.value)}
                   rows={3}
-                  placeholder="Any specific requirements or questions..."
-                  className="w-full px-3 py-2 bg-white border-2 border-black text-black placeholder-gray-400 focus:outline-none text-sm sm:text-base rounded-sm"
+                  placeholder="Any questions or specific requests?"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:border-black outline-none transition-colors resize-none"
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={closeBookingModal}
-                  className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base cursor-pointer rounded-full"
-                >
-                  Cancel
-                </button>
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={submittingBooking || availableTimeSlots.length === 0}
-                  className="flex-1 px-4 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base cursor-pointer rounded-full"
+                  className="w-full py-3.5 bg-black text-white font-bold rounded-xl cursor-pointer hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-gray-200"
                 >
                   {submittingBooking ? 'Sending Request...' : 'Request Viewing'}
                 </button>
@@ -880,121 +753,103 @@ export default function ApplicationsPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-md w-full p-4 sm:p-6">
-            <div className="flex items-start sm:items-center mb-4">
-              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-white flex items-center justify-center mr-3 sm:mr-4">
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg sm:text-xl font-bold text-black">Delete Application</h3>
-                <p className="text-xs sm:text-sm text-black">This action cannot be undone</p>
-              </div>
-            </div>
-
-            <p className="text-black mb-6 text-sm sm:text-base">
-              Are you sure you want to delete this application? All associated data will be permanently removed.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={cancelDelete}
-                className="flex-1 px-4 py-2 border-2 border-black text-black text-sm sm:text-base"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 px-4 py-2 bg-black text-white text-sm sm:text-base"
-              >
-                Delete
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6 text-center">
+             <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+             </div>
+             <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Application?</h3>
+             <p className="text-sm text-gray-500 mb-6">Are you sure you want to delete this application? This action cannot be undone.</p>
+             
+             <div className="flex gap-3">
+               <button
+                 onClick={cancelDelete}
+                 className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer hover:bg-gray-50"
+               >
+                 Cancel
+               </button>
+               <button
+                 onClick={confirmDelete}
+                 className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl cursor-pointer hover:bg-red-700 shadow-lg shadow-red-100"
+               >
+                 Delete
+               </button>
+             </div>
           </div>
         </div>
       )}
 
-      {/* Pending Bookings List Modal (for Landlords) */}
+      {/* Pending Bookings List Modal */}
       {showBookingsListModal && profile.role === 'landlord' && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-3xl w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg sm:text-xl font-bold text-black">Pending Viewing Requests</h3>
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">Viewing Requests</h3>
               <button
                 onClick={() => setShowBookingsListModal(false)}
-                className="text-black flex-shrink-0"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
 
             <div className="space-y-4">
               {pendingBookings.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-black">No pending booking requests</p>
+                <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <p className="text-gray-500 text-sm">No pending requests at the moment.</p>
                 </div>
               ) : (
                 pendingBookings.map((booking) => (
-                  <div key={booking.id} className="border-2 border-black p-3">
-                    <div className="flex justify-between items-start gap-2 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm text-black truncate">{booking.property?.title}</h4>
-                        <p className="text-xs text-gray-600 truncate">{booking.property?.address}, {booking.property?.city}</p>
+                  <div key={booking.id} className="p-5 bg-white border border-gray-100 rounded-xl shadow-sm">
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-sm">{booking.property?.title}</h4>
+                        <p className="text-xs text-gray-500 mt-0.5">{booking.property?.address}</p>
                       </div>
-                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold flex-shrink-0">
+                      <span className="px-2 py-1 bg-yellow-50 text-yellow-700 text-[10px] font-bold uppercase rounded-full border border-yellow-100">
                         Pending
                       </span>
                     </div>
 
-                    <div className="space-y-1.5 mb-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-3.5 h-3.5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span className="font-medium text-xs">Tenant:</span>
-                        <span className="text-xs">{booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <svg className="w-3.5 h-3.5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span className="font-medium text-xs">Date:</span>
-                        <span className="text-xs">{new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • {new Date(booking.booking_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-
-                      {booking.notes && (
-                        <div className="flex items-start gap-2 bg-gray-50 p-2 rounded">
-                          <svg className="w-3.5 h-3.5 text-black flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                          </svg>
-                          <span className="text-xs flex-1">{booking.notes}</span>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                       <div className="bg-gray-50 p-3 rounded-lg">
+                          <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Tenant</p>
+                          <p className="text-sm font-bold text-gray-900">{booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}</p>
+                       </div>
+                       <div className="bg-gray-50 p-3 rounded-lg">
+                          <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Requested Time</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {new Date(booking.booking_date).toLocaleDateString()}
+                            <span className="text-gray-400 font-normal mx-1">•</span>
+                            {new Date(booking.booking_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </p>
+                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    {booking.notes && (
+                      <div className="mb-4 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
+                        "{booking.notes}"
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
                       <button
                         onClick={() => {
                           approveBooking(booking.id)
                           setShowBookingsListModal(false)
                         }}
-                        className="flex-1 px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 font-medium text-xs"
+                        className="flex-1 py-2.5 bg-green-600 text-white font-bold text-xs rounded-lg cursor-pointer hover:bg-green-700 transition-colors"
                       >
-                        ✓ Approve
+                        Accept Request
                       </button>
                       <button
                         onClick={() => {
                           rejectBooking(booking.id)
                           setShowBookingsListModal(false)
                         }}
-                        className="flex-1 px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 font-medium text-xs"
+                        className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold text-xs rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
                       >
-                        ✕ Reject
+                        Decline
                       </button>
                     </div>
                   </div>

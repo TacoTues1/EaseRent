@@ -63,10 +63,47 @@ export default function PaymentHistoryPage() {
     return sum + rent + water + electrical + other
   }, 0)
 
+  // Calculate chart data (Last 6 months)
+  const getChartData = () => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const currentMonth = new Date().getMonth()
+    const data = []
+    
+    for (let i = 5; i >= 0; i--) {
+      const monthIndex = (currentMonth - i + 12) % 12
+      data.push({
+        label: months[monthIndex],
+        value: 0
+      })
+    }
+
+    payments.forEach(payment => {
+      const date = new Date(payment.paid_at)
+      const monthIndex = date.getMonth()
+      const monthLabel = months[monthIndex]
+      const dataPoint = data.find(d => d.label === monthLabel)
+      
+      if (dataPoint) {
+        const total = (
+          parseFloat(payment.amount) || 0 +
+          parseFloat(payment.water_bill) || 0 +
+          parseFloat(payment.electrical_bill) || 0 +
+          parseFloat(payment.other_bills) || 0
+        )
+        dataPoint.value += total
+      }
+    })
+
+    return data
+  }
+
+  const chartData = getChartData()
+  const maxChartValue = Math.max(...chartData.map(d => d.value), 1000)
+
   if (!session) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-black">Loading...</p>
+        <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
       </div>
     )
   }
@@ -74,67 +111,96 @@ export default function PaymentHistoryPage() {
   return (
     <div className="min-h-screen bg-white p-3 sm:p-6">   
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-8">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">Payment History</h1>
-            <p className="text-sm text-gray-500 mt-1">View all completed payment records</p>
+            <h1 className="text-3xl font-bold tracking-tight text-black">History</h1>
+            <p className="text-sm text-gray-500 mt-1">View all payment records</p>
           </div>
           <Link 
             href="/payments"
-            className="px-4 py-2 bg-black text-white font-medium rounded hover:bg-gray-800"
+            className="px-6 py-2.5 bg-white border-2 border-black text-black font-bold rounded-lg cursor-pointer"
           >
-            Back to Bills
+            ← Back to Payments
           </Link>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          <div className="bg-white border-2 border-black p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-black mb-1">
-              {userRole === 'landlord' ? 'Total Income' : 'Total Paid'}
+        {/* Stats & Graph Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          {/* Summary Cards */}
+          <div className="space-y-4 lg:col-span-1">
+            <div className="bg-white border-2 border-black p-6 rounded-xl">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
+                {userRole === 'landlord' ? 'Total Collected' : 'Total Paid'}
+              </div>
+              <div className="text-3xl font-bold text-black truncate">
+                ₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
             </div>
-            <div className="text-xl sm:text-3xl font-bold text-black">
-              ₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            
+            <div className="bg-white border-2 border-black p-6 rounded-xl">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Transactions</div>
+              <div className="text-3xl font-bold text-black">{payments.length}</div>
+            </div>
+
+            <div className="bg-white border-2 border-black p-6 rounded-xl">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Average</div>
+              <div className="text-3xl font-bold text-black truncate">
+                ₱{payments.length > 0 ? (totalIncome / payments.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+              </div>
             </div>
           </div>
-          <div className="bg-white border-2 border-black p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-black mb-1">Total Payments</div>
-            <div className="text-xl sm:text-3xl font-bold text-black">{payments.length}</div>
-          </div>
-          <div className="bg-white border-2 border-black p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-black mb-1">Avg Payment</div>
-            <div className="text-xl sm:text-3xl font-bold text-black">
-              ₱{payments.length > 0 ? (totalIncome / payments.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+
+          {/* Payment Trends Graph */}
+          <div className="lg:col-span-2 bg-white border-2 border-black p-6 rounded-xl flex flex-col">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-6">Payment Volume (6 Months)</h3>
+            <div className="flex-1 flex items-end gap-3 sm:gap-6 min-h-[200px]">
+              {chartData.map((data, index) => (
+                <div key={index} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer h-full justify-end">
+                  <div className="relative w-full flex items-end justify-center h-full">
+                    {/* Tooltip */}
+                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded font-bold whitespace-nowrap z-10 pointer-events-none">
+                      ₱{data.value.toLocaleString()}
+                    </div>
+                    {/* Bar */}
+                    <div 
+                      className="w-full bg-black rounded-t-sm transition-all duration-500 group-hover:opacity-80"
+                      style={{ height: `${(data.value / maxChartValue) * 100}%`, minHeight: '4px' }}
+                    ></div>
+                  </div>
+                  <span className="text-xs font-bold text-gray-500">{data.label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
         {/* Payment History Table */}
-        <div className="bg-white border-2 border-black overflow-hidden">
-          <div className="px-6 py-4 border-b border-black bg-white">
-            <h2 className="text-lg font-semibold text-black">All Payments</h2>
+        <div className="bg-white border-2 border-black overflow-hidden rounded-xl shadow-md">
+          <div className="px-6 py-4 border-b-2 border-black bg-white flex justify-between items-center">
+            <h2 className="text-lg font-bold text-black uppercase tracking-wider">Transaction Log</h2>
+            <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded border border-gray-200">
+              {payments.length} Records
+            </span>
           </div>
           
           {loading ? (
-            <p className="p-6 text-black">Loading...</p>
+            <div className="p-8 flex justify-center">
+              <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+            </div>
           ) : payments.length === 0 ? (
-            <div className="p-6">
-              <div className="text-center py-8">
-                <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <h3 className="text-lg font-medium text-black mb-2">No payment records yet</h3>
-                <p className="text-gray-500 text-sm">
-                  {userRole === 'landlord' 
-                    ? "Payment records will appear here when tenants make payments."
-                    : "Your payment history will appear here once you make payments."}
-                </p>
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               </div>
+              <h3 className="text-lg font-bold text-black mb-1">No history found</h3>
+              <p className="text-gray-500 text-sm">
+                No payment records are available yet.
+              </p>
             </div>
           ) : (
             <>
               {/* Mobile Card View */}
-              <div className="sm:hidden divide-y">
+              <div className="sm:hidden divide-y divide-gray-100">
                 {payments.map(payment => {
                   const rent = parseFloat(payment.amount) || 0
                   const water = parseFloat(payment.water_bill) || 0
@@ -144,33 +210,36 @@ export default function PaymentHistoryPage() {
                   const grandTotal = rent + totalBills
 
                   return (
-                    <div key={payment.id} className="p-4">
-                      <div className="flex justify-between items-start mb-2">
+                    <div key={payment.id} className="p-5 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start mb-3">
                         <div>
-                          <div className="font-medium text-sm">{payment.properties?.title || 'N/A'}</div>
+                          <div className="font-bold text-sm text-black">{payment.properties?.title || 'Unknown Property'}</div>
                           {userRole === 'landlord' && (
-                            <div className="text-xs text-gray-500">{payment.profiles?.first_name} {payment.profiles?.last_name || 'N/A'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {payment.profiles?.first_name} {payment.profiles?.last_name}
+                            </div>
                           )}
                         </div>
-                        <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded">
+                        <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-black text-white border border-black rounded-sm">
                           Paid
                         </span>
                       </div>
                       
-                      <div className="text-lg font-bold text-green-600 mb-2">
-                        ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Total</span>
+                        <span className="text-xl font-bold text-black">₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                       
-                      <div className="text-xs text-gray-500 space-y-0.5 mb-2">
-                        <div>Rent: ₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                        {water > 0 && <div>Water: ₱{water.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
-                        {electrical > 0 && <div>Electric: ₱{electrical.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
-                        {other > 0 && <div>Other: ₱{other.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>}
+                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-3 bg-gray-50 p-2 rounded border border-gray-100">
+                        <div>Rent: <span className="font-medium text-black">₱{rent.toLocaleString()}</span></div>
+                        <div>Bills: <span className="font-medium text-black">₱{totalBills.toLocaleString()}</span></div>
                       </div>
                       
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span className="capitalize">{payment.method?.replace('_', ' ') || 'N/A'}</span>
-                        <span>{new Date(payment.paid_at).toLocaleDateString()}</span>
+                      <div className="flex justify-between items-center text-xs text-gray-400 border-t border-gray-100 pt-3">
+                        <div className="flex items-center gap-1">
+                          <span className="uppercase font-bold tracking-wider">{payment.method?.replace('_', ' ')}</span>
+                        </div>
+                        <span>{new Date(payment.paid_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                       </div>
                     </div>
                   )
@@ -180,21 +249,21 @@ export default function PaymentHistoryPage() {
               {/* Desktop Table View */}
               <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Property</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
                       {userRole === 'landlord' && (
-                        <th className="px-4 py-3 text-left text-sm font-medium text-black">Tenant</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tenant</th>
                       )}
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Rent</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Bills</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Total</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Method</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Status</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-black">Date</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Rent</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Bills</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Method</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-gray-100">
                     {payments.map(payment => {
                       const rent = parseFloat(payment.amount) || 0
                       const water = parseFloat(payment.water_bill) || 0
@@ -204,53 +273,55 @@ export default function PaymentHistoryPage() {
                       const grandTotal = rent + totalBills
 
                       return (
-                        <tr key={payment.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm">{payment.properties?.title || 'N/A'}</td>
-                          {userRole === 'landlord' && (
-                            <td className="px-4 py-3 text-sm">{payment.profiles?.first_name} {payment.profiles?.last_name || 'N/A'}</td>
-                          )}
-                          <td className="px-4 py-3 text-sm font-medium">
-                            ₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-bold text-black">
+                            {payment.properties?.title || 'N/A'}
                           </td>
-                          <td className="px-4 py-3 text-sm">
+                          {userRole === 'landlord' && (
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {payment.profiles?.first_name} {payment.profiles?.last_name || 'N/A'}
+                            </td>
+                          )}
+                          <td className="px-6 py-4 text-sm text-right font-medium text-gray-600">
+                            ₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-right">
                             {totalBills > 0 ? (
-                              <div className="space-y-1">
-                                {water > 0 && (
-                                  <div className="text-xs text-gray-600">
-                                    Water: ₱{water.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </div>
-                                )}
-                                {electrical > 0 && (
-                                  <div className="text-xs text-gray-600">
-                                    Electric: ₱{electrical.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </div>
-                                )}
-                                {other > 0 && (
-                                  <div className="text-xs text-gray-600">
-                                    Other: ₱{other.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </div>
-                                )}
-                                {payment.bills_description && (
-                                  <div className="text-xs text-gray-500 italic mt-1">
-                                    {payment.bills_description}
-                                  </div>
-                                )}
+                              <div className="group relative inline-block cursor-help">
+                                <span className="font-medium text-gray-600 border-b border-dotted border-gray-400">
+                                  ₱{totalBills.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </span>
+                                {/* Tooltip for bill breakdown */}
+                                <div className="absolute bottom-full right-0 mb-2 w-48 bg-black text-white text-xs p-3 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                                  <div className="flex justify-between mb-1"><span>Water:</span> <span>₱{water.toLocaleString()}</span></div>
+                                  <div className="flex justify-between mb-1"><span>Electric:</span> <span>₱{electrical.toLocaleString()}</span></div>
+                                  <div className="flex justify-between"><span>Other:</span> <span>₱{other.toLocaleString()}</span></div>
+                                  {payment.bills_description && (
+                                    <div className="mt-2 pt-2 border-t border-gray-700 italic text-gray-300">
+                                      "{payment.bills_description}"
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             ) : (
-                              <span className="text-gray-400 text-xs">No bills</span>
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm font-bold text-green-600">
-                            ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="px-6 py-4 text-sm text-right font-bold text-black">
+                            ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="px-4 py-3 text-sm capitalize">{payment.method?.replace('_', ' ')}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
-                              {payment.status}
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 border border-gray-200 px-2 py-1 rounded-sm bg-gray-50">
+                              {payment.method?.replace('_', ' ') || 'Cash'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                            {new Date(payment.paid_at).toLocaleDateString()}
+                          <td className="px-6 py-4 text-sm text-center text-gray-500">
+                            {new Date(payment.paid_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-black text-white border border-black rounded-full">
+                              Paid
+                            </span>
                           </td>
                         </tr>
                       )

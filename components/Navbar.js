@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
@@ -15,6 +15,7 @@ export default function Navbar() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
+  const navRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -55,7 +56,6 @@ export default function Navbar() {
           filter: `recipient=eq.${userId}`
         },
         () => {
-          // Any change to notifications, reload the actual count from database
           loadUnreadCount(userId)
         }
       )
@@ -79,17 +79,28 @@ export default function Navbar() {
             left: linkRect.left - parentRect.left,
             width: linkRect.width
           })
+        } else {
+            setUnderlineStyle({ left: 0, width: 0, opacity: 0 })
         }
       }
       
-      // Small delay to ensure DOM is ready
       setTimeout(updateUnderline, 150)
-      
-      // Update on window resize
       window.addEventListener('resize', updateUnderline)
       return () => window.removeEventListener('resize', updateUnderline)
     }
   }, [router.pathname, profile])
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (navRef.current && !navRef.current.contains(event.target)) {
+        setShowDropdown(false)
+        setShowMobileMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [navRef]);
 
   async function loadProfile(userId) {
     try {
@@ -107,23 +118,13 @@ export default function Navbar() {
       if (data) {
         setProfile(data)
       } else {
-        // Profile doesn't exist, try to get user from auth
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         
-        if (authError) {
-          // User doesn't exist in auth either (orphaned session)
-          console.error('Auth error - signing out:', authError)
+        if (authError || !user) {
           await supabase.auth.signOut()
           return
         }
         
-        if (!user) {
-          // No user found, sign out
-          await supabase.auth.signOut()
-          return
-        }
-        
-        // User exists in auth but not in profiles, create profile
         const { data: newProfile, error: insertError } = await supabase
           .from('profiles')
           .insert({
@@ -131,34 +132,12 @@ export default function Navbar() {
             first_name: user?.user_metadata?.first_name || user?.email?.split('@')[0] || 'User',
             middle_name: user?.user_metadata?.middle_name || 'N/A',
             last_name: user?.user_metadata?.last_name || '',
-            role: 'tenant' // Default role for new users
+            role: 'tenant'
           })
           .select()
           .single()
         
-        if (insertError) {
-          // Ignore duplicate key errors (profile was created elsewhere, e.g., by AuthModal)
-          if (insertError.code === '23505') {
-            // Profile exists now, fetch it
-            const { data: existingProfile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', userId)
-              .maybeSingle()
-            
-            if (existingProfile) {
-              setProfile(existingProfile)
-            }
-          } else if (insertError.code === '23503') {
-            // Foreign key violation - user doesn't exist in auth.users
-            console.error('User not found in auth.users - signing out')
-            await supabase.auth.signOut()
-          } else {
-            console.error('Error creating profile:', insertError)
-          }
-        } else if (newProfile) {
-          setProfile(newProfile)
-        }
+        if (newProfile) setProfile(newProfile)
       }
     } catch (err) {
       console.error('Network error loading profile:', err)
@@ -173,14 +152,9 @@ export default function Navbar() {
         .eq('recipient', userId)
         .eq('read', false)
       
-      if (error) {
-        console.error('Error loading notifications:', error)
-        return
-      }
-      
+      if (error) return
       setUnreadCount(count || 0)
     } catch (err) {
-      console.error('Network error loading notifications:', err)
       setUnreadCount(0)
     }
   }
@@ -189,52 +163,58 @@ export default function Navbar() {
     await supabase.auth.signOut()
     setSession(null)
     setProfile(null)
-    toast.success('Signed out successfully', {
-      icon: '✓',
-    })
+    toast.success('Signed out successfully')
     router.push('/')
   }
 
   const isActive = (path) => router.pathname === path
 
+  // --- Public Navbar ---
   if (!session) {
     return (
       <>
-        <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black">
-                  <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
-                  EaseRent
-                </Link>
-              </div>
-              <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block">
-                <span className="text-lg xl:text-xl font-bold text-black">Welcome to EaseRent</span>
-              </div>
-              <div className="flex items-center gap-2 sm:gap-4">
-                <button 
-                  onClick={() => {
-                    setAuthMode('signin')
-                    setShowAuthModal(true)
-                  }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-black  font-medium cursor-pointer"
-                >
-                  Login
-                </button>
-                <button 
-                  onClick={() => {
-                    setAuthMode('signup')
-                    setShowAuthModal(true)
-                  }}
-                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base bg-black text-white border border-black cursor-pointer rounded-xl"
-                >
-                  Register
-                </button>
+        {/* Floating Container */}
+        <div className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+          <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+            <div className="px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-16">
+                <div className="flex items-center">
+                  <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
+                    <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
+                    EaseRent
+                  </Link>
+                </div>
+                
+                {/* Desktop Welcome Message */}
+                <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block">
+                  <span className="text-lg font-bold text-gray-800 tracking-tight">Welcome to EaseRent</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      setAuthMode('signin')
+                      setShowAuthModal(true)
+                    }}
+                    className="px-4 py-2 text-sm font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer"
+                  >
+                    Login
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setAuthMode('signup')
+                      setShowAuthModal(true)
+                    }}
+                    className="px-5 py-2 text-sm font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer"
+                  >
+                    Register
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </nav>
+          </nav>
+        </div>
+        <div className="h-24"></div> {/* Spacer for fixed navbar */}
         <AuthModal 
           isOpen={showAuthModal} 
           onClose={() => setShowAuthModal(false)} 
@@ -244,379 +224,330 @@ export default function Navbar() {
     )
   }
 
+  // --- Authenticated Navbar ---
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b-2 border-black">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center gap-2 sm:gap-4 lg:gap-8 flex-shrink-0">
-            <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 text-base sm:text-lg font-bold text-black">
-              <img src="/home.png" alt="EaseRent" className="w-6 h-6 sm:w-7 sm:h-7" />
-              <span className="hidden xs:inline">EaseRent</span>
-            </Link>
-            <div className="hidden md:flex gap-4 lg:gap-6 relative">
-              {/* Sliding underline indicator */}
-              <div 
-                className="absolute bottom-0 h-0.5 bg-black"
-                style={{ 
-                  left: `${underlineStyle.left}px`, 
-                  width: `${underlineStyle.width}px`,
-                  transition: 'left 0.4s cubic-bezier(0.4, 0, 0.2, 1), width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              />
+    <>
+      <div ref={navRef} className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+        <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
               
+              {/* Logo & Desktop Nav */}
+              <div className="flex items-center gap-6 lg:gap-10">
+                <Link href="/dashboard" className="flex items-center gap-2 font-bold text-black hover:opacity-80 transition-opacity">
+                  <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
+                  <span className="hidden sm:inline text-xl">EaseRent</span>
+                </Link>
+
+                <div className="hidden md:flex relative gap-1">
+                  {/* Sliding Underline */}
+                  <div 
+                    className="absolute bottom-0 h-0.5 bg-black rounded-full"
+                    style={{ 
+                      left: `${underlineStyle.left}px`, 
+                      width: `${underlineStyle.width}px`,
+                      opacity: underlineStyle.width ? 1 : 0,
+                      transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  />
+                  
+                  {/* Nav Links */}
+                  <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                    Dashboard
+                  </Link>
+                  
+                  {profile?.role === 'landlord' && (
+                    <>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                        Applications
+                      </Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                        Bookings
+                      </Link>
+                      {/* Schedule moved to dropdown */}
+                    </>
+                  )}
+
+                  {profile?.role === 'tenant' && (
+                    <>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                        My Applications
+                      </Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                        Maintenance
+                      </Link>
+                    </>
+                  )}
+
+                  {/* Payments moved to dropdown */}
+                  <Link href="/messages" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/messages') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                    Messages
+                  </Link>
+                  <Link href="/notifications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors relative flex items-center ${isActive('/notifications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>
+                    Notifications
+                    {unreadCount > 0 && (
+                      <span className="ml-2 bg-black text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                </div>
+              </div>
+
+              {/* Right Side Actions */}
+              <div className="flex items-center gap-3">
+                
+                {/* Mobile Menu Button */}
+                <button
+                  onClick={() => setShowMobileMenu(!showMobileMenu)}
+                  className="md:hidden p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-black text-white rounded-md flex items-center justify-center text-xs font-bold">
+                      {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    <svg className={`w-5 h-5 transition-transform duration-300 ${showMobileMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {showMobileMenu ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      )}
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Desktop Dropdown */}
+                <div className="hidden md:block relative">
+                  <button
+                    onClick={() => setShowDropdown(!showDropdown)}
+                    className="flex items-center gap-3 pl-2 pr-3 py-1.5 bg-white border border-gray-200 hover:border-black rounded-full shadow-sm hover:shadow transition-all group cursor-pointer"
+                  >
+                    <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm group-hover:bg-gray-800 transition-colors">
+                      {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 group-hover:text-black hidden lg:block">
+                      {profile?.first_name}
+                    </span>
+                    <svg 
+                      className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Desktop Dropdown Menu */}
+                  {showDropdown && (
+                    <div className="absolute right-0 mt-3 w-64 bg-white/95 backdrop-blur-md border border-gray-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <div className="font-bold text-black text-base">{profile?.first_name} {profile?.last_name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 truncate">{session?.user?.email}</div>
+                        <div className="mt-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${
+                            profile?.role === 'landlord' 
+                              ? 'bg-black text-white' 
+                              : 'bg-blue-50 text-blue-700 border border-blue-100'
+                          }`}>
+                            {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-2 space-y-1">
+                        {profile?.role === 'landlord' && (
+                          <Link
+                            href="/schedule"
+                            onClick={() => setShowDropdown(false)}
+                            className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                          >
+                            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            Schedule
+                          </Link>
+                        )}
+                        
+                        <Link
+                          href="/payments"
+                          onClick={() => setShowDropdown(false)}
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                        >
+                          <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                          </svg>
+                          Payments
+                        </Link>
+
+                        <div className="h-px bg-gray-100 my-1"></div>
+
+                        <Link
+                          href="/settings"
+                          onClick={() => setShowDropdown(false)}
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                        >
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Account Settings
+                        </Link>
+                        
+                        <button
+                          onClick={() => {
+                            setShowDropdown(false)
+                            handleSignOut()
+                          }}
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl w-full text-left transition-colors mt-1 cursor-pointer"
+                        >
+                          <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Log Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        {/* Mobile Floating Menu (Detached) */}
+        {showMobileMenu && (
+          <div className="md:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
+            {/* Mobile User Header */}
+            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+               <div>
+                  <div className="font-bold text-gray-900 text-lg">{profile?.first_name} {profile?.last_name}</div>
+                  <div className="text-sm text-gray-500">{session?.user?.email}</div>
+               </div>
+               <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full ${
+                  profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'
+               }`}>
+                  {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
+               </span>
+            </div>
+
+            {/* Mobile Links Grid */}
+            <div className="p-4 grid grid-cols-1 gap-2">
               <Link 
                 href="/dashboard" 
-                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/dashboard') ? 'active text-black font-semibold' : 'text-black'}`}
+                onClick={() => setShowMobileMenu(false)}
+                className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  isActive('/dashboard') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'
+                }`}
               >
                 Dashboard
               </Link>
+
               {profile?.role === 'landlord' && (
                 <>
-                  <Link 
-                    href="/applications" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
+                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
+                    Add Property
+                  </Link>
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/applications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                     Applications
                   </Link>
-                  <Link 
-                    href="/bookings" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/bookings') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
+                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                     Bookings
                   </Link>
-                  <Link 
-                    href="/schedule" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/schedule') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
-                    Schedule
-                  </Link>
+                  {/* Schedule moved to bottom actions */}
                 </>
               )}
+
               {profile?.role === 'tenant' && (
                 <>
-                  <Link 
-                    href="/applications" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/applications') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/applications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                     My Applications
                   </Link>
-                  <Link 
-                    href="/maintenance" 
-                    className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/maintenance') ? 'active text-black font-semibold' : 'text-black'}`}
-                  >
+                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                     Maintenance
                   </Link>
                 </>
               )}
-              <Link 
-                href="/payments" 
-                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/payments') ? 'active text-black font-semibold' : 'text-black'}`}
-              >
-                Payments
-              </Link>
-              <Link 
-                href="/messages" 
-                className={`nav-link pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/messages') ? 'active text-black font-semibold' : 'text-black'}`}
-              >
+
+              {/* Payments moved to bottom actions */}
+              <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/messages') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                 Messages
               </Link>
-              <Link 
-                href="/notifications" 
-                className={`nav-link relative pb-1 px-2 py-1 transition-all duration-200 text-sm lg:text-base ${isActive('/notifications') ? 'active text-black font-semibold' : 'text-black'}`}
-              >
-                Notifications
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-black text-white text-xs w-5 h-5 flex items-center justify-center border border-black">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Link>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            {/* Mobile AI Chat Button */}
-            <Link 
-              href="/ai-chat"
-              className="md:hidden p-1.5 text-black hover:bg-gray-100 rounded-full transition-colors"
-              title="AI Chat"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
-            </Link>
-
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
-              className="md:hidden flex items-center gap-1 sm:gap-2 p-1 sm:p-1.5 border border-black rounded-md"
-            >
-              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-black text-white flex items-center justify-center font-semibold text-sm sm:text-base">
-                {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <span className="hidden xs:inline font-medium text-black text-xs sm:text-sm max-w-[60px] truncate">
-                {profile?.first_name || 'User'}
-              </span>
-              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-black flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {showMobileMenu ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
-            </button>
-
-            {/* Desktop AI Chat Button */}
-            {/* <div className="hidden md:flex items-center">
-              <Link 
-                href="/ai-chat"
-                className="p-2 text-black hover:bg-gray-100 rounded-full transition-colors"
-                title="AI Chat"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-              </Link>
-            </div> */}
-
-            {/* Desktop User Profile Dropdown */}
-            <div className="hidden md:block relative">
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-3 px-3 py-2 border border-black cursor-pointer rounded-md"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 bg-black text-white flex items-center justify-center font-semibold">
-                    {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium text-black text-sm">{profile?.first_name} {profile?.last_name || ''}</div>
-                    <div className="text-black text-xs capitalize">{profile?.role || 'tenant'}</div>
-                  </div>
-                </div>
-                <svg 
-                  className={`w-4 h-4 text-black ${showDropdown ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-            {/* Dropdown Menu */}
-            {showDropdown && (
-              <>
-                {/* Backdrop */}
-                <div 
-                  className="fixed inset-0 z-40 cursor-pointer" 
-                  onClick={() => setShowDropdown(false)}
-                />
-                
-                {/* Dropdown Content */}
-                <div className="absolute right-0 mt-2 w-56 bg-white border-2 border-black py-2 z-50 rounded-md">
-                  {/* User Info */}
-                  <div className="px-4 py-3 border-b-2 border-black">
-                    <div className="font-medium text-black">{profile?.first_name} {profile?.last_name}</div>
-                    <div className="text-sm text-black">{session?.user?.email}</div>
-                    <div className="mt-1">
-                      <span className={`inline-block px-2 py-0.5 text-xs font-medium border border-black ${
-                        profile?.role === 'landlord' 
-                          ? 'bg-black text-white' 
-                          : 'bg-white text-black'
-                      }`}>
-                        {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Menu Items */}
-                  <div className="py-1">
-                    <Link
-                      href="/settings"
-                      onClick={() => setShowDropdown(false)}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-black"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Settings
-                    </Link>
-                    
-                    <button
-                      onClick={() => {
-                        setShowDropdown(false)
-                        handleSignOut()
-                      }}
-                      className="flex items-center gap-3 px-4 py-2 text-sm text-black w-full text-left cursor-pointer"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      Sign Out
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Menu */}
-      {showMobileMenu && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-black/20 z-40 md:hidden" 
-            onClick={() => setShowMobileMenu(false)}
-          />
-          
-          {/* Mobile Menu Content */}
-          <div className="absolute left-0 right-0 top-16 md:hidden border-t-2 border-black bg-white z-50 max-h-[calc(100vh-4rem)] overflow-y-auto">
-            {/* User Info Section */}
-            <div className="px-4 py-4 border-b-2 border-black bg-white">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-semibold text-lg">
-                {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div>
-                <div className="font-medium text-black">{profile?.first_name} {profile?.last_name}</div>
-                <div className="text-sm text-black">{session?.user?.email}</div>
-              </div>
-            </div>
-            <div>
-              <span className={`inline-block px-3 py-1 text-xs font-medium border border-black ${
-                profile?.role === 'landlord' 
-                  ? 'bg-black text-white' 
-                  : 'bg-white text-black'
-              }`}>
-                {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
-              </span>
-            </div>
-          </div>
-
-          {/* Navigation Links */}
-          <div className="px-4 py-3 space-y-1">
-            <Link 
-              href="/dashboard" 
-              onClick={() => setShowMobileMenu(false)}
-              className={`block px-3 py-2 ${isActive('/dashboard') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-            >
-              Dashboard
-            </Link>
-            {profile?.role === 'landlord' && (
-              <>
-                <Link 
-                  href="/properties/new" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/properties/new') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  Add Property
-                </Link>
-                <Link 
-                  href="/applications" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/applications') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  Applications
-                </Link>
-                <Link 
-                  href="/bookings" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/bookings') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  Bookings
-                </Link>
-                <Link 
-                  href="/schedule" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/schedule') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  Schedule
-                </Link>
-              </>
-            )}
-            {profile?.role === 'tenant' && (
-              <>
-                <Link 
-                  href="/applications" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/applications') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  My Applications
-                </Link>
-                <Link 
-                  href="/maintenance" 
-                  onClick={() => setShowMobileMenu(false)}
-                  className={`block px-3 py-2 ${isActive('/maintenance') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-                >
-                  Maintenance
-                </Link>
-              </>
-            )}
-            <Link 
-              href="/payments" 
-              onClick={() => setShowMobileMenu(false)}
-              className={`block px-3 py-2 ${isActive('/payments') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-            >
-              Payments
-            </Link>
-            <Link 
-              href="/messages" 
-              onClick={() => setShowMobileMenu(false)}
-              className={`block px-3 py-2 ${isActive('/messages') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-            >
-              Messages
-            </Link>
-            <Link 
-              href="/notifications" 
-              onClick={() => setShowMobileMenu(false)}
-              className={`block px-3 py-2 ${isActive('/notifications') ? 'bg-black text-white font-medium' : 'text-black border border-black'}`}
-            >
-              <div className="flex items-center justify-between">
+              <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
                 <span>Notifications</span>
                 {unreadCount > 0 && (
-                  <span className="bg-black text-white text-xs w-5 h-5 flex items-center justify-center border border-black">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+                  <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${isActive('/notifications') ? 'bg-white text-black' : 'bg-black text-white'}`}>
+                    {unreadCount}
                   </span>
                 )}
-              </div>
-            </Link>
-          </div>
+              </Link>
+            </div>
 
-          {/* Settings & Sign Out */}
-          <div className="px-4 py-3 border-t-2 border-black space-y-1">
-            <Link
-              href="/settings"
-              onClick={() => setShowMobileMenu(false)}
-              className="flex items-center gap-3 px-3 py-2 text-black border border-black"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Settings
-            </Link>
-            
-            <button
-              onClick={() => {
-                setShowMobileMenu(false)
-                handleSignOut()
-              }}
-              className="flex items-center gap-3 px-3 py-2 text-black border border-black w-full text-left"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign Out
-            </button>
+            {/* Mobile Footer Actions */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-2">
+              {profile?.role === 'landlord' && (
+                <Link
+                  href="/schedule"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Schedule
+                </Link>
+              )}
+              
+              <Link
+                href="/payments"
+                onClick={() => setShowMobileMenu(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Payments
+              </Link>
+
+              <div className="h-px bg-gray-200/50 my-1 mx-4"></div>
+
+              <Link
+                href="/settings"
+                onClick={() => setShowMobileMenu(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Settings
+              </Link>
+              
+              <button
+                onClick={() => {
+                  setShowMobileMenu(false)
+                  handleSignOut()
+                }}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl w-full text-left transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
           </div>
-        </div>
-        </>
-      )}
-    </nav>
+        )}
+      </div>
+      
+      {/* Spacer to prevent content from being hidden behind the fixed nav */}
+      <div className="h-24"></div>
+
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)} 
+        initialMode={authMode}
+      />
+    </>
   )
 }

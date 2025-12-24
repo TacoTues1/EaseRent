@@ -11,7 +11,6 @@ export default function Messages() {
   const [filteredUsers, setFilteredUsers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedConversation, setSelectedConversation] = useState(null)
-  const [selectedUser, setSelectedUser] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -21,6 +20,7 @@ export default function Messages() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [unreadCounts, setUnreadCounts] = useState({}) // { conversationId: count }
   const [imageModal, setImageModal] = useState(null) // For viewing images
+  const [showMobileDetails, setShowMobileDetails] = useState(false) // Toggle right panel on mobile
   const router = useRouter()
 
   useEffect(() => {
@@ -53,7 +53,6 @@ export default function Messages() {
       loadAllUsers()
       loadUnreadCounts()
       
-      // Subscribe to new messages globally to update unread counts
       const channel = supabase
         .channel('global-messages')
         .on('postgres_changes', 
@@ -64,10 +63,7 @@ export default function Messages() {
             filter: `receiver_id=eq.${profile.id}`
           }, 
           async (payload) => {
-            // Update unread count for this conversation
             loadUnreadCounts()
-            
-            // Update conversation timestamp without full reload
             setConversations(prev => {
               return prev.map(conv => {
                 if (conv.id === payload.new.conversation_id) {
@@ -87,7 +83,6 @@ export default function Messages() {
   }, [profile])
 
   useEffect(() => {
-    // Filter users based on search query
     if (searchQuery.trim()) {
       const filtered = allUsers.filter(user => {
         const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase()
@@ -103,8 +98,9 @@ export default function Messages() {
   useEffect(() => {
     if (selectedConversation && session) {
       loadMessages(selectedConversation.id)
+      // Reset mobile details view when changing conversation
+      setShowMobileDetails(false) 
       
-      // Subscribe to new messages with better error handling
       const channel = supabase
         .channel(`messages-${selectedConversation.id}-${Date.now()}`, {
           config: {
@@ -119,7 +115,6 @@ export default function Messages() {
             filter: `conversation_id=eq.${selectedConversation.id}`
           }, 
           async (payload) => {
-            // Fetch the complete message with sender details
             const { data: newMessage, error } = await supabase
               .from('messages')
               .select(`
@@ -129,21 +124,15 @@ export default function Messages() {
               .eq('id', payload.new.id)
               .single()
             
-            if (error) {
-              return
-            }
+            if (error) return
             
             if (newMessage) {
               setMessages(prev => {
-                // Check if message already exists (avoid duplicates)
                 const exists = prev.some(m => m.id === newMessage.id)
-                if (exists) {
-                  return prev
-                }
+                if (exists) return prev
                 return [...prev, newMessage]
               })
               
-              // Auto-scroll to bottom on new message
               setTimeout(() => {
                 const messagesContainer = document.querySelector('.messages-container')
                 if (messagesContainer) {
@@ -151,14 +140,12 @@ export default function Messages() {
                 }
               }, 100)
               
-              // Mark as read if current user is the receiver
               if (newMessage.receiver_id === session.user.id) {
                 await supabase
                   .from('messages')
                   .update({ read: true })
                   .eq('id', newMessage.id)
                 
-                // Update unread count
                 setUnreadCounts(prev => ({
                   ...prev,
                   [selectedConversation.id]: Math.max(0, (prev[selectedConversation.id] || 0) - 1)
@@ -175,7 +162,6 @@ export default function Messages() {
             filter: `conversation_id=eq.${selectedConversation.id}`
           },
           async (payload) => {
-            // Update the message in the local state
             setMessages(prev => prev.map(msg => 
               msg.id === payload.new.id 
                 ? { ...msg, read: payload.new.read }
@@ -203,8 +189,6 @@ export default function Messages() {
 
   async function loadConversations() {
     setLoading(true)
-    
-    // Get conversations where user is either participant
     const { data: allConversations, error } = await supabase
       .from('conversations')
       .select('*, property:properties(title, address)')
@@ -217,27 +201,21 @@ export default function Messages() {
       return
     }
 
-    // Filter out conversations hidden by current user
     const conversations = allConversations?.filter(conv => {
       const isLandlord = conv.landlord_id === session.user.id
       const isTenant = conv.tenant_id === session.user.id
-      
-      // Hide if current user deleted it
       if (isLandlord && conv.hidden_by_landlord) return false
       if (isTenant && conv.hidden_by_tenant) return false
-      
       return true
     }) || []
 
     if (conversations && conversations.length > 0) {
-      // Get all unique user IDs (both participants)
       const userIds = new Set()
       conversations.forEach(conv => {
         userIds.add(conv.landlord_id)
         userIds.add(conv.tenant_id)
       })
 
-      // Fetch all profiles at once
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
         .select('id, first_name, middle_name, last_name, role')
@@ -247,13 +225,11 @@ export default function Messages() {
         console.error('Error loading profiles:', profileError)
       }
 
-      // Create profile map
       const profileMap = {}
       profiles?.forEach(p => {
         profileMap[p.id] = p
       })
 
-      // Attach profiles to conversations and determine the other user
       const enrichedConversations = conversations.map(conv => {
         const isLandlord = conv.landlord_id === session.user.id
         const otherUserId = isLandlord ? conv.tenant_id : conv.landlord_id
@@ -263,7 +239,7 @@ export default function Messages() {
           ...conv,
           landlord_profile: profileMap[conv.landlord_id],
           tenant_profile: profileMap[conv.tenant_id],
-          other_user: otherUser, // The user you're chatting with
+          other_user: otherUser,
           other_user_id: otherUserId
         }
       })
@@ -280,8 +256,6 @@ export default function Messages() {
   }
 
   async function loadAllUsers() {
-    
-    // Load all users except the current user
     const { data: users, error } = await supabase
       .from('profiles')
       .select('id, first_name, middle_name, last_name, role, phone')
@@ -292,14 +266,12 @@ export default function Messages() {
       console.error('Error loading users:', error)
       return
     }
-
     
     setAllUsers(users || [])
     setFilteredUsers(users || [])
   }
 
   async function loadUnreadCounts() {
-    // Get unread message counts for all conversations
     const { data: unreadMessages, error } = await supabase
       .from('messages')
       .select('conversation_id, id')
@@ -311,7 +283,6 @@ export default function Messages() {
       return
     }
 
-    // Count messages per conversation
     const counts = {}
     unreadMessages?.forEach(msg => {
       counts[msg.conversation_id] = (counts[msg.conversation_id] || 0) + 1
@@ -321,7 +292,6 @@ export default function Messages() {
   }
 
   async function startNewConversation(otherUser) {
-    // Check if conversation already exists in local state
     const existingLocal = conversations.find(c => 
       (c.landlord_id === session.user.id && c.tenant_id === otherUser.id) ||
       (c.tenant_id === session.user.id && c.landlord_id === otherUser.id)
@@ -333,7 +303,6 @@ export default function Messages() {
       return
     }
 
-    // Check in database for any existing conversation between these two users
     const { data: existingConversations, error: fetchError } = await supabase
       .from('conversations')
       .select('*, property:properties(title, address)')
@@ -343,20 +312,15 @@ export default function Messages() {
       console.error('Error checking existing conversations:', fetchError)
     }
 
-    // Find a conversation that's not hidden by current user
     const existingDb = existingConversations?.find(conv => {
       const isLandlord = conv.landlord_id === session.user.id
       const isTenant = conv.tenant_id === session.user.id
-      
-      // Skip if hidden by current user
       if (isLandlord && conv.hidden_by_landlord) return false
       if (isTenant && conv.hidden_by_tenant) return false
-      
       return true
     })
 
     if (existingDb) {
-      // Get profiles for this conversation
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, first_name, middle_name, last_name, role')
@@ -376,7 +340,6 @@ export default function Messages() {
         other_user_id: otherUserId
       }
 
-      // If conversation was hidden, unhide it
       const isCurrentUserLandlord = existingDb.landlord_id === session.user.id
       const updateField = isCurrentUserLandlord ? 'hidden_by_landlord' : 'hidden_by_tenant'
       
@@ -398,7 +361,6 @@ export default function Messages() {
       return
     }
 
-    // Create new conversation
     const { data: newConv, error } = await supabase
       .from('conversations')
       .insert({
@@ -411,8 +373,6 @@ export default function Messages() {
 
     if (error) {
       console.error('Error creating conversation:', error)
-      
-      // Try to fetch the conversation that might have been created by the other user
       const { data: retryConversations } = await supabase
         .from('conversations')
         .select('*, property:properties(title, address)')
@@ -421,7 +381,6 @@ export default function Messages() {
       const retryConv = retryConversations?.[0]
       
       if (retryConv) {
-        // Get profiles
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, first_name, middle_name, last_name, role')
@@ -446,10 +405,8 @@ export default function Messages() {
         setShowNewConversation(false)
         return
       }
-      
       toast.error('Failed to start conversation. Please try again.')
     } else {
-      // Get profiles for the new conversation
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, first_name, middle_name, last_name, role')
@@ -490,25 +447,20 @@ export default function Messages() {
     } else {
       setMessages(data || [])
       
-      // Find the latest message from the other user (where current user is receiver)
       const messagesFromOther = (data || []).filter(msg => msg.receiver_id === session.user.id)
       if (messagesFromOther.length > 0) {
         const latestMessage = messagesFromOther[messagesFromOther.length - 1]
-        
-        // Only mark the latest message as read
         await supabase
           .from('messages')
           .update({ read: true })
           .eq('id', latestMessage.id)
       }
       
-      // Clear unread count for this conversation
       setUnreadCounts(prev => ({
         ...prev,
         [conversationId]: 0
       }))
       
-      // Scroll to bottom after loading messages
       setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-container')
         if (messagesContainer) {
@@ -520,33 +472,23 @@ export default function Messages() {
 
   function handleFileSelect(e) {
     const newFiles = Array.from(e.target.files)
-    
-    // Combine with existing files
     const allFiles = [...selectedFiles, ...newFiles]
-    
-    // Limit to 5 files total
     if (allFiles.length > 5) {
       toast.error('You can only upload up to 5 files at a time')
-      // Reset the input
       e.target.value = ''
       return
     }
-    
-    // Check each file size (max 10MB per file)
     const invalidFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024)
     if (invalidFiles.length > 0) {
       toast.error('Each file must be less than 10MB')
-      // Reset the input
       e.target.value = ''
       return
     }
-    
     setSelectedFiles(allFiles)
   }
 
   function removeSelectedFile(index) {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
-    // Reset file input
     const fileInput = document.getElementById('file-input')
     if (fileInput) fileInput.value = ''
   }
@@ -556,7 +498,6 @@ export default function Messages() {
     const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
     const filePath = `${session.user.id}/${conversationId}/${fileName}`
 
-
     const { data, error } = await supabase.storage
       .from('message-attachments')
       .upload(filePath, file, {
@@ -564,21 +505,16 @@ export default function Messages() {
         upsert: false
       })
 
-    if (error) {
-      throw error
-    }
+    if (error) throw error
 
-    // Create a signed URL that expires in 1 year
     const { data: signedUrlData, error: urlError } = await supabase.storage
       .from('message-attachments')
-      .createSignedUrl(filePath, 31536000) // 1 year in seconds
+      .createSignedUrl(filePath, 31536000)
 
     if (urlError) {
-      // Fallback to public URL if signed URL fails
       const { data: urlData } = supabase.storage
         .from('message-attachments')
         .getPublicUrl(filePath)
-      
       return {
         url: urlData.publicUrl,
         name: file.name,
@@ -596,9 +532,7 @@ export default function Messages() {
   }
 
   async function sendMessage() {
-    // Trim and clean the message to remove extra whitespace
     const trimmedMessage = newMessage.trim().replace(/\s+/g, ' ')
-    
     if (!trimmedMessage && selectedFiles.length === 0) return
     if (!selectedConversation) return
 
@@ -609,8 +543,6 @@ export default function Messages() {
     
     try {
       let uploadedFiles = []
-      
-      // Upload all selected files
       if (selectedFiles.length > 0) {
         for (const file of selectedFiles) {
           const fileData = await uploadFile(file, selectedConversation.id)
@@ -618,21 +550,14 @@ export default function Messages() {
         }
       }
 
-      // Clear inputs immediately for better UX
       setNewMessage('')
-      const tempFiles = [...selectedFiles]
       setSelectedFiles([])
-      
-      // Reset file input
       const fileInput = document.getElementById('file-input')
       if (fileInput) fileInput.value = ''
 
-      // Send message with text or files
       if (uploadedFiles.length > 0) {
-        // Send a message for each file
         for (let i = 0; i < uploadedFiles.length; i++) {
           const fileData = uploadedFiles[i]
-          // Only include message text with the first file
           const includeText = i === 0 ? messageText : ''
           
           const optimisticMessage = {
@@ -654,10 +579,8 @@ export default function Messages() {
             }
           }
 
-          // Add message to UI immediately
           setMessages(prev => [...prev, optimisticMessage])
 
-          // Send to database
           const { data, error } = await supabase
             .from('messages')
             .insert({
@@ -678,14 +601,12 @@ export default function Messages() {
             setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
             toast.error('Failed to send file: ' + fileData.name)
           } else {
-            // Replace optimistic message with real one
             setMessages(prev => prev.map(m => 
               m.id === optimisticMessage.id ? { ...data, sender: { first_name: profile.first_name, last_name: profile.last_name, role: profile.role } } : m
             ))
           }
         }
       } else if (messageText) {
-        // Send text-only message
         const optimisticMessage = {
           id: `temp-${Date.now()}`,
           conversation_id: selectedConversation.id,
@@ -734,13 +655,11 @@ export default function Messages() {
         }
       }
 
-      // Update conversation timestamp
       await supabase
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', selectedConversation.id)
       
-      // Scroll to bottom after sending
       setTimeout(() => {
         const messagesContainer = document.querySelector('.messages-container')
         if (messagesContainer) {
@@ -761,15 +680,11 @@ export default function Messages() {
 
   async function deleteConversation(conversationId) {
     setDeleteConfirmId(null)
-    
-    // Find the conversation to determine user's role in it
     const conversation = conversations.find(c => c.id === conversationId)
     if (!conversation) {
       toast.error('Conversation not found')
       return
     }
-    
-    // Soft delete: hide based on which participant is the current user
     const isLandlord = conversation.landlord_id === session.user.id
     const isTenant = conversation.tenant_id === session.user.id
     const updateField = isLandlord ? 'hidden_by_landlord' : 'hidden_by_tenant'
@@ -783,18 +698,18 @@ export default function Messages() {
       console.error('Error hiding conversation:', error)
       toast.error('Failed to delete conversation. Please try again.')
     } else {
-      // Remove from local state
       setConversations(prev => prev.filter(c => c.id !== conversationId))
-      
-      // Clear selection if this was the selected conversation
       if (selectedConversation?.id === conversationId) {
         setSelectedConversation(null)
         setMessages([])
       }
-      
       toast.success('Conversation deleted successfully')
     }
   }
+
+  // Helper to get shared media
+  const sharedImages = messages.filter(m => m.file_type?.startsWith('image/') && m.file_url)
+  const sharedFiles = messages.filter(m => m.file_url && !m.file_type?.startsWith('image/'))
 
   if (!session || !profile) {
     return (
@@ -805,35 +720,35 @@ export default function Messages() {
   }
 
   return (
-    <div className="min-h-screen bg-white">    
+    <div className="h-[calc(100vh-64px)] bg-white flex flex-col overflow-hidden">    
       {/* Header */}
-      <div className="bg-white ">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4">
-          <h1 className="text-xl sm:text-5xl font-bold text-black">Messages</h1>
-          <p className="text-xs sm:text-sm text-black">
+      <div className="bg-white border-b border-gray-100 flex-shrink-0">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+          <h1 className="text-2xl font-bold text-black tracking-tight">Messages</h1>
+          <p className="text-sm text-gray-500 mt-1">
             {profile.role === 'landlord' 
-              ? 'Chat with your tenants' 
-              : 'Chat with landlords about properties'}
+              ? 'Connect with your tenants' 
+              : 'Contact landlords directly'}
           </p>
         </div>
       </div>
 
-      {/* Chat Interface */}
-      <div className="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 py-0 sm:py-6">
-        <div className="bg-white border-0 sm:border-2 border-black overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
-          <div className="flex flex-col md:flex-row h-full">
-            {/* Conversations List */}
-            <div className={`${selectedConversation ? 'hidden md:block' : 'flex flex-col'} w-full md:w-1/3 border-b md:border-b-0 md:border-r border-black h-full`}>
-              <div className="p-2 sm:p-5 border-b border-black bg-white flex justify-between items-center">
-                <h2 className="font-semibold text-black text-sm sm:text-base">
-                  {showNewConversation ? 'Start New Chat' : 'Conversations'}
+      {/* Main Content (3 Column Layout) */}
+      <div className="flex-1 flex overflow-hidden bg-white">
+          <div className="flex w-full h-full bg-white relative">
+            
+            {/* Left Column: Conversations List */}
+            <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-gray-100 h-full bg-white`}>
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0">
+                <h2 className="font-bold text-black text-sm">
+                  {showNewConversation ? 'Start Chat' : 'Inbox'}
                 </h2>
                 {!showNewConversation && (
                   <button
                     onClick={() => setShowNewConversation(true)}
-                    className="text-black text-xs sm:text-sm font-medium"
+                    className="text-xs bg-black text-white px-3 py-1.5 rounded-full font-medium cursor-pointer"
                   >
-                    + New
+                    + New Chat
                   </button>
                 )}
                 {showNewConversation && (
@@ -842,30 +757,25 @@ export default function Messages() {
                       setShowNewConversation(false)
                       setSearchQuery('')
                     }}
-                    className="text-black text-xs sm:text-sm"
+                    className="text-xs text-gray-500 font-medium cursor-pointer"
                   >
                     Cancel
                   </button>
                 )}
               </div>
 
-              {/* Search bar for new conversations */}
+              {/* Search bar */}
               {showNewConversation && (
-                <div className="p-2 sm:p-3 border-b border-black">
+                <div className="p-3 border-b border-gray-100 flex-shrink-0">
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="Search users by name..."
+                      placeholder="Search name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full px-3 py-2 pl-9 sm:pl-10 border-2 border-black focus:outline-none text-xs sm:text-sm"
+                      className="w-full px-3 py-2 pl-9 bg-gray-50 border-0 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-black"
                     />
-                    <svg 
-                      className="absolute left-2 sm:left-3 top-2 sm:top-2.5 w-4 h-4 sm:w-5 sm:h-5 text-black" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
@@ -873,61 +783,31 @@ export default function Messages() {
               )}
 
               {loading ? (
-                <div className="flex items-center justify-center p-6 sm:p-8">
-                  <div className="inline-block animate-spin h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-black"></div>
+                <div className="flex items-center justify-center p-8">
+                  <div className="inline-block animate-spin h-6 w-6 border-2 border-gray-300 border-t-black rounded-full"></div>
                 </div>
               ) : showNewConversation ? (
-                // Show all users list with search
                 <div className="flex-1 overflow-y-auto">
                   {filteredUsers.length === 0 ? (
-                    <div className="p-4 sm:p-8 text-center text-black">
-                      {searchQuery ? (
-                        <div>
-                          <p className="mb-2 text-sm sm:text-base">No users found matching your search</p>
-                          <p className="text-xs">Try a different search term</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="mb-2 text-sm sm:text-base">No other users registered yet</p>
-                          <p className="text-xs mb-4">You need at least one other user to start chatting</p>
-                          <div className="text-xs bg-white text-black p-2 sm:p-3">
-                            💡 Tip: Create another account or ask someone to register to test the chat feature!
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <div className="p-8 text-center"><p className="text-sm text-gray-500">No users found.</p></div>
                   ) : (
                     filteredUsers.map(user => (
-                      <div
-                        key={user.id}
-                        onClick={() => startNewConversation(user)}
-                        className="p-3 sm:p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50"
-                      >
+                      <div key={user.id} onClick={() => startNewConversation(user)} className="p-4 border-b border-gray-50 cursor-pointer">
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-xs sm:text-sm text-black truncate">{user.first_name} {user.last_name}</div>
-                            {user.phone && (
-                              <div className="text-xs text-black mt-1 truncate">📱 {user.phone}</div>
-                            )}
+                            <div className="font-bold text-sm text-black truncate">{user.first_name} {user.last_name}</div>
+                            {user.phone && <div className="text-xs text-gray-500 mt-0.5 truncate">{user.phone}</div>}
                           </div>
-                          <span className={`px-2 py-1 text-xs font-medium ml-2 flex-shrink-0 ${
-                            user.role === 'landlord' 
-                              ? 'bg-white text-black' 
-                              : 'bg-black text-white'
-                          }`}>
-                            {user.role}
-                          </span>
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-gray-400">{user.role}</span>
                         </div>
                       </div>
                     ))
                   )}
                 </div>
               ) : conversations.length === 0 ? (
-                <div className="p-4 sm:p-8 text-center text-black">
-                  <p className="mb-2 text-sm sm:text-base">No conversations yet</p>
-                  <p className="text-xs sm:text-sm">
-                    Click "+ New" to start chatting with any user
-                  </p>
+                <div className="p-8 text-center">
+                  <p className="text-sm text-gray-500 mb-2">No messages yet</p>
+                  <p className="text-xs text-gray-400">Start a new chat to connect.</p>
                 </div>
               ) : (
                 <div className="flex-1 overflow-y-auto">
@@ -935,6 +815,7 @@ export default function Messages() {
                     const otherPerson = conv.other_user ? `${conv.other_user.first_name || ''} ${conv.other_user.last_name || ''}`.trim() : 'Unknown User'
                     const unreadCount = unreadCounts[conv.id] || 0
                     const hasUnread = unreadCount > 0
+                    const isSelected = selectedConversation?.id === conv.id
                     
                     return (
                       <div
@@ -943,30 +824,25 @@ export default function Messages() {
                           setSelectedConversation(conv)
                           setShowNewConversation(false)
                         }}
-                        className={`p-3 sm:p-4 border-b border-gray-100 cursor-pointer relative ${
-                          selectedConversation?.id === conv.id 
-                            ? 'bg-white border-l-4 border-l-black' 
-                            : hasUnread
-                            ? 'bg-gray-50 border-l-4 border-l-black font-semibold'
-                            : 'hover:bg-gray-50'
+                        className={`p-4 cursor-pointer border-b border-gray-50 transition-colors ${
+                          isSelected 
+                            ? 'bg-black text-white' 
+                            : 'bg-white text-black'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className={`text-xs sm:text-sm text-black truncate ${hasUnread ? 'font-bold' : 'font-semibold'}`}>
+                          <div className="flex-1 min-w-0 pr-3">
+                            <div className={`text-sm truncate ${hasUnread ? 'font-bold' : 'font-medium'}`}>
                               {otherPerson}
                             </div>
-                            <div className="text-xs text-black mt-1">
-                              {conv.other_user?.role === 'landlord' ? '🏠 Landlord' : '👤 Tenant'}
+                            <div className={`text-xs mt-1 truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {conv.property?.title || (conv.other_user?.role === 'landlord' ? 'Landlord' : 'Tenant')}
                             </div>
-                            {conv.property && (
-                              <div className="text-xs text-black mt-1 truncate">{conv.property?.title}</div>
-                            )}
                           </div>
                           {hasUnread && (
-                            <div className="ml-2 flex-shrink-0">
-                              <span className="bg-black text-white text-xs w-6 h-6 flex items-center justify-center border border-black font-bold">
-                                {unreadCount > 9 ? '9+' : unreadCount}
+                            <div className="flex-shrink-0">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${isSelected ? 'border-white text-white' : 'border-black text-black'}`}>
+                                {unreadCount}
                               </span>
                             </div>
                           )}
@@ -978,194 +854,117 @@ export default function Messages() {
               )}
             </div>
 
-            {/* Messages Area */}
-            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col w-full md:w-auto h-full`}>
+            {/* Middle Column: Chat Area */}
+            <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col h-full bg-white`}>
               {selectedConversation ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-3 sm:p-4 border-b border-black bg-white flex justify-between items-center flex-shrink-0">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {/* Back button for mobile */}
+                  <div className="p-4 border-b border-gray-100 flex justify-between items-center flex-shrink-0 bg-white">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       <button
                         onClick={() => setSelectedConversation(null)}
-                        className="md:hidden flex-shrink-0 text-black"
+                        className="md:hidden flex-shrink-0 text-black cursor-pointer"
                       >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                       </button>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-black text-sm sm:text-base truncate">
+                      <div className="min-w-0">
+                        <div className="font-bold text-black text-sm truncate">
                           {selectedConversation.other_user ? `${selectedConversation.other_user.first_name || ''} ${selectedConversation.other_user.last_name || ''}`.trim() : 'Unknown User'}
                         </div>
                         {selectedConversation.property?.title && (
-                          <div className="text-xs sm:text-sm text-black truncate">
+                          <div className="text-xs text-gray-500 truncate mt-0.5">
                             {selectedConversation.property?.title}
                           </div>
                         )}
                       </div>
                     </div>
-                    {deleteConfirmId === selectedConversation.id ? (
-                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                        <span className="text-xs sm:text-sm text-black mr-1 sm:mr-2 hidden sm:inline">Delete conversation?</span>
-                        <button
-                          onClick={() => deleteConversation(selectedConversation.id)}
-                          className="text-white bg-black text-xs font-medium px-2 sm:px-3 py-1"
-                        >
-                          Yes
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(null)}
-                          className="text-black bg-white text-xs font-medium px-2 sm:px-3 py-1"
-                        >
-                          No
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => confirmDeleteConversation(selectedConversation.id)}
-                        className="text-black text-xs sm:text-sm font-medium px-2 sm:px-3 py-1 flex-shrink-0"
-                        title="Delete conversation"
-                      >
-                        Delete
-                      </button>
-                    )}
+                    {/* Info Button for Mobile */}
+                    <button
+                      onClick={() => setShowMobileDetails(true)}
+                      className="lg:hidden p-2 text-gray-500 hover:bg-gray-50 rounded-full cursor-pointer"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
                   </div>
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2 messages-container" style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0 }}>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 messages-container bg-white">
                     {messages.map((msg, index) => {
                       const isOwn = msg.sender_id === session.user.id
                       const hasFile = msg.file_url && msg.file_name
                       const isImage = msg.file_type?.startsWith('image/')
-                      const getSenderFullName = (sender) => sender ? `${sender.first_name || ''} ${sender.last_name || ''}`.trim() : null
-                      const senderName = getSenderFullName(msg.sender) || (isOwn ? `${profile.first_name} ${profile.last_name}` : getSenderFullName(selectedConversation.other_user)) || 'Unknown'
-                      const senderInitials = senderName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
                       
-                      // Find the latest message sent by current user (for "Seen" status)
                       const myMessages = messages.filter(m => m.sender_id === session.user.id)
                       const latestMyMessage = myMessages.length > 0 ? myMessages[myMessages.length - 1] : null
                       const isLatestFromMe = latestMyMessage && msg.id === latestMyMessage.id
                       
                       return (
-                        <div key={msg.id} className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-                          {/* Profile Avatar - Only show for receiver */}
-                          {!isOwn && (
-                            <div className="flex-shrink-0">
-                              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600">
-                                {senderInitials}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Message Bubble */}
-                          <div className="flex flex-col max-w-[50%] sm:max-w-md">
-                            <div 
-                              style={{ 
-                                borderRadius: '12px',
-                                overflow: 'hidden'
-                              }}
-                              className="px-3 py-1.5 bg-gray-800 text-white"
-                            >
+                        <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                          <div className={`flex gap-2 max-w-[75%] sm:max-w-[60%] ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                            
+                            <div className={`flex flex-col rounded-2xl p-3 shadow-sm text-sm ${
+                                isOwn 
+                                  ? 'bg-black text-white rounded-tr-sm' 
+                                  : 'bg-gray-100 text-black rounded-tl-sm'
+                              }`}>
+                              
                               {msg.message && (
-                                <div className="text-xs sm:text-sm" style={{ wordBreak: 'break-word' }}>
-                                  {msg.message.trim().replace(/\s+/g, ' ')}
+                                <div style={{ wordBreak: 'break-word' }}>
+                                  {msg.message.trim()}
                                 </div>
                               )}
                               
                               {hasFile && (
-                                <div className="mt-1.5">
+                                <div className={`mt-2 ${msg.message ? 'pt-2 border-t border-white/10' : ''}`}>
                                   {isImage ? (
-                                    <div>
+                                    <div className="relative group">
                                       <img 
                                         src={msg.file_url} 
                                         alt={msg.file_name}
-                                        className="max-w-full rounded border border-white/20 cursor-pointer hover:opacity-90"
-                                        style={{ maxHeight: '150px' }}
+                                        className="rounded-lg object-cover w-full cursor-pointer bg-gray-200"
+                                        style={{ maxHeight: '100px', width: 'auto' }}
                                         onClick={() => setImageModal(msg.file_url)}
                                       />
-                                      <div className="flex items-center justify-between mt-1">
-                                        <div className="text-xs opacity-70 truncate flex-1">
-                                          {msg.file_name}
-                                        </div>
-                                        <button
-                                          onClick={async (e) => {
-                                            e.stopPropagation()
-                                            try {
-                                              const response = await fetch(msg.file_url)
-                                              const blob = await response.blob()
-                                              const url = window.URL.createObjectURL(blob)
-                                              const link = document.createElement('a')
-                                              link.href = url
-                                              link.download = msg.file_name
-                                              document.body.appendChild(link)
-                                              link.click()
-                                              document.body.removeChild(link)
-                                              window.URL.revokeObjectURL(url)
-                                              toast.success('Downloaded')
-                                            } catch (err) {
-                                              console.error('Download failed:', err)
-                                              toast.error('Failed to download')
-                                            }
-                                          }}
-                                          className="ml-2 p-1 hover:bg-white/20 rounded flex-shrink-0"
-                                          title="Download"
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                          </svg>
-                                        </button>
-                                      </div>
+                                      <a 
+                                        href={msg.file_url}
+                                        download={msg.file_name}
+                                        onClick={(e) => e.stopPropagation()}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`absolute bottom-1 right-1 p-1 rounded-full shadow-sm cursor-pointer ${isOwn ? 'bg-white text-black' : 'bg-black text-white'}`}
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                      </a>
                                     </div>
                                   ) : (
-                                    <div className="p-2 border border-white/20 rounded">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs truncate font-medium">{msg.file_name}</div>
-                                          <div className="text-xs opacity-70 mt-0.5">
-                                            {msg.file_size ? `${(msg.file_size / 1024).toFixed(1)} KB` : 'File'}
-                                          </div>
-                                        </div>
-                                        <button
-                                          onClick={async () => {
-                                            try {
-                                              const response = await fetch(msg.file_url)
-                                              const blob = await response.blob()
-                                              const url = window.URL.createObjectURL(blob)
-                                              const link = document.createElement('a')
-                                              link.href = url
-                                              link.download = msg.file_name
-                                              document.body.appendChild(link)
-                                              link.click()
-                                              document.body.removeChild(link)
-                                              window.URL.revokeObjectURL(url)
-                                              toast.success('Downloaded')
-                                            } catch (err) {
-                                              console.error('Download failed:', err)
-                                              toast.error('Failed to download')
-                                            }
-                                          }}
-                                          className="ml-2 p-1.5 hover:bg-white/20 rounded flex-shrink-0"
-                                          title="Download"
-                                        >
-                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                          </svg>
-                                        </button>
-                                      </div>
+                                    <div className={`flex items-center gap-3 p-2 rounded-lg border ${isOwn ? 'border-white/20 bg-white/10' : 'border-gray-200 bg-white'}`}>
+                                       <div className="flex-1 min-w-0">
+                                          <p className="font-medium truncate text-xs">{msg.file_name}</p>
+                                          <p className={`text-[10px] ${isOwn ? 'text-gray-400' : 'text-gray-500'}`}>{(msg.file_size / 1024).toFixed(0)} KB</p>
+                                       </div>
+                                       <a 
+                                          href={msg.file_url}
+                                          download={msg.file_name}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="cursor-pointer"
+                                       >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                       </a>
                                     </div>
                                   )}
                                 </div>
                               )}
                             </div>
-                            <div className={`text-xs mt-0.5 px-1 opacity-60 flex items-center gap-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-                              <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                              {isOwn && isLatestFromMe && (
-                                <span className="text-xs">
-                                  {msg.read ? '✓✓ Seen' : '✓ Sent'}
-                                </span>
-                              )}
-                            </div>
+                          </div>
+                          
+                          <div className={`text-[10px] text-gray-400 mt-1 flex items-center gap-1 ${isOwn ? 'pr-1' : 'pl-1'}`}>
+                            {new Date(msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase()}
+                            {isOwn && isLatestFromMe && (
+                              <span>• {msg.read ? 'Seen' : 'Sent'}</span>
+                            )}
                           </div>
                         </div>
                       )
@@ -1173,40 +972,21 @@ export default function Messages() {
                   </div>
 
                   {/* Message Input */}
-                  <div className="p-2 sm:p-4 border-t border-black bg-white flex-shrink-0">
-                    {/* File Preview - Compact */}
+                  <div className="p-4 border-t border-gray-100 bg-white flex-shrink-0">
                     {selectedFiles.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-xs text-gray-600 mb-1 font-medium">
-                          {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} • Max 5
-                        </div>
-                        <div className="max-h-32 overflow-y-auto space-y-1">
-                          {selectedFiles.map((file, index) => {
-                            const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '')
-                            return (
-                            <div key={index} className="p-1.5 bg-gray-50 border border-gray-300 flex items-center justify-between text-xs w-25">
-                              <div className="flex-1 min-w-0 mr-2">
-                                <div className="font-medium text-black truncate">{fileNameWithoutExt}</div>
-                                <div className="text-gray-500">{(file.size / 1024).toFixed(1)} KB</div>
-                              </div>
-                              <button
-                                onClick={() => removeSelectedFile(index)}
-                                className="text-gray-600 hover:text-red-600 flex-shrink-0"
-                                title="Remove file"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
+                      <div className="mb-3 flex flex-wrap gap-2">
+                          {selectedFiles.map((file, index) => (
+                            <div key={index} className="flex items-center gap-2 bg-gray-50 border border-gray-200 pl-3 pr-2 py-1.5 rounded-full">
+                               <span className="text-xs font-medium text-gray-700 max-w-[100px] truncate">{file.name}</span>
+                               <button onClick={() => removeSelectedFile(index)} className="text-gray-400 cursor-pointer">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                               </button>
                             </div>
-                            )
-                          })}
-                        </div>
+                          ))}
                       </div>
                     )}
                     
-                    <div className="flex gap-2">
-                      {/* File Upload Button */}
+                    <div className="flex items-end gap-2">
                       <input
                         type="file"
                         id="file-input"
@@ -1217,70 +997,173 @@ export default function Messages() {
                       />
                       <label
                         htmlFor="file-input"
-                        className="px-3 py-2 border-2 border-black cursor-pointer hover:bg-gray-50 flex-shrink-0"
-                        title="Attach files (max 5)"
+                        className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-500 cursor-pointer border border-transparent active:border-black transition-colors mb-0.5"
                       >
-                        <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                         </svg>
                       </label>
                       
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !uploadingFile && sendMessage()}
-                        placeholder="Type a message..."
-                        disabled={uploadingFile}
-                        className="flex-1 border-2 border-black px-2 sm:px-4 py-2 focus:outline-none text-xs sm:text-sm disabled:bg-gray-100"
-                      />
+                      <div className="flex-1 bg-gray-50 rounded-3xl flex items-center px-4 py-2">
+                        <input
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && !uploadingFile && sendMessage()}
+                          placeholder="Type a message..."
+                          disabled={uploadingFile}
+                          className="flex-1 bg-transparent border-none text-sm focus:outline-none placeholder-gray-400"
+                        />
+                      </div>
+
                       <button
                         onClick={sendMessage}
                         disabled={(!newMessage.trim() && selectedFiles.length === 0) || uploadingFile}
-                        className="px-3 sm:px-6 py-2 bg-black text-white hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm flex-shrink-0 rounded-[8px]"
+                        className={`w-10 h-10 flex items-center justify-center rounded-full shadow-sm mb-0.5 transition-all cursor-pointer ${
+                          (!newMessage.trim() && selectedFiles.length === 0) || uploadingFile 
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                          : 'bg-black text-white active:scale-95'
+                        }`}
                       >
-                        {uploadingFile ? (
-                          <div className="flex items-center gap-2">
-                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span className="hidden sm:inline">Sending...</span>
-                          </div>
-                        ) : (
-                          'Send'
-                        )}
+                         <svg className="w-4 h-4 translate-x-0.5 -translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
                       </button>
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-black text-sm sm:text-base px-4 text-center">
-                  Select a conversation to start chatting
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-gray-300">
+                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  </div>
+                  <h3 className="text-black font-bold mb-1">Your Messages</h3>
+                  <p className="text-sm text-gray-500">Select a conversation to start chatting</p>
                 </div>
               )}
             </div>
+
+            {/* Right Column: Settings & History */}
+            {selectedConversation && (
+              <div className={`
+                absolute inset-0 z-20 bg-white w-full h-full flex flex-col
+                lg:static lg:flex lg:w-72 lg:border-l lg:border-gray-100 lg:inset-auto lg:z-auto
+                ${showMobileDetails ? 'flex' : 'hidden'}
+              `}>
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setShowMobileDetails(false)}
+                      className="lg:hidden p-1 -ml-1 text-gray-500 cursor-pointer"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="font-bold text-black text-sm">Details</h2>
+                  </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                  
+                  {/* Actions / Settings */}
+                  <div className="mb-6">
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Settings</h3>
+                    {deleteConfirmId === selectedConversation.id ? (
+                      <div className="p-3 bg-red-50 rounded-lg">
+                        <p className="text-xs text-red-600 mb-2 font-medium">Delete this conversation?</p>
+                        <div className="flex gap-2">
+                           <button 
+                             onClick={() => deleteConversation(selectedConversation.id)}
+                             className="text-xs bg-red-600 text-white px-3 py-1.5 rounded font-bold hover:bg-red-700"
+                           >
+                             Confirm
+                           </button>
+                           <button 
+                             onClick={() => setDeleteConfirmId(null)}
+                             className="text-xs bg-white text-gray-700 border border-gray-200 px-3 py-1.5 rounded font-bold"
+                           >
+                             Cancel
+                           </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button 
+                         onClick={() => confirmDeleteConversation(selectedConversation.id)}
+                         className="w-full text-left text-xs font-bold text-red-600 hover:bg-red-50 p-2.5 rounded transition-colors flex items-center gap-2"
+                      >
+                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                         Delete Conversation
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Shared Photos */}
+                  <div className="mb-6">
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Shared Photos</h3>
+                    {sharedImages.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                         {sharedImages.map(m => (
+                            <div key={m.id} className="relative aspect-square group">
+                                <img 
+                                  src={m.file_url} 
+                                  className="w-full h-full object-cover rounded-md cursor-pointer hover:opacity-90 transition-opacity" 
+                                  onClick={() => setImageModal(m.file_url)} 
+                                />
+                            </div>
+                         ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No photos shared yet.</p>
+                    )}
+                  </div>
+
+                   {/* Shared Files */}
+                   <div>
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Shared Files</h3>
+                    {sharedFiles.length > 0 ? (
+                      <div className="space-y-2">
+                         {sharedFiles.map(m => (
+                            <a 
+                              key={m.id}
+                              href={m.file_url} 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2.5 p-2.5 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group"
+                            >
+                               <div className="w-8 h-8 rounded bg-white flex items-center justify-center text-gray-500 border border-gray-100">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-gray-700 truncate group-hover:text-black">{m.file_name}</p>
+                                  <p className="text-[10px] text-gray-400">{(m.file_size / 1024).toFixed(1)} KB</p>
+                               </div>
+                            </a>
+                         ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No files shared yet.</p>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            )}
           </div>
-        </div>
       </div>
 
       {/* Image Modal */}
       {imageModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
           onClick={() => setImageModal(null)}
         >
           <button
             onClick={() => setImageModal(null)}
-            className="absolute top-4 right-4 text-white hover:text-gray-300 text-4xl font-light"
-            title="Close"
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-4xl font-light cursor-pointer"
           >
             ×
           </button>
           <img 
             src={imageModal} 
             alt="Full size" 
-            className="max-w-full max-h-full object-contain"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

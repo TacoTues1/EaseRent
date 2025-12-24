@@ -131,7 +131,14 @@ export default function SchedulePage() {
       console.error('Error adding time slots:', error)
       toast.error('Failed to add time slots')
     } else {
-      toast.success(`${slotsToCreate.length} time slot(s) added successfully`)
+      toast.success(`${slotsToCreate.length} time slot(s) added successfully`, {
+        icon: '✓',
+        style: {
+          border: '1px solid black',
+          padding: '16px',
+          color: 'black',
+        },
+      })
       setShowAddModal(false)
       setSelectedDateSlots({})
       loadTimeSlots()
@@ -207,7 +214,14 @@ export default function SchedulePage() {
       console.error('Error deleting time slot:', error)
       toast.error('Failed to delete time slot')
     } else {
-      toast.success('Time slot deleted successfully')
+      toast.success('Time slot deleted successfully', {
+        icon: '✓',
+        style: {
+          border: '1px solid black',
+          padding: '16px',
+          color: 'black',
+        },
+      })
       loadTimeSlots()
     }
   }
@@ -218,18 +232,18 @@ export default function SchedulePage() {
     
     // Morning: 8-11
     if (startHour === 8) {
-      return { label: 'Morning', time: '8:00 AM - 11:00 AM', color: 'bg-yellow-100 text-yellow-800' }
+      return { label: 'Morning', time: '8:00 AM - 11:00 AM', color: 'border border-black text-black' }
     }
     // Afternoon: 13-17
     else if (startHour === 13) {
-      return { label: 'Afternoon', time: '1:00 PM - 5:30 PM', color: 'bg-orange-100 text-orange-800' }
+      return { label: 'Afternoon', time: '1:00 PM - 5:30 PM', color: 'border border-black text-black' }
     }
     // Fallback for custom times
     else {
       return { 
         label: 'Custom', 
         time: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-        color: 'bg-purple-100 text-purple-800'
+        color: 'border border-gray-400 text-gray-600'
       }
     }
   }
@@ -253,48 +267,48 @@ export default function SchedulePage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-black">My Availability</h1>
-            <p className="text-sm sm:text-base text-black mt-1">Set when you're available for property viewings</p>
+            <h1 className="text-3xl font-bold text-black tracking-tight">Availability</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage viewing times for your properties</p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-black text-white hover:bg-gray-800 font-medium border-2 border-black rounded-full cursor-pointer"
+            className="px-6 py-2 bg-black text-white text-sm font-bold rounded-full cursor-pointer hover:shadow-lg transition-shadow"
           >
-            + Add Available Time
+            + Add Times
           </button>
         </div>
 
         {/* Date Search Filter */}
         {timeSlots.length > 0 && (
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-xs">
               <input
                 type="date"
                 value={searchDate}
                 onChange={(e) => setSearchDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-black cursor-pointer"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-black cursor-pointer"
               />
             </div>
             {searchDate && (
               <button
                 onClick={() => setSearchDate('')}
-                className="px-3 py-2 text-sm text-gray-600 hover:text-black cursor-pointer"
+                className="px-3 py-2 text-xs font-bold text-black border-b border-black cursor-pointer"
               >
-                Clear
+                Clear Filter
               </button>
             )}
-            <span className="text-sm text-gray-500">
+            <span className="text-xs text-gray-400 ml-auto">
               {(() => {
                 const filtered = timeSlots.filter(slot => {
                   if (!searchDate) return true
                   const slotDate = new Date(slot.start_time).toISOString().split('T')[0]
                   return slotDate === searchDate
                 })
-                return `${filtered.length} of ${timeSlots.length} slots`
+                return `${filtered.length} slots found`
               })()}
             </span>
           </div>
@@ -303,15 +317,23 @@ export default function SchedulePage() {
         {/* Time Slots List */}
         <div className="space-y-4">
           {timeSlots.length === 0 ? (
-            <div className="text-center py-12">
-              <svg className="w-16 h-16 text-black mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <h3 className="text-lg font-bold text-black mb-2">No Available Times Set</h3>
-              <p className="text-black mb-4">Add your first available time slot for property viewings</p>
+            <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-2xl">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-black mb-1">No Available Times</h3>
+              <p className="text-sm text-gray-400 mb-6">Start by adding your first time slot.</p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="text-sm font-bold text-black border-b-2 border-black pb-0.5 cursor-pointer"
+              >
+                Add Time Slot
+              </button>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {timeSlots
                 .filter(slot => {
                   if (!searchDate) return true
@@ -323,41 +345,39 @@ export default function SchedulePage() {
                 const dateStr = new Date(slot.start_time).toLocaleDateString('en-US', { 
                   weekday: 'short', 
                   month: 'short', 
-                  day: 'numeric',
-                  year: 'numeric'
+                  day: 'numeric'
                 })
                 
                 return (
                   <div 
                     key={slot.id} 
-                    className={`px-4 py-3 flex items-center justify-between gap-4 ${slot.is_booked ? 'bg-gray-50' : 'bg-white'} hover:bg-gray-50 transition-colors`}
+                    className={`p-4 border rounded-xl flex items-center justify-between gap-4 transition-all ${
+                        slot.is_booked ? 'bg-gray-50 border-gray-200' : 'bg-white border-black shadow-sm'
+                    }`}
                   >
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                      {/* Status indicator */}
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${slot.is_booked ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2">
+                         <span className="text-sm font-bold text-black">{dateStr}</span>
+                         {slot.is_booked && (
+                            <span className="text-[10px] uppercase font-bold bg-black text-white px-2 py-0.5 rounded">Booked</span>
+                         )}
+                      </div>
                       
-                      {/* Date & Time info */}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 flex-1 min-w-0">
-                        <span className="text-sm font-medium text-black">{dateStr}</span>
-                        <span className="text-sm text-gray-500">{timeSlotInfo.time}</span>
-                        <span className={`px-2 py-0.5 text-xs font-medium rounded ${timeSlotInfo.color}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${timeSlotInfo.color}`}>
                           {timeSlotInfo.label}
                         </span>
-                        {slot.is_booked && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
-                            Booked
-                          </span>
-                        )}
+                        <span className="text-xs text-gray-500">{timeSlotInfo.time}</span>
                       </div>
                     </div>
 
                     {!slot.is_booked && (
                       <button
                         onClick={() => deleteTimeSlot(slot.id)}
-                        className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0 transition-colors cursor-pointer"
+                        className="text-gray-300 hover:text-black p-2 cursor-pointer transition-colors"
                         title="Delete"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
@@ -372,206 +392,179 @@ export default function SchedulePage() {
 
       {/* Add Time Slot Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-black mb-2">Add Available Times</h3>
-            <p className="text-sm text-black mb-4">
-              Click on each date and choose Morning or Afternoon for that specific date
-            </p>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white max-w-5xl w-full p-6 max-h-[90vh] overflow-hidden flex flex-col rounded-2xl shadow-xl">
+            <div className="flex justify-between items-start mb-6 flex-shrink-0">
+               <div>
+                  <h3 className="text-2xl font-bold text-black">Select Availability</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Click dates to toggle times. Selected: {Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length}
+                  </p>
+               </div>
+               <button onClick={() => setShowAddModal(false)} className="text-black text-2xl font-light cursor-pointer leading-none">&times;</button>
+            </div>
             
-            <div className="space-y-6">
-              {/* Date Selection with Individual Time Slots */}
-              <div>
-                <label className="block text-sm font-medium text-black mb-3">
-                  Select Dates & Time Slots * ({Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length} selected)
-                </label>
-                <p className="text-xs text-gray-600 mb-2">Click on a date to show Morning/Afternoon options</p>
-                <div className="border-2 border-black p-4 max-h-96 overflow-y-auto">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    {getNextDays(60).map((date) => {
-                      const dateStr = date.toISOString().split('T')[0]
-                      const selectedTimeSlot = selectedDateSlots[dateStr]
-                      const isActive = activeDate === dateStr
-                      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
-                      const dayNum = date.getDate()
-                      const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-                      
-                      return (
-                        <div
-                          key={dateStr}
-                          className={`relative border-2 transition-all duration-300 ease-in-out overflow-visible min-h-[140px] ${
-                            selectedTimeSlot 
-                              ? 'border-black bg-gray-50' 
-                              : isActive
-                              ? 'border-blue-500 bg-blue-50 shadow-lg'
-                              : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
-                          } ${isActive ? 'transform scale-105 z-10' : ''}`}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
+                  {getNextDays(60).map((date) => {
+                    const dateStr = date.toISOString().split('T')[0]
+                    const selectedTimeSlot = selectedDateSlots[dateStr]
+                    const isActive = activeDate === dateStr
+                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+                    const dayNum = date.getDate()
+                    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
+                    
+                    return (
+                      <div
+                        key={dateStr}
+                        className={`relative border transition-all duration-200 overflow-hidden rounded-xl min-h-[140px] ${
+                          selectedTimeSlot 
+                            ? 'border-black bg-black text-white' 
+                            : isActive
+                            ? 'border-black ring-1 ring-black'
+                            : 'border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        {/* Date Content */}
+                        <button
+                          type="button"
+                          onClick={() => toggleActiveDate(dateStr)}
+                          className={`w-full h-full p-4 flex flex-col items-center justify-center cursor-pointer transition-opacity ${
+                             isActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                          }`}
                         >
-                          {/* Date Display - Blurred/Faded when time slots are shown */}
+                          <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${selectedTimeSlot ? 'text-gray-400' : 'text-gray-400'}`}>{dayName}</div>
+                          <div className="font-bold text-3xl mb-1">{dayNum}</div>
+                          
+                          {selectedTimeSlot ? (
+                             <div className="mt-2 px-2 py-1 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wide">
+                                {selectedTimeSlot === 'morning' ? 'Morning' : 'Afternoon'}
+                             </div>
+                          ) : (
+                             <div className="text-xs text-gray-400">{monthName}</div>
+                          )}
+                        </button>
+                        
+                        {/* Overlay Options (Show on click) */}
+                        <div 
+                          className={`absolute inset-0 bg-white flex flex-col p-2 gap-2 transition-opacity duration-200 ${
+                            isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+                          }`}
+                        >
                           <button
                             type="button"
-                            onClick={() => toggleActiveDate(dateStr)}
-                            className={`w-full p-4 text-center transition-all duration-300 min-h-[140px] flex flex-col items-center justify-center relative ${
-                              selectedTimeSlot === 'morning'
-                                ? 'bg-yellow-100'
-                                : selectedTimeSlot === 'afternoon'
-                                ? 'bg-orange-100'
-                                : isActive
-                                ? 'bg-blue-100'
-                                : 'hover:bg-gray-50'
-                            } ${isActive && !selectedTimeSlot ? 'blur-sm opacity-40' : 'blur-0 opacity-100'}`}
-                          >
-                            <div className="text-xs text-gray-600 font-medium">{dayName}</div>
-                            <div className="font-bold text-3xl my-2">{dayNum}</div>
-                            <div className="text-xs text-gray-600 font-medium">{monthName}</div>
-                            {selectedTimeSlot && (
-                              <div className={`text-[10px] font-semibold mt-3 px-2 py-1 rounded cursor-pointer hover:opacity-80 ${
-                                selectedTimeSlot === 'morning' 
-                                  ? 'bg-yellow-200 text-yellow-800' 
-                                  : 'bg-orange-200 text-orange-800'
-                              }`}
-                              title="Click to change time"
-                              >
-                                {selectedTimeSlot === 'morning' ? '🌅 Morning' : '☀️ Afternoon'}
-                                <div className="text-[8px] mt-0.5">Click to edit</div>
-                              </div>
-                            )}
-                          </button>
-                          
-                          {/* Time Slot Options - Replace date when active */}
-                          <div 
-                            className={`absolute inset-0 transition-all duration-300 ease-in-out flex flex-col items-center justify-center p-3 space-y-2 bg-white ${
-                              isActive
-                                ? 'opacity-100 pointer-events-auto z-20' 
-                                : 'opacity-0 pointer-events-none'
+                            onClick={() => toggleDateTimeSlot(dateStr, 'morning')}
+                            className={`flex-1 flex flex-col items-center justify-center rounded-lg border cursor-pointer ${
+                               selectedTimeSlot === 'morning' 
+                               ? 'bg-black text-white border-black' 
+                               : 'bg-white text-black border-gray-200 hover:border-black'
                             }`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => toggleDateTimeSlot(dateStr, 'morning')}
-                              className={`w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 ${
-                                selectedTimeSlot === 'morning'
-                                  ? 'bg-yellow-200 text-black border-yellow-600 ring-2 ring-yellow-400'
-                                  : 'bg-white text-black border-yellow-400 hover:bg-yellow-50 hover:border-yellow-600'
-                              } hover:shadow-md`}
-                            >
-                              <div className="flex items-center justify-center gap-1">
-                                <span>🌅</span>
-                                <span>Morning</span>
-                                {selectedTimeSlot === 'morning' && <span className="ml-1">✓</span>}
-                              </div>
-                              <div className="text-[10px] opacity-80 mt-1">8:00 AM - 11:00 AM</div>
-                            </button>
-                            
-                            <button
-                              type="button"
-                              onClick={() => toggleDateTimeSlot(dateStr, 'afternoon')}
-                              className={`w-full px-3 py-3 text-sm font-semibold border-2 rounded transition-all duration-200 transform hover:scale-105 ${
-                                selectedTimeSlot === 'afternoon'
-                                  ? 'bg-orange-200 text-black border-orange-600 ring-2 ring-orange-400'
-                                  : 'bg-white text-black border-orange-400 hover:bg-orange-50 hover:border-orange-600'
-                              } hover:shadow-md`}
-                            >
-                              <div className="flex items-center justify-center gap-1">
-                                <span>☀️</span>
-                                <span>Afternoon</span>
-                                {selectedTimeSlot === 'afternoon' && <span className="ml-1">✓</span>}
-                              </div>
-                              <div className="text-[10px] opacity-80 mt-1">1:00 PM - 5:30 PM</div>
-                            </button>
-                          </div>
+                             <span className="text-xs font-bold">Morning</span>
+                             <span className="text-[9px] opacity-60">8-11 AM</span>
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => toggleDateTimeSlot(dateStr, 'afternoon')}
+                            className={`flex-1 flex flex-col items-center justify-center rounded-lg border cursor-pointer ${
+                               selectedTimeSlot === 'afternoon' 
+                               ? 'bg-black text-white border-black' 
+                               : 'bg-white text-black border-gray-200 hover:border-black'
+                            }`}
+                          >
+                             <span className="text-xs font-bold">Afternoon</span>
+                             <span className="text-[9px] opacity-60">1-5:30 PM</span>
+                          </button>
                         </div>
-                      )
-                    })}
-                  </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                
-                <div className="mt-3 flex flex-wrap gap-2">
+            </div>
+
+            {/* Footer Actions */}
+            <div className="mt-6 pt-6 border-t border-gray-100 flex flex-col gap-4">
+               {/* Bulk Selectors */}
+               <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2 self-center">Quick Select:</span>
                   <button
                     type="button"
                     onClick={() => {
                       selectAllDates('morning', (date) => {
                         const day = date.getDay()
-                        return day !== 0 && day !== 6 // Weekdays
+                        return day !== 0 && day !== 6 
                       })
                     }}
-                    className="text-xs px-3 py-1.5 bg-yellow-100 border border-yellow-500 hover:bg-yellow-200 font-medium"
+                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
                   >
-                    🌅 All Weekdays - Morning
+                    Weekdays Morning
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       selectAllDates('afternoon', (date) => {
                         const day = date.getDay()
-                        return day !== 0 && day !== 6 // Weekdays
+                        return day !== 0 && day !== 6
                       })
                     }}
-                    className="text-xs px-3 py-1.5 bg-orange-100 border border-orange-500 hover:bg-orange-200 font-medium"
+                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
                   >
-                    ☀️ All Weekdays - Afternoon
+                    Weekdays Afternoon
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       selectAllDates('morning', (date) => {
                         const day = date.getDay()
-                        return day === 0 || day === 6 // Weekends
+                        return day === 0 || day === 6
                       })
                     }}
-                    className="text-xs px-3 py-1.5 bg-yellow-100 border border-yellow-500 hover:bg-yellow-200 font-medium"
+                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
                   >
-                    🌅 All Weekends - Morning
+                    Weekends Morning
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       selectAllDates('afternoon', (date) => {
                         const day = date.getDay()
-                        return day === 0 || day === 6 // Weekends
+                        return day === 0 || day === 6
                       })
                     }}
-                    className="text-xs px-3 py-1.5 bg-orange-100 border border-orange-500 hover:bg-orange-200 font-medium"
+                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
                   >
-                    ☀️ All Weekends - Afternoon
+                    Weekends Afternoon
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedDateSlots({})}
-                    className="text-xs px-3 py-1.5 border border-black hover:bg-gray-100 font-medium"
+                    className="text-[10px] font-bold px-3 py-1.5 border border-red-200 text-red-600 rounded-full hover:bg-red-50 transition-colors cursor-pointer ml-auto"
                   >
-                    Clear All
+                    Clear Selection
                   </button>
-                </div>
-              </div>
+               </div>
 
-              <div className="bg-blue-50 border-2 border-blue-400 p-3">
-                <p className="text-sm text-black">
-                  💡 <strong>How to use:</strong> Click on a date to open time options, then choose Morning or Afternoon. 
-                  Selected dates will show a colored indicator (🌅 Yellow = Morning, ☀️ Orange = Afternoon).
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
-              <button
-                onClick={addTimeSlot}
-                disabled={submitting || Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length === 0}
-                className="flex-1 px-4 py-2 bg-black text-white hover:bg-gray-800 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitting ? 'Adding...' : `Add ${Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length} Time Slot(s)`}
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddModal(false)
-                  setSelectedDateSlots({})
-                  setActiveDate(null)
-                }}
-                disabled={submitting}
-                className="flex-1 px-4 py-2 border-2 border-black text-black hover:bg-gray-100 font-medium"
-              >
-                Cancel
-              </button>
+               <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAddModal(false)
+                      setSelectedDateSlots({})
+                      setActiveDate(null)
+                    }}
+                    disabled={submitting}
+                    className="flex-1 py-3 border border-gray-300 text-black font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={addTimeSlot}
+                    disabled={submitting || Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length === 0}
+                    className="flex-1 py-3 bg-black text-white font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
+                  >
+                    {submitting ? 'Saving...' : `Confirm & Add Slots`}
+                  </button>
+               </div>
             </div>
           </div>
         </div>

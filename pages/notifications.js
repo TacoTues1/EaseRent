@@ -32,6 +32,12 @@ export default function NotificationsPage() {
     setLoading(false)
   }
 
+  useEffect(() => {
+    if (session) {
+      loadNotifications()
+    }
+  }, [session])
+
   async function markAsRead(id) {
     await supabase
       .from('notifications')
@@ -100,11 +106,16 @@ export default function NotificationsPage() {
     
     if (!error) {
       setNotifications(prev => prev.filter(n => n.id !== deleteConfirm.id))
-      toast.success('Notification deleted successfully', {
+      toast.success('Notification deleted', {
         icon: '✓',
+        style: {
+          border: '1px solid black',
+          padding: '16px',
+          color: 'black',
+        },
       })
     } else {
-      toast.error('Failed to delete notification', {
+      toast.error('Failed to delete', {
         icon: '✕',
       })
     }
@@ -116,80 +127,94 @@ export default function NotificationsPage() {
     setDeleteConfirm(null)
   }
 
-  if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
+  if (!session) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+    </div>
+  )
 
   const unreadCount = notifications.filter(n => !n.read).length
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="border-b border-gray-100 bg-white sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 py-6 flex justify-between items-end">
           <div>
-            <h1 className="text-2xl font-bold">Notifications</h1>
-            {unreadCount > 0 && (
-              <p className="text-sm text-black">
-                You have {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
-              </p>
-            )}
+            <h1 className="text-3xl font-bold text-black tracking-tight">Notifications</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              You have {unreadCount} unread {unreadCount === 1 ? 'update' : 'updates'}
+            </p>
           </div>
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="px-4 py-2 text-sm text-black"
+              className="text-xs font-bold text-black border-b border-black cursor-pointer pb-0.5"
             >
-              Mark all as read
+              Mark all read
             </button>
           )}
         </div>
+      </div>
 
-        <div className="bg-white divide-y">
+      <div className="max-w-4xl mx-auto px-6 py-6">
+        <div className="flex flex-col gap-3">
           {loading ? (
-            <p className="p-6 text-black">Loading notifications...</p>
+            <div className="flex justify-center py-10">
+               <div className="inline-block animate-spin h-6 w-6 border-b-2 border-black"></div>
+            </div>
           ) : notifications.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-black mb-2">No notifications yet</p>
-              <p className="text-sm text-black">We'll notify you when something important happens</p>
+            <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-xl">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              </div>
+              <p className="text-black font-medium">No notifications yet</p>
+              <p className="text-sm text-gray-400 mt-1">We'll notify you when important updates arrive</p>
             </div>
           ) : (
             notifications.map(notif => (
               <div
                 key={notif.id}
-                className={`p-4 cursor-pointer ${
-                  !notif.read ? 'bg-white' : ''
+                className={`group relative p-5 rounded-xl border transition-all cursor-pointer ${
+                  !notif.read 
+                    ? 'bg-white border-black shadow-sm' 
+                    : 'bg-gray-50 border-transparent hover:bg-white hover:border-gray-200'
                 }`}
                 onClick={() => handleNotificationClick(notif)}
               >
                 <div className="flex justify-between items-start gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs uppercase font-semibold ${
-                        notif.type === 'payment' ? 'text-white' :
-                        notif.type === 'maintenance' ? 'text-orange-600' :
-                        notif.type === 'application' ? 'text-black' :
-                        notif.type === 'message' ? 'text-purple-600' :
-                        'text-black'
-                      }`}>
-                        {notif.type || 'General'}
-                      </span>
+                    <div className="flex items-center gap-2 mb-2">
                       {!notif.read && (
-                        <span className="w-2 h-2 bg-black"></span>
+                        <span className="w-2 h-2 rounded-full bg-black flex-shrink-0"></span>
                       )}
+                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${
+                        !notif.read ? 'border-black text-black' : 'border-gray-300 text-gray-500'
+                      }`}>
+                        {notif.type?.replace(/_/g, ' ') || 'General'}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(notif.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </div>
-                    <p className="text-black mb-1">{notif.message}</p>
-                    <p className="text-xs text-black">
-                      {new Date(notif.created_at).toLocaleString()}
+                    
+                    <p className={`text-sm mb-1 ${!notif.read ? 'font-bold text-black' : 'font-medium text-gray-600'}`}>
+                      {notif.message}
                     </p>
-                    <p className="text-xs text-black mt-1 hover:underline">
-                      Click to view →
-                    </p>
+                    
+                    <div className="flex items-center gap-1 text-[10px] font-bold text-black mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span>View Details</span>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                    </div>
                   </div>
+
                   <button
                     onClick={(e) => deleteNotification(notif.id, e)}
-                    className="flex-shrink-0 p-2 text-black-colors cursor-pointer"
+                    className="flex-shrink-0 p-2 text-gray-300 hover:text-black transition-colors cursor-pointer"
                     title="Delete notification"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
@@ -201,24 +226,24 @@ export default function NotificationsPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0  backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white border-2 border-black max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-black mb-2 ">Delete Notification</h3>
-            <p className="text-black mb-6">
-              Are you sure you want to delete this notification? This action cannot be undone.
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-lg font-bold text-black mb-2">Delete Notification?</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              This action cannot be undone.
             </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={cancelDelete}
-                className="px-4 py-2 border-2 border-black text-black bg-white hover:bg-gray-100 font-medium cursor-pointer rounded-full"
-              >
-                Cancel
-              </button>
+            <div className="flex gap-2">
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 text-white bg-red-600 hover:bg-red-700 font-medium cursor-pointer rounded-full"
+                className="flex-1 px-4 py-2.5 bg-black text-white text-sm font-bold rounded-lg cursor-pointer active:scale-95 transition-transform"
               >
                 Delete
+              </button>
+              <button
+                onClick={cancelDelete}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-black text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-200 active:scale-95 transition-transform"
+              >
+                Cancel
               </button>
             </div>
           </div>
