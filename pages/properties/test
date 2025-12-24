@@ -162,10 +162,8 @@ export default function PropertyDetail() {
     }
     setSubmitting(false)
   }
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
-  if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
 
-const handleGetDirections = (e) => {
+  const handleGetDirections = (e) => {
     e.preventDefault()
     
     // Fallback: If no geolocation or permission denied, open standard link or search
@@ -207,6 +205,9 @@ const handleGetDirections = (e) => {
     )
   }
 
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
+  if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
+
   const propertyImages = property.images && property.images.length > 0 
     ? property.images 
     : ['https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop']
@@ -236,6 +237,18 @@ const handleGetDirections = (e) => {
                     {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
                 </span>
              </div>
+             
+             <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>
+                     {property.building_no && `${property.building_no}, `}{property.street}, {property.address} {property.city} {property.zip}
+                  </span>
+                </div>
+             </div>
            </div>
 
            <div className="flex flex-col items-start md:items-end">
@@ -252,11 +265,11 @@ const handleGetDirections = (e) => {
           <div className="lg:col-span-2 flex flex-col gap-5">
             
             {/* Gallery */}
-            <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 h-[350px] md:h-[420px] relative group">
+            <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 h-[200px] md:h-[250px] relative group">
                 <img 
                   src={propertyImages[currentImageIndex]} 
                   alt={property.title}
-                  className="w-full h-full object-cover"
+                  className="w-[90%] h-[90%] object-cover mx-auto rounded-lg mt-[2.5%]"
                   onError={(e) => {
                     e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop'
                   }}
@@ -441,7 +454,7 @@ const handleGetDirections = (e) => {
                                   <svg className="absolute w-2 h-2 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
                                 </div>
                                 <span className="text-[10px] text-gray-500 leading-snug">
-                                  I agree to <Link href={`/terms?propertyId=${property.id}`} target="_blank" className="text-black font-bold underline">Terms & Conditions</Link>.
+                                  I agree to <Link href={`/terms?propertyId=${property.id}`} target="_blank" className="text-black font-bold underline">Terms</Link>.
                                 </span>
                              </label>
                            </div>
@@ -472,7 +485,7 @@ const handleGetDirections = (e) => {
              </div>
 
              {/* Contact Details (Condensed) */}
-             {(property.owner_phone || property.owner_email || property.location_link) && (
+             {(property.owner_phone || property.owner_email || property.location_link || property.address) && (
                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
                   <h3 className="font-bold text-gray-900 mb-3">Contact Details</h3>
                   <div className="flex flex-col gap-2.5">
@@ -492,16 +505,6 @@ const handleGetDirections = (e) => {
                            <a href={`mailto:${property.owner_email}`} className="text-gray-600 hover:text-black font-medium transition-colors cursor-pointer truncate">{property.owner_email}</a>
                         </div>
                      )}
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
-                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        </div>
-                  <span>
-                     {property.building_no && `${property.building_no}, `}{property.street}, {property.address} {property.city} {property.zip}
-                  </span>
-                </div>
-             </div>
                      <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -510,15 +513,12 @@ const handleGetDirections = (e) => {
                           onClick={handleGetDirections} 
                           className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer text-left"
                         >
-                          Get Directions
+                          Get Directions / View Map
                         </button>
                      </div>
                   </div>
                </div>
-               
              )}
-
-             
 
           </div>
         </div>
