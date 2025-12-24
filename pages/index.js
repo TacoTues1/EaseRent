@@ -34,7 +34,7 @@ export default function Home() {
           nextImage(property.id, images.length)
         }
       })
-    }, 100)
+    }, 1500)
 
     return () => clearInterval(interval)
   }, [properties])
@@ -46,7 +46,7 @@ export default function Home() {
       if (images.length > 1) {
         const interval = setInterval(() => {
           setModalImageIndex((prev) => (prev + 1) % images.length)
-        }, 100)
+        }, 1500)
 
         return () => clearInterval(interval)
       }
@@ -579,6 +579,7 @@ export default function Home() {
           </div>
         </div>
       )}
+       <div className="h-24"></div>
       
       <AuthModal 
         isOpen={showAuthModal} 

@@ -14,6 +14,7 @@ export default function Navbar() {
   const [authMode, setAuthMode] = useState('signin') // 'signin' or 'signup'
   const [showDropdown, setShowDropdown] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [showPublicMobileMenu, setShowPublicMobileMenu] = useState(false) // New state for public mobile menu
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
   const navRef = useRef(null)
 
@@ -96,6 +97,7 @@ export default function Navbar() {
       if (navRef.current && !navRef.current.contains(event.target)) {
         setShowDropdown(false)
         setShowMobileMenu(false)
+        setShowPublicMobileMenu(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -174,15 +176,20 @@ export default function Navbar() {
     return (
       <>
         {/* Floating Container */}
-        <div className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+        <div ref={navRef} className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
           <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
             <div className="px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
                 <div className="flex items-center">
                   <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
                     <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
-                    EaseRent
+                    <span className="hidden sm:inline">EaseRent</span>
                   </Link>
+                </div>
+                
+                {/* Mobile Centered Title */}
+                <div className="absolute left-1/2 transform -translate-x-1/2 sm:hidden pointer-events-none">
+                  <span className="text-lg font-bold text-black">EaseRent</span>
                 </div>
                 
                 {/* Desktop Welcome Message */}
@@ -190,13 +197,14 @@ export default function Navbar() {
                   <span className="text-lg font-bold text-gray-800 tracking-tight">Welcome to EaseRent</span>
                 </div>
 
-                <div className="flex items-center gap-3">
+                {/* Desktop Buttons */}
+                <div className="hidden sm:flex items-center gap-2">
                   <button 
                     onClick={() => {
                       setAuthMode('signin')
                       setShowAuthModal(true)
                     }}
-                    className="px-4 py-2 text-sm font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer sm:px-4 sm:py-2 sm:text-sm"
                   >
                     Login
                   </button>
@@ -205,14 +213,60 @@ export default function Navbar() {
                       setAuthMode('signup')
                       setShowAuthModal(true)
                     }}
-                    className="px-5 py-2 text-sm font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer sm:px-5 sm:py-2 sm:text-sm"
                   >
                     Register
+                  </button>
+                </div>
+
+                {/* Mobile Menu Button */}
+                <div className="sm:hidden flex items-center">
+                  <button
+                    onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)}
+                    className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto"
+                  >
+                    <svg className={`w-5 h-5 transition-transform duration-300 ${showPublicMobileMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {showPublicMobileMenu ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                      )}
+                    </svg>
                   </button>
                 </div>
               </div>
             </div>
           </nav>
+
+          {/* Mobile Floating Menu (Public) */}
+          {showPublicMobileMenu && (
+            <div className="sm:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
+              <div className="p-4 grid grid-cols-1 gap-2">
+                <button 
+                  onClick={() => {
+                    setAuthMode('signin')
+                    setShowAuthModal(true)
+                    setShowPublicMobileMenu(false)
+                  }}
+                  className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all"
+                >
+                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
+                  Login
+                </button>
+                <button 
+                  onClick={() => {
+                    setAuthMode('signup')
+                    setShowAuthModal(true)
+                    setShowPublicMobileMenu(false)
+                  }}
+                  className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium bg-black text-white shadow-md hover:bg-gray-900 transition-all"
+                >
+                  <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                  Register
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="h-24"></div> {/* Spacer for fixed navbar */}
         <AuthModal 
@@ -236,7 +290,7 @@ export default function Navbar() {
               <div className="flex items-center gap-6 lg:gap-10">
                 <Link href="/dashboard" className="flex items-center gap-2 font-bold text-black hover:opacity-80 transition-opacity">
                   <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
-                  <span className="hidden sm:inline text-xl">EaseRent</span>
+                  <span className="hidden md:inline text-xl">EaseRent</span>
                 </Link>
 
                 <div className="hidden md:flex relative gap-1">
@@ -292,6 +346,11 @@ export default function Navbar() {
                     )}
                   </Link>
                 </div>
+              </div>
+
+              {/* Mobile Centered Title */}
+              <div className="absolute left-1/2 transform -translate-x-1/2 md:hidden pointer-events-none">
+                <span className="text-xl font-bold text-black">EaseRent</span>
               </div>
 
               {/* Right Side Actions */}

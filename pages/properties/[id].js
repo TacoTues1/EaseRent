@@ -474,7 +474,7 @@ const handleGetDirections = (e) => {
              {/* Contact Details (Condensed) */}
              {(property.owner_phone || property.owner_email || property.location_link) && (
                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
-                  <h3 className="font-bold text-gray-900 mb-3">Contact Details</h3>
+                  <h3 className="font-bold text-gray-900 mb-3">Contact Details of Landlord</h3>
                   <div className="flex flex-col gap-2.5">
                      {property.owner_phone && (
                         <div className="flex items-center gap-2">
