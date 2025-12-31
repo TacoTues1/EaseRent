@@ -26,6 +26,10 @@ export default function EditProperty() {
     owner_phone: '',
     owner_email: '',
     price: '',
+    // New Cost Fields
+    utilities_cost: '',
+    internet_cost: '',
+    association_dues: '',
     bedrooms: 1,
     bathrooms: 1,
     area_sqft: '',
@@ -37,26 +41,9 @@ export default function EditProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Kitchen',
-    'Wifi',
-    'Pool',
-    'TV',
-    'Elevator',
-    'Air conditioning',
-    'Heating',
-    'Washing machine',
-    'Dryer',
-    'Parking',
-    'Gym',
-    'Security',
-    'Balcony',
-    'Garden',
-    'Pet friendly',
-    'Furnished',
-    'Carbon monoxide alarm',
-    'Smoke alarm',
-    'Fire extinguisher',
-    'First aid kit'
+    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating',
+    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
+    'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
   ]
 
   const toggleAmenity = (amenity) => {
@@ -115,14 +102,12 @@ export default function EditProperty() {
       return
     }
 
-    // Check if user owns this property
     if (data.landlord !== session.user.id) {
       setMessage('You can only edit your own properties')
       setTimeout(() => router.push('/dashboard'), 2000)
       return
     }
 
-    // Load property data into form
     setFormData({
       title: data.title || '',
       description: data.description || '',
@@ -135,6 +120,10 @@ export default function EditProperty() {
       owner_phone: data.owner_phone || '',
       owner_email: data.owner_email || '',
       price: data.price || '',
+      // Populate New Cost Fields
+      utilities_cost: data.utilities_cost || '',
+      internet_cost: data.internet_cost || '',
+      association_dues: data.association_dues || '',
       bedrooms: data.bedrooms || 1,
       bathrooms: data.bathrooms || 1,
       area_sqft: data.area_sqft || '',
@@ -144,7 +133,6 @@ export default function EditProperty() {
       amenities: data.amenities || []
     })
 
-    // Load existing images
     if (data.images && data.images.length > 0) {
       setImageUrls(data.images)
     }
@@ -231,12 +219,25 @@ export default function EditProperty() {
     const validImageUrls = imageUrls.filter(url => url.trim() !== '')
 
     setLoading(true)
+
+    // Helper to ensure numeric fields are sent as numbers or 0 (not empty strings)
+    const sanitizeNumber = (val) => (val === '' || val === null ? 0 : val)
+
+    const payload = {
+      ...formData,
+      price: sanitizeNumber(formData.price),
+      utilities_cost: sanitizeNumber(formData.utilities_cost),
+      internet_cost: sanitizeNumber(formData.internet_cost),
+      association_dues: sanitizeNumber(formData.association_dues),
+      bedrooms: sanitizeNumber(formData.bedrooms),
+      bathrooms: sanitizeNumber(formData.bathrooms),
+      area_sqft: sanitizeNumber(formData.area_sqft),
+      images: validImageUrls.length > 0 ? validImageUrls : null
+    }
+
     const { error } = await supabase
       .from('properties')
-      .update({
-        ...formData,
-        images: validImageUrls.length > 0 ? validImageUrls : null
-      })
+      .update(payload)
       .eq('id', id)
 
     if (error) {
@@ -283,7 +284,6 @@ export default function EditProperty() {
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 md:p-8 font-sans">
       <Toaster position="top-center" />
       <div className="max-w-7xl mx-auto">
-        {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Edit Property</h1>
@@ -303,7 +303,6 @@ export default function EditProperty() {
         </div>
         
         <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6">
-          {/* Main Info Card */}
           <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
             
             {/* Title Section */}
@@ -501,6 +500,51 @@ export default function EditProperty() {
                 </div>
             </div>
 
+             {/* NEW: Additional Monthly Estimates (Real Cost Calculator Inputs) */}
+             <div>
+              <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
+                <span className="w-1.5 h-4 bg-black rounded-full"></span> Monthly Estimates (for Tenant Calculator)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Est. Utilities (₱)</label>
+                  <input
+                    type="number"
+                    name="utilities_cost"
+                    min="0"
+                    placeholder="e.g. 2500"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.utilities_cost}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Internet (₱)</label>
+                  <input
+                    type="number"
+                    name="internet_cost"
+                    min="0"
+                    placeholder="e.g. 1500"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.internet_cost}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Assoc. Dues (₱)</label>
+                  <input
+                    type="number"
+                    name="association_dues"
+                    min="0"
+                    placeholder="e.g. 1000"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.association_dues}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Description & Terms */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-50">
                <div className="space-y-2">
@@ -536,84 +580,77 @@ export default function EditProperty() {
             
             {/* Images Card */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-      <label className="block text-sm font-bold text-gray-900 mb-4">Photos (Max 10)</label>
-      
-      {/* CHANGED: grid-cols-6 makes the squares much smaller */}
-      <div className="grid grid-cols-6 gap-2">
-        {imageUrls.map((url, index) => (
-          <div key={index} className="relative aspect-square">
-            <label className="cursor-pointer block h-full">
-              {/* CHANGED: Back to w-full h-full to fill the small square */}
-              <div className={`w-full h-full border rounded-lg flex items-center justify-center text-xs transition-colors ${
-                url ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-400'
-              } ${uploadingImages[index] ? 'bg-yellow-50' : ''}`}>
-                {uploadingImages[index] ? '...' : url ? '✓' : '+'}
+              <label className="block text-sm font-bold text-gray-900 mb-4">Photos (Max 10)</label>
+              <div className="grid grid-cols-6 gap-2">
+                {imageUrls.map((url, index) => (
+                  <div key={index} className="relative aspect-square">
+                    <label className="cursor-pointer block h-full">
+                      <div className={`w-full h-full border rounded-lg flex items-center justify-center text-xs transition-colors ${
+                        url ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-400'
+                      } ${uploadingImages[index] ? 'bg-yellow-50' : ''}`}>
+                        {uploadingImages[index] ? '...' : url ? '✓' : '+'}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, index)}
+                        disabled={uploadingImages[index]}
+                      />
+                    </label>
+                    {url && imageUrls.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeImageUrlField(index)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center cursor-pointer shadow-sm border border-white"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+                {imageUrls.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={addImageUrlField}
+                    className="aspect-square rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 cursor-pointer bg-white hover:bg-gray-50 transition-colors"
+                  >+</button>
+                )}
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleImageUpload(e, index)}
-                disabled={uploadingImages[index]}
-              />
-            </label>
-            {url && imageUrls.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeImageUrlField(index)}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center cursor-pointer shadow-sm border border-white"
-              >×</button>
-            )}
-          </div>
-        ))}
-        {imageUrls.length < 10 && (
-          <button
-            type="button"
-            onClick={addImageUrlField}
-            className="aspect-square rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-400 cursor-pointer bg-white hover:bg-gray-50 transition-colors"
-          >+</button>
-        )}
-      </div>
-      <p className="text-[10px] text-gray-400 mt-3 text-center">Max 5MB per image. Square/Landscape preferred.</p>
-    </div>
+              <p className="text-[10px] text-gray-400 mt-3 text-center">Max 5MB per image. Square/Landscape preferred.</p>
+            </div>
 
             {/* Amenities Card */}
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-fit">
-    <label className="block text-m font-bold text-gray-900 mb-3">Amenities</label>
-    
-    {/* Reduced gap from 2 to 1.5 */}
-    <div className="flex flex-wrap gap-1.5 content-start">
-    {(showAllAmenities ? availableAmenities : availableAmenities.slice(0, 10)).map((amenity) => (
-        <label
-        key={amenity}
-        // Reduced padding: px-2.5 py-1 (was px-3 py-1.5)
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer text-xs border transition-all ${
-            formData.amenities.includes(amenity)
-            ? 'border-black bg-black text-white'
-            : 'border-gray-200 bg-white text-gray-600'
-        }`}
-        >
-        <input
-            type="checkbox"
-            checked={formData.amenities.includes(amenity)}
-            onChange={() => toggleAmenity(amenity)}
-            className="hidden"
-        />
-        {amenity}
-        </label>
-    ))}
-    </div>
-    
-    {availableAmenities.length > 10 && (
-        <button
-        type="button"
-        onClick={() => setShowAllAmenities(!showAllAmenities)}
-        className="mt-3 text-[10px] font-bold text-black border-b border-black w-max cursor-pointer self-center uppercase tracking-wide"
-        >
-        {showAllAmenities ? 'Show Less' : `Show All (${availableAmenities.length})`}
-        </button>
-    )}
-</div>
+              <label className="block text-m font-bold text-gray-900 mb-3">Amenities</label>
+              <div className="flex flex-wrap gap-1.5 content-start">
+                {(showAllAmenities ? availableAmenities : availableAmenities.slice(0, 10)).map((amenity) => (
+                  <label
+                    key={amenity}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full cursor-pointer text-xs border transition-all ${
+                      formData.amenities.includes(amenity)
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-200 bg-white text-gray-600'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.amenities.includes(amenity)}
+                      onChange={() => toggleAmenity(amenity)}
+                      className="hidden"
+                    />
+                    {amenity}
+                  </label>
+                ))}
+              </div>
+              {availableAmenities.length > 10 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllAmenities(!showAllAmenities)}
+                    className="mt-3 text-[10px] font-bold text-black border-b border-black w-max cursor-pointer self-center uppercase tracking-wide"
+                  >
+                    {showAllAmenities ? 'Show Less' : `Show All (${availableAmenities.length})`}
+                  </button>
+                )}
+            </div>
 
             {/* Actions */}
             <div className="flex flex-col gap-3">

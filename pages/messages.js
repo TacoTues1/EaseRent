@@ -707,6 +707,28 @@ export default function Messages() {
     }
   }
 
+  // Force download handler for files/images to bypass new tab opening
+  const handleDownload = async (url, filename) => {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Network response was not ok')
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename || 'download'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error('Download failed:', error)
+      // Fallback
+      window.open(url, '_blank')
+    }
+  }
+
   // Helper to get shared media
   const sharedImages = messages.filter(m => m.file_type?.startsWith('image/') && m.file_url)
   const sharedFiles = messages.filter(m => m.file_url && !m.file_type?.startsWith('image/'))
@@ -927,16 +949,16 @@ export default function Messages() {
                                         style={{ maxHeight: '100px', width: 'auto' }}
                                         onClick={() => setImageModal(msg.file_url)}
                                       />
-                                      <a 
-                                        href={msg.file_url}
-                                        download={msg.file_name}
-                                        onClick={(e) => e.stopPropagation()}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDownload(msg.file_url, msg.file_name)
+                                        }}
                                         className={`absolute bottom-1 right-1 p-1 rounded-full shadow-sm cursor-pointer ${isOwn ? 'bg-white text-black' : 'bg-black text-white'}`}
+                                        title="Download"
                                       >
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                      </a>
+                                      </button>
                                     </div>
                                   ) : (
                                     <div className={`flex items-center gap-3 p-2 rounded-lg border ${isOwn ? 'border-white/20 bg-white/10' : 'border-gray-200 bg-white'}`}>
@@ -944,15 +966,13 @@ export default function Messages() {
                                           <p className="font-medium truncate text-xs">{msg.file_name}</p>
                                           <p className={`text-[10px] ${isOwn ? 'text-gray-400' : 'text-gray-500'}`}>{(msg.file_size / 1024).toFixed(0)} KB</p>
                                        </div>
-                                       <a 
-                                          href={msg.file_url}
-                                          download={msg.file_name}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
+                                       <button 
+                                          onClick={() => handleDownload(msg.file_url, msg.file_name)}
                                           className="cursor-pointer"
+                                          title="Download"
                                        >
                                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                       </a>
+                                       </button>
                                     </div>
                                   )}
                                 </div>
@@ -1120,12 +1140,10 @@ export default function Messages() {
                     {sharedFiles.length > 0 ? (
                       <div className="space-y-2">
                          {sharedFiles.map(m => (
-                            <a 
+                            <div 
                               key={m.id}
-                              href={m.file_url} 
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2.5 p-2.5 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group"
+                              onClick={() => handleDownload(m.file_url, m.file_name)}
+                              className="flex items-center gap-2.5 p-2.5 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors group cursor-pointer"
                             >
                                <div className="w-8 h-8 rounded bg-white flex items-center justify-center text-gray-500 border border-gray-100">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
@@ -1134,7 +1152,7 @@ export default function Messages() {
                                   <p className="text-xs font-bold text-gray-700 truncate group-hover:text-black">{m.file_name}</p>
                                   <p className="text-[10px] text-gray-400">{(m.file_size / 1024).toFixed(1)} KB</p>
                                </div>
-                            </a>
+                            </div>
                          ))}
                       </div>
                     ) : (

@@ -23,6 +23,7 @@ export default function PropertyDetail() {
   const [hasActiveOccupancy, setHasActiveOccupancy] = useState(false)
   const [occupiedPropertyTitle, setOccupiedPropertyTitle] = useState('')
   const [showAllAmenities, setShowAllAmenities] = useState(false)
+  const [reviews, setReviews] = useState([]) 
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -63,7 +64,10 @@ export default function PropertyDetail() {
   }
 
   useEffect(() => {
-    if (id) loadProperty()
+    if (id) {
+        loadProperty()
+        loadReviews() 
+    }
   }, [id])
 
   async function loadProperty() {
@@ -95,6 +99,19 @@ export default function PropertyDetail() {
       }
     }
     setLoading(false)
+  }
+
+  async function loadReviews() {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select(`
+        *,
+        tenant:profiles(first_name, last_name)
+      `)
+      .eq('property_id', id)
+      .order('created_at', { ascending: false })
+    
+    if (data) setReviews(data)
   }
 
   async function handleApply(e) {
@@ -129,7 +146,7 @@ export default function PropertyDetail() {
       .maybeSingle()
 
     if (pendingApp) {
-      setMessage('You already have a pending application for this property. Please wait for the landlord to review it.')
+      setMessage('You already have a pending inquiry for this property. Please wait for the landlord to review it.')
       setSubmitting(false)
       return
     }
@@ -142,7 +159,7 @@ export default function PropertyDetail() {
     })
 
     if (error) {
-      setMessage('Error submitting application: ' + error.message)
+      setMessage('Error submitting inquiry: ' + error.message)
     } else {
       if (property.landlord) {
         const template = NotificationTemplates.newApplication(
@@ -157,20 +174,27 @@ export default function PropertyDetail() {
         })
       }
 
-      setMessage('Application submitted successfully!')
+      setMessage('Inquiry submitted successfully!')
       setApplicationMessage('')
     }
     setSubmitting(false)
   }
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
-  if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
-
-const handleGetDirections = (e) => {
+  
+  const handleGetDirections = (e) => {
     e.preventDefault()
-    
-    // Fallback: If no geolocation or permission denied, open standard link or search
+    // Construct search query from property details
     const destinationQuery = `${property.address}, ${property.city}, ${property.zip || ''}`
-    const fallbackUrl = property.location_link || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`
+    
+    // Function to generate the correct Google Maps URL
+    const generateMapsUrl = (lat = null, lng = null) => {
+        const baseUrl = "https://www.google.com/maps/dir/?api=1";
+        const destination = `&destination=${encodeURIComponent(destinationQuery)}`;
+        const origin = lat && lng ? `&origin=${lat},${lng}` : "";
+        return `${baseUrl}${destination}${origin}`;
+    }
+
+    // Default fallback (opens maps with just destination)
+    const fallbackUrl = property.location_link || generateMapsUrl();
 
     if (!navigator.geolocation) {
       window.open(fallbackUrl, '_blank')
@@ -183,29 +207,25 @@ const handleGetDirections = (e) => {
       (position) => {
         toast.dismiss(toastId)
         const { latitude, longitude } = position.coords
-        
-        // Construct Google Maps Directions URL
-        // Origin: User's coordinates
-        // Destination: Property address (encoding ensures special characters are handled)
-        const directionsUrl = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}&destination=${encodeURIComponent(destinationQuery)}`
-        
+        // Open maps with both origin (user location) and destination
+        const directionsUrl = generateMapsUrl(latitude, longitude)
         window.open(directionsUrl, '_blank')
       },
       (error) => {
         toast.dismiss(toastId)
         console.error('Geolocation error:', error)
-        
         if (error.code === error.PERMISSION_DENIED) {
           toast.error('Location denied. Opening map directly.')
         } else {
           toast.error('Could not determine location. Opening map directly.')
         }
-        
-        // Open fallback link if geolocation fails
         window.open(fallbackUrl, '_blank')
       }
     )
   }
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
+  if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
 
   const propertyImages = property.images && property.images.length > 0 
     ? property.images 
@@ -214,11 +234,18 @@ const handleGetDirections = (e) => {
   const isOwner = profile?.id === property.landlord
   const isLandlord = profile?.role === 'landlord'
 
+  // --- Real Cost Calculation ---
+  const rent = Number(property.price) || 0
+  const utilities = Number(property.utilities_cost) || 0
+  const internet = Number(property.internet_cost) || 0
+  const dues = Number(property.association_dues) || 0
+  const totalRealCost = rent + utilities + internet + dues
+
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 font-sans">
       <div className="max-w-6xl mx-auto">
         
-        {/* Header Section (Title & Status only) */}
+        {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-start justify-between mb-5 gap-4">
            <div className="flex-1">
              <div className="flex items-center gap-3 mb-1">
@@ -248,95 +275,47 @@ const handleGetDirections = (e) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           
-          {/* Left Column - Gallery & Details (Takes up 2 columns) */}
+          {/* Left Column - Gallery & Details */}
           <div className="lg:col-span-2 flex flex-col gap-5">
-            
             {/* Gallery */}
             <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 h-[350px] md:h-[420px] relative group">
                 <img 
                   src={propertyImages[currentImageIndex]} 
                   alt={property.title}
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop'
-                  }}
+                  onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop' }}
                 />
-                
                 {propertyImages.length > 1 && (
                   <>
-                    <button
-                      onClick={() => setCurrentImageIndex((currentImageIndex - 1 + propertyImages.length) % propertyImages.length)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 text-black p-2 rounded-full shadow-sm cursor-pointer border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => setCurrentImageIndex((currentImageIndex + 1) % propertyImages.length)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 text-black p-2 rounded-full shadow-sm cursor-pointer border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                    
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                      {propertyImages.map((_, index) => (
-                        <button
-                          key={index}
-                          onClick={() => setCurrentImageIndex(index)}
-                          className={`w-1.5 h-1.5 rounded-full transition-all cursor-pointer ${index === currentImageIndex ? 'bg-white w-4' : 'bg-white/60'}`}
-                        />
-                      ))}
-                    </div>
+                    <button onClick={() => setCurrentImageIndex((currentImageIndex - 1 + propertyImages.length) % propertyImages.length)} className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 text-black p-2 rounded-full shadow-sm cursor-pointer border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button>
+                    <button onClick={() => setCurrentImageIndex((currentImageIndex + 1) % propertyImages.length)} className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 text-black p-2 rounded-full shadow-sm cursor-pointer border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></button>
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">{propertyImages.map((_, index) => (<button key={index} onClick={() => setCurrentImageIndex(index)} className={`w-1.5 h-1.5 rounded-full transition-all cursor-pointer ${index === currentImageIndex ? 'bg-white w-4' : 'bg-white/60'}`}/>))}</div>
                   </>
                 )}
             </div>
 
-             {/* Specs, Description & Amenities Combined in One Card */}
+             {/* Specs & Description */}
              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                
-                {/* Specifications Bar */}
                 <div className="flex items-center gap-8 md:gap-12 border-b border-gray-100 pb-6 mb-6 overflow-x-auto">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700">
-                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                        </div>
-                        <div>
-                            <p className="text-xl font-bold text-gray-900 leading-none">{property.bedrooms}</p>
-                            <p className="text-xs text-gray-500 font-medium">Bedrooms</p>
-                        </div>
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg></div>
+                        <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bedrooms}</p><p className="text-xs text-gray-500 font-medium">Bedrooms</p></div>
                     </div>
                     <div className="w-px h-8 bg-gray-100"></div>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        </div>
-                        <div>
-                            <p className="text-xl font-bold text-gray-900 leading-none">{property.bathrooms}</p>
-                            <p className="text-xs text-gray-500 font-medium">Bathrooms</p>
-                        </div>
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg></div>
+                        <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bathrooms}</p><p className="text-xs text-gray-500 font-medium">Bathrooms</p></div>
                     </div>
                     <div className="w-px h-8 bg-gray-100"></div>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                        </div>
-                        <div>
-                            <p className="text-xl font-bold text-gray-900 leading-none">{property.area_sqft}</p>
-                            <p className="text-xs text-gray-500 font-medium">Sq. Ft.</p>
-                        </div>
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></div>
+                        <div><p className="text-xl font-bold text-gray-900 leading-none">{property.area_sqft}</p><p className="text-xs text-gray-500 font-medium">Sq. Ft.</p></div>
                     </div>
                 </div>
-
-                {/* Description */}
                 <div className="mb-8">
                    <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">About this property</h3>
                    <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{property.description || 'No description provided.'}</p>
                 </div>
-
-                {/* Amenities - Improved Design */}
                 {property.amenities && property.amenities.length > 0 && (
                   <div className="pt-6 border-t border-gray-100">
                     <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Amenities</h3>
@@ -351,10 +330,7 @@ const handleGetDirections = (e) => {
                       ))}
                     </div>
                      {property.amenities.length > 9 && (
-                      <button
-                        onClick={() => setShowAllAmenities(!showAllAmenities)}
-                        className="mt-4 text-xs font-bold text-black border-b border-black w-max cursor-pointer hover:text-gray-700 hover:border-gray-700 transition-colors"
-                      >
+                      <button onClick={() => setShowAllAmenities(!showAllAmenities)} className="mt-4 text-xs font-bold text-black border-b border-black w-max cursor-pointer hover:text-gray-700 hover:border-gray-700 transition-colors">
                         {showAllAmenities ? 'Show less' : `Show all ${property.amenities.length} amenities`}
                       </button>
                     )}
@@ -363,162 +339,176 @@ const handleGetDirections = (e) => {
              </div>
           </div>
 
-          {/* Right Column - Sidebar (Takes up 1 column) */}
+          {/* Right Column - Sidebar */}
           <div className="flex flex-col gap-4">
+
+            {/* Real Cost Calculator Card */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                  </div>
+                  <h3 className="font-bold text-gray-900 text-sm">"Real Cost" Estimator</h3>
+                </div>
+                
+                <div className="space-y-3 mb-4 text-sm">
+                  <div className="flex justify-between items-center text-gray-600">
+                    <span>Base Rent</span>
+                    <span className="font-semibold text-gray-900">₱{rent.toLocaleString()}</span>
+                  </div>
+                  {utilities > 0 && (
+                     <div className="flex justify-between items-center text-gray-500 text-xs">
+                        <span>Est. Utilities</span>
+                        <span>+ ₱{utilities.toLocaleString()}</span>
+                     </div>
+                  )}
+                  {internet > 0 && (
+                     <div className="flex justify-between items-center text-gray-500 text-xs">
+                        <span>Internet</span>
+                        <span>+ ₱{internet.toLocaleString()}</span>
+                     </div>
+                  )}
+                  {dues > 0 && (
+                     <div className="flex justify-between items-center text-gray-500 text-xs">
+                        <span>Assoc. Dues</span>
+                        <span>+ ₱{dues.toLocaleString()}</span>
+                     </div>
+                  )}
+                </div>
+                
+                <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
+                  <span className="font-bold text-black text-sm">Est. Monthly Total</span>
+                  <span className="font-black text-xl text-black">₱{totalRealCost.toLocaleString()}</span>
+                </div>
+                
+                <div className="mt-3 text-[10px] text-gray-400 bg-gray-50 p-2 rounded leading-relaxed">
+                  * Estimates provided by landlord. Actual utility usage may vary based on consumption.
+                </div>
+            </div>
              
              {/* Main Action Card */}
              <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                {/* Owner Info - Condensed */}
                 <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-50">
                     <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      {landlordProfile?.first_name 
-                      ? landlordProfile.first_name.charAt(0).toUpperCase() 
-                      : 'L'}
+                      {landlordProfile?.first_name ? landlordProfile.first_name.charAt(0).toUpperCase() : 'L'}
                     </div>
                     <div className="flex-1 overflow-hidden">
                        <p className="font-bold text-gray-900 text-sm truncate">{landlordProfile?.first_name ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Property Owner'}</p>
                        <p className="text-xs text-gray-500">Landlord</p>
                     </div>
                 </div>
-
                 {isOwner ? (
                   <div className="flex flex-col gap-3">
-                    <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">
-                       You own this property.
-                    </div>
-                    <button
-                      onClick={() => router.push(`/properties/edit/${property.id}`)}
-                      className="w-full py-2.5 px-4 bg-black text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-900 transition-colors"
-                    >
-                      Edit Property
-                    </button>
+                    <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">You own this property.</div>
+                    <button onClick={() => router.push(`/properties/edit/${property.id}`)} className="w-full py-2.5 px-4 bg-black text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-900 transition-colors">Edit Property</button>
                   </div>
                 ) : isLandlord ? (
-                   <div className="p-3 bg-gray-50 text-gray-600 text-xs rounded-lg border border-gray-200">
-                     Landlords cannot submit applications.
-                   </div>
+                   <div className="p-3 bg-gray-50 text-gray-600 text-xs rounded-lg border border-gray-200">Landlords cannot submit Inquiries.</div>
                 ) : (
                   <>
-                     {/* Application Logic for Tenants */}
                      {hasActiveOccupancy ? (
                        <div className="p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
                           <p className="font-bold text-yellow-800 text-xs mb-1">Active Occupancy</p>
-                          <p className="text-xs text-yellow-700 leading-relaxed mb-2">
-                             Assigned to <strong>{occupiedPropertyTitle}</strong>.
-                          </p>
-                          <button
-                            onClick={() => router.push('/dashboard')}
-                            className="text-xs font-bold text-yellow-800 underline cursor-pointer"
-                          >
-                            Dashboard
-                          </button>
+                          <p className="text-xs text-yellow-700 leading-relaxed mb-2">Assigned to <strong>{occupiedPropertyTitle}</strong>.</p>
+                          <button onClick={() => router.push('/dashboard')} className="text-xs font-bold text-yellow-800 underline cursor-pointer">Dashboard</button>
                        </div>
                      ) : property.status !== 'available' ? (
-                        <div className="p-3 bg-gray-50 text-gray-500 text-xs font-medium rounded-lg border border-gray-200 text-center">
-                           Not accepting applications.
-                        </div>
+                        <div className="p-3 bg-gray-50 text-gray-500 text-xs font-medium rounded-lg border border-gray-200 text-center">Not accepting Inquiries.</div>
                      ) : (
                         <div className="flex flex-col gap-3">
                            <div>
                               <label className="block text-xs font-bold text-gray-700 mb-1.5">Message to Owner</label>
-                              <textarea
-                                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:bg-white focus:border-black outline-none resize-none h-24"
-                                value={applicationMessage}
-                                onChange={e => setApplicationMessage(e.target.value)}
-                                placeholder="I'm interested..."
-                              />
+                              <textarea className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:bg-white focus:border-black outline-none resize-none h-24" value={applicationMessage} onChange={e => setApplicationMessage(e.target.value)} placeholder="I'm interested..." />
                            </div>
-
                            <div>
                              <label className="flex items-start gap-2 cursor-pointer group">
                                 <div className="relative flex items-center pt-0.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={termsAccepted}
-                                    onChange={(e) => setTermsAccepted(e.target.checked)}
-                                    className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all"
-                                  />
+                                  <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all" />
                                   <svg className="absolute w-2 h-2 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
                                 </div>
-                                <span className="text-[10px] text-gray-500 leading-snug">
-                                  I agree to <Link href={`/terms?propertyId=${property.id}`} target="_blank" className="text-black font-bold underline">Terms & Conditions</Link>.
-                                </span>
+                                <span className="text-[10px] text-gray-500 leading-snug">I agree to <Link href={`/terms?propertyId=${property.id}`} target="_blank" className="text-black font-bold underline">Terms & Conditions</Link>.</span>
                              </label>
                            </div>
-
-                           {message && (
-                              <div className={`p-2 rounded text-[10px] font-medium ${
-                                message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
-                              }`}>
-                                {message}
-                              </div>
-                           )}
-
-                           <button
-                              onClick={handleApply}
-                              disabled={submitting || !termsAccepted}
-                              className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold shadow-sm transition-all ${
-                                termsAccepted 
-                                  ? 'bg-black text-white cursor-pointer hover:shadow-md' 
-                                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                              }`}
-                           >
-                              {submitting ? 'Sending...' : 'Submit Application'}
-                           </button>
+                           {message && (<div className={`p-2 rounded text-[10px] font-medium ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{message}</div>)}
+                           <button onClick={handleApply} disabled={submitting || !termsAccepted} className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold shadow-sm transition-all ${termsAccepted ? 'bg-black text-white cursor-pointer hover:shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{submitting ? 'Sending...' : 'Submit Inquiry'}</button>
                         </div>
                      )}
                   </>
                 )}
              </div>
 
-             {/* Contact Details (Condensed) */}
+             {/* Contact Details */}
              {(property.owner_phone || property.owner_email || property.location_link) && (
                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
                   <h3 className="font-bold text-gray-900 mb-3">Contact Details of Landlord</h3>
                   <div className="flex flex-col gap-2.5">
                      {property.owner_phone && (
                         <div className="flex items-center gap-2">
-                           <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                           </div>
+                           <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></div>
                            <a href={`tel:${property.owner_phone}`} className="text-gray-600 hover:text-black font-medium transition-colors cursor-pointer">{property.owner_phone}</a>
                         </div>
                      )}
                      {property.owner_email && (
                         <div className="flex items-center gap-2">
-                           <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                           </div>
+                           <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg></div>
                            <a href={`mailto:${property.owner_email}`} className="text-gray-600 hover:text-black font-medium transition-colors cursor-pointer truncate">{property.owner_email}</a>
                         </div>
                      )}
                       <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
-                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+                          <span>{property.building_no && `${property.building_no}, `}{property.street}, {property.address} {property.city} {property.zip}</span>
                         </div>
-                  <span>
-                     {property.building_no && `${property.building_no}, `}{property.street}, {property.address} {property.city} {property.zip}
-                  </span>
-                </div>
-             </div>
+                     </div>
                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600">
-                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                        </div>
-                        <button 
-                          onClick={handleGetDirections} 
-                          className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer text-left"
-                        >
-                          Get Directions
-                        </button>
+                        <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+                        <button onClick={handleGetDirections} className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer text-left">Get Directions</button>
                      </div>
                   </div>
                </div>
-               
              )}
 
-             
+             {/* Reviews Section */}
+             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
+                <div className="flex items-center justify-between mb-4">
+                   <h3 className="font-bold text-gray-900">Reviews ({reviews.length})</h3>
+                   <div className="flex items-center gap-1 text-yellow-500 font-bold">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                      {reviews.length > 0 
+                        ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1) 
+                        : '0.0'
+                      }
+                   </div>
+                </div>
+                
+                {reviews.length === 0 ? (
+                  <p className="text-gray-400 italic text-center py-2">No reviews yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {reviews.map((review, i) => (
+                      <div key={i} className="pb-4 border-b border-gray-50 last:border-0 last:pb-0">
+                         <div className="flex justify-between items-start mb-1">
+                            <div>
+                               <p className="font-bold text-gray-800 flex items-center gap-2">
+                                  {review.tenant?.first_name} {review.tenant?.last_name}
+                                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] uppercase font-bold tracking-wide">
+                                    Previous Renter
+                                  </span>
+                               </p>
+                               <div className="flex text-yellow-400 text-[10px] mt-0.5">
+                                  {[...Array(5)].map((_, i) => (
+                                    <svg key={i} className={`w-3 h-3 ${i < review.rating ? 'fill-current' : 'text-gray-200 fill-current'}`} viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                                  ))}
+                               </div>
+                            </div>
+                            <span className="text-[10px] text-gray-400">{new Date(review.created_at).toLocaleDateString()}</span>
+                         </div>
+                         <p className="text-gray-600 leading-relaxed mt-1.5">{review.comment}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+             </div>
 
           </div>
         </div>
@@ -530,4 +520,4 @@ const handleGetDirections = (e) => {
       />
     </div>
   )
-}
+} 

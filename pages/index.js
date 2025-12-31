@@ -17,14 +17,64 @@ export default function Home() {
   const [showZoom, setShowZoom] = useState(false)
   const [showPermitModal, setShowPermitModal] = useState(false)
   const [selectedPermit, setSelectedPermit] = useState(null)
-  const [showFaqChat, setShowFaqChat] = useState(false)
-  const [selectedFaq, setSelectedFaq] = useState(null)
   const [chatHistory, setChatHistory] = useState([])
   const chatMessagesRef = useRef(null)
 
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedAmenities, setSelectedAmenities] = useState([])
+  const [isExpanded, setIsExpanded] = useState(false) 
+  
+  // --- Filter Dropdown State ---
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false)
+  const filterRef = useRef(null)
+
+  // --- Comparison Feature State ---
+  const [comparisonList, setComparisonList] = useState([])
+
+  // Common amenities to filter by
+  const filterAmenities = [
+    'Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly'
+  ]
+
   useEffect(() => {
-    loadFeaturedProperties()
-  }, [])
+    // If URL has ?view=all, automatically expand
+    if (router.query.view === 'all') {
+      setIsExpanded(true)
+      loadFeaturedProperties(true)
+    } else {
+      setIsExpanded(false)
+      loadFeaturedProperties(false)
+    }
+  }, [router.query])
+
+  // Click outside to close filter dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (filterRef.current && !filterRef.current.contains(event.target)) {
+        setShowFilterDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [filterRef]);
+
+  // Real-time Search Effect with Debounce
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      const shouldExpand = searchQuery.length > 0 ? true : isExpanded
+      
+      if (searchQuery.length > 0 && !isExpanded) {
+         setIsExpanded(true)
+      }
+      
+      loadFeaturedProperties(shouldExpand)
+    }, 300) 
+
+    return () => clearTimeout(delayDebounceFn)
+  }, [searchQuery, selectedAmenities]) 
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -39,7 +89,7 @@ export default function Home() {
     return () => clearInterval(interval)
   }, [properties])
 
-  // Auto-slide modal images every 0.1 seconds
+  // Auto-slide modal images every 1.5 seconds
   useEffect(() => {
     if (showPropertyModal && selectedProperty) {
       const images = getPropertyImages(selectedProperty)
@@ -61,33 +111,67 @@ export default function Home() {
     }
   }, [chatHistory])
 
-  async function loadFeaturedProperties() {
-    const { data, error } = await supabase
+  // Toggle amenity selection
+  const toggleAmenity = (amenity) => {
+    setSelectedAmenities(prev => {
+      const newSelection = prev.includes(amenity)
+        ? prev.filter(a => a !== amenity)
+        : [...prev, amenity]
+    })
+  }
+
+  async function loadFeaturedProperties(expanded = false) {
+    setLoading(true)
+    let query = supabase
       .from('properties')
       .select(`
         *,
         landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)
       `)
       .order('created_at', { ascending: false })
-      .limit(6)
     
+    // Apply Search
+    if (searchQuery) {
+      query = query.or(`title.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`)
+    }
+
+    // Apply Amenity Filters
+    if (selectedAmenities.length > 0) {
+      query = query.contains('amenities', selectedAmenities)
+    }
+
+    // Apply Limit: Show 5 unless expanded or searching
+    if (!expanded && !searchQuery && selectedAmenities.length === 0) {
+      query = query.limit(5)
+    }
+    
+    const { data, error } = await query
     setProperties(data || [])
     setLoading(false)
   }
 
-  // Get property images (from database or use mock images)
+  const handleSearch = () => {
+    setIsExpanded(true)
+    loadFeaturedProperties(true)
+  }
+
+  const handleSeeMore = () => {
+    setIsExpanded(true)
+    setSearchQuery('')
+    router.push('/?view=all', undefined, { shallow: true })
+  }
+
+  const handleSeeFewer = () => {
+    setIsExpanded(false)
+    setSearchQuery('')
+    router.push('/', undefined, { shallow: true })
+  }
+
   const getPropertyImages = (property) => {
-    // If property has images stored in database, use those
     if (property.images && Array.isArray(property.images) && property.images.length > 0) {
       return property.images
     }
-    
-    // Otherwise, use mock Unsplash images
-    return [
-      // `https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&h=600&fit=crop`,
-      // `https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop`,
-      // `https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&h=600&fit=crop`
-    ]
+    return []
   }
 
   const nextImage = (propertyId, imagesLength) => {
@@ -145,6 +229,28 @@ export default function Home() {
     setShowZoom(false)
   }
 
+  // --- Comparison Handlers ---
+  const toggleComparison = (e, property) => {
+    e.stopPropagation() // Prevent opening details
+    setComparisonList(prev => {
+      const isSelected = prev.some(p => p.id === property.id)
+      if (isSelected) {
+        return prev.filter(p => p.id !== property.id)
+      } else {
+        if (prev.length >= 3) {
+          alert("You can only compare up to 3 properties at a time.")
+          return prev
+        }
+        return [...prev, property]
+      }
+    })
+  }
+
+  const handleCompareClick = () => {
+    const ids = comparisonList.map(p => p.id).join(',')
+    router.push(`/compare?ids=${ids}`)
+  }
+
   const faqData = [
     {
       id: 1,
@@ -169,12 +275,125 @@ export default function Home() {
   ]
 
   return (
-    <div className="min-h-screen bg-white font-sans text-black">  
-      {/* Featured Properties */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-black text-black uppercase tracking-tight">Featured Properties</h2>
-          <div className="w-24 h-1 bg-black mx-auto mt-4"></div>
+    <div className="min-h-screen bg-white font-sans text-black pb-24">  
+      {/* Featured Properties Section */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        
+        {/* Search and Filter Bar */}
+        <div className="w-full max-w-3xl mx-auto bg-white p-3 rounded-2xl shadow-lg border border-gray-100 mb-8 flex flex-col sm:flex-row gap-3 items-center transform transition-all  relative z-30">
+          {/* Search Input */}
+          <div className="relative flex-1 w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input 
+              type="text" 
+              placeholder="Search by city, address, or property..." 
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black text-sm font-medium transition-all"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            />
+          </div>
+
+          {/* Buttons Container */}
+          <div className="flex gap-2 w-full sm:w-auto">
+            
+            {/* Filter Dropdown */}
+            <div className="relative flex-1 sm:flex-none" ref={filterRef}>
+                <button 
+                    onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                    className={`w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all border whitespace-nowrap cursor-pointer ${
+                        showFilterDropdown || selectedAmenities.length > 0
+                        ? 'bg-gray-900 text-white border-black' 
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-black'
+                    }`}
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    Filters
+                    {selectedAmenities.length > 0 && (
+                        <span className="bg-white text-black text-[10px] w-5 h-5 flex items-center justify-center rounded-full ml-1">
+                            {selectedAmenities.length}
+                        </span>
+                    )}
+                </button>
+
+                {/* Dropdown Content */}
+                {showFilterDropdown && (
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 z-40 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Amenities</h3>
+                            {selectedAmenities.length > 0 && (
+                                <button 
+                                    onClick={() => setSelectedAmenities([])}
+                                    className="text-[10px] font-bold text-red-500 hover:text-red-700 underline"
+                                >
+                                    Clear all
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-1 max-h-60 overflow-y-auto pr-1">
+                            {filterAmenities.map(amenity => (
+                                <label key={amenity} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                    <div className="relative flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all"
+                                            checked={selectedAmenities.includes(amenity)}
+                                            onChange={() => toggleAmenity(amenity)}
+                                        />
+                                        <svg className="absolute w-3 h-3 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-700 group-hover:text-black transition-colors">{amenity}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <button 
+              onClick={handleSearch}
+              className="flex-1 sm:flex-none w-full sm:w-auto justify-center bg-black text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 whitespace-nowrap cursor-pointer"
+            >
+              Search
+            </button>
+          </div>
+        </div>
+
+        {/* Section Header with See More / See Fewer */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 border-b border-gray-100 pb-4">
+          <div className="mb-4 sm:mb-0 w-full sm:w-auto">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-black uppercase tracking-tight">
+              {isExpanded ? 'All Properties' : 'Featured Properties'}
+            </h2>
+            <div className="w-16 h-1 bg-black mt-2"></div>
+          </div>
+          
+<div className="flex gap-2 w-full sm:w-auto justify-end">            {!isExpanded ? (
+              <button 
+                onClick={handleSeeMore}
+                className="group flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black transition-colors cursor-pointer"
+              >
+                See More
+                <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </button>
+            ) : (
+              <button 
+                onClick={handleSeeFewer}
+                className="group flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black transition-colors cursor-pointer"
+              >
+                <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                </svg>
+                See Fewer
+              </button>
+            )}
+          </div>
         </div>
         
         {loading ? (
@@ -183,18 +402,30 @@ export default function Home() {
           </div>
         ) : properties.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl">
-            <p className="text-gray-500 text-sm font-medium">No properties available at the moment.</p>
+            <p className="text-gray-500 text-sm font-medium">No properties match your search.</p>
+            <button 
+                onClick={() => {
+                    setSearchQuery('')
+                    setSelectedAmenities([])
+                    loadFeaturedProperties(isExpanded)
+                }}
+                className="mt-4 text-black underline font-bold text-sm"
+            >
+                Clear Filters
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+          /* Grid Layout */
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mx-auto">
             {properties.map((property) => {
               const images = getPropertyImages(property)
               const currentIndex = currentImageIndex[property.id] || 0
+              const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
               
               return (
                 <div 
                   key={property.id} 
-                  className="group bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer flex flex-col hover:shadow-md transition-shadow"
+                  className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col transition-all duration-300 ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
                   onClick={() => router.push(`/properties/${property.id}`)}
                 >
                   {/* Image Slider - Top */}
@@ -202,47 +433,69 @@ export default function Home() {
                     <img 
                       src={images[currentIndex]} 
                       alt={property.title}
-                      className="w-full h-full object-cover transition-transform duration-500"
+                      className="w-full h-full object-cover transition-transform duration-700"
                     />
                     
+                    {/* Compare Checkbox */}
+                    <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
+                       <label className="flex items-center gap-2 cursor-pointer group/check">
+                          <input 
+                            type="checkbox" 
+                            className="hidden"
+                            checked={isSelectedForCompare}
+                            onChange={(e) => toggleComparison(e, property)}
+                          />
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                            {isSelectedForCompare ? (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            ) : (
+                                <span className="text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover/check:opacity-100 transition-opacity absolute right-10 bg-black text-white px-2 py-1 rounded">Compare</span>
+                            )}
+                            {!isSelectedForCompare && (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                            )}
+                          </div>
+                       </label>
+                    </div>
+
                     {/* Navigation Arrows (Only show on hover) */}
                     {images.length > 1 && (
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <button
                           onClick={(e) => { e.stopPropagation(); prevImage(property.id, images.length); }}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-9 h-9 flex items-center justify-center rounded-full shadow-md"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-7 h-7 flex items-center justify-center rounded-full shadow-md hover:scale-110 transition-transform"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); nextImage(property.id, images.length); }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-9 h-9 flex items-center justify-center rounded-full shadow-md"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-7 h-7 flex items-center justify-center rounded-full shadow-md hover:scale-110 transition-transform"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         </button>
                       </div>
                     )}
                     
                     {/* Image Indicators */}
                     {images.length > 1 && (
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10">
                         {images.map((_, idx) => (
                           <div
                             key={idx}
-                            className={`h-1.5 rounded-full transition-all duration-300 shadow-sm ${
-                              idx === currentIndex ? 'w-6 bg-white' : 'w-1.5 bg-white/60'
+                            className={`h-1 rounded-full transition-all duration-300 shadow-sm ${
+                              idx === currentIndex ? 'w-4 bg-white' : 'w-1 bg-white/60'
                             }`}
                           />
                         ))}
                       </div>
                     )}
 
-                    {/* Gradient Overlay for Text Visibility */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60"></div>
+                    {/* Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60 pointer-events-none"></div>
 
                     {/* Status Badge */}
-                    <div className="absolute top-4 right-4 z-10">
-                      <span className={`px-3 py-1 text-xs font-bold rounded-full shadow-sm backdrop-blur-md ${
+                    <div className="absolute top-3 left-3 z-10">
+                       <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-md shadow-sm backdrop-blur-md ${
                         property.status === 'available'
                           ? 'bg-white text-black' 
                           : 'bg-black/80 text-white'
@@ -251,38 +504,30 @@ export default function Home() {
                       </span>
                     </div>
 
-                    {/* Price Overlay */}
-                    <div className="absolute bottom-4 left-4 z-10 text-white">
-                      <p className="text-xl font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
-                      <p className="text-xs opacity-90 font-medium">per month</p>
+                    {/* Price Overlay - Bottom Left */}
+                    <div className="absolute bottom-3 left-3 z-10 text-white">
+                      <p className="text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                      <p className="text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
                     </div>
                   </div>
                   
                   {/* Property Info - Bottom */}
-                  <div className="p-5 flex-1 flex flex-col">
-                    <div className="mb-4">
-                        <div className="flex justify-between items-start mb-1">
-                            <h3 className="text-lg font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                  <div className="p-4 flex-1 flex flex-col">
+                    <div className="mb-3">
+                        <div className="flex justify-between items-start mb-0.5">
+                            <h3 className="text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
                         </div>
-                        <div className="flex items-center gap-1.5 text-gray-500 text-sm">
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                            <span className="line-clamp-1">{property.address}, {property.city}</span>
+                        <div className="flex items-center gap-1 text-gray-500 text-xs">
+                            <span className="truncate">{property.city}, Philippines</span>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-4 mb-5 pb-5 border-b border-gray-100 text-gray-600 text-sm">
-                      <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 640 512"><path d="M32 32c17.7 0 32 14.3 32 32V320H288V160c0-17.7 14.3-32 32-32H544c53 0 96 43 96 96V448c0 17.7-14.3 32-32 32s-32-14.3-32-32V416H352 320 64v32c0 17.7-14.3 32-32 32s-32-14.3-32-32V64C0 46.3 14.3 32 32 32zm144 96a80 80 0 1 1 0 160 80 80 0 1 1 0-160z"/></svg>
-                        <span className="font-semibold">{property.bedrooms}</span> Bed
-                      </div>
-                      <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 512 512"><path d="M96 77.3c0-7.3 5.9-13.3 13.3-13.3c3.5 0 6.9 1.4 9.4 3.9l14.9 14.9C130 91.8 128 101.7 128 112c0 19.9 7.2 38 19.2 52c-5.3 9.2-4 21.1 3.8 29c9.4 9.4 24.6 9.4 33.9 0L289 89c9.4-9.4 9.4-24.6 0-33.9c-7.9-7.9-19.8-9.1-29-3.8C246 39.2 227.9 32 208 32c-10.3 0-20.2 2-29.2 5.5L163.9 22.6C149.4 8.1 129.7 0 109.3 0C66.6 0 32 34.6 32 77.3V256c-17.7 0-32 14.3-32 32s14.3 32 32 32H480c17.7 0 32-14.3 32-32s-14.3-32-32-32H96V77.3zM32 352v16c0 28.4 12.4 54 32 71.6V480c0 17.7 14.3 32 32 32s32-14.3 32-32V464H384v16c0 17.7 14.3 32 32 32s32-14.3 32-32V439.6c19.6-17.6 32-43.1 32-71.6V352H32z"/></svg>
-                        <span className="font-semibold">{property.bathrooms}</span> Bath
-                      </div>
-                      <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                        <span className="font-semibold">{property.area_sqft}</span> Sqm
-                      </div>
+                    <div className="flex items-center gap-3 mb-4 text-gray-600 text-xs">
+                       <span className="font-medium">{property.bedrooms} beds</span>
+                       <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                       <span className="font-medium">{property.bathrooms} baths</span>
+                       <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                       <span className="font-medium">{property.area_sqft} sqm</span>
                     </div>
                     
                     <button
@@ -290,7 +535,7 @@ export default function Home() {
                         e.stopPropagation();
                         router.push(`/properties/${property.id}`);
                       }}
-                      className="w-full bg-black text-white py-3 px-4 rounded-lg text-sm font-bold uppercase tracking-wider cursor-pointer"
+                      className="w-full mt-auto bg-black text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-md hover:shadow-lg hover:bg-gray-900 transition-all cursor-pointer"
                     >
                       View Details
                     </button>
@@ -301,6 +546,27 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Floating Compare Button */}
+      {comparisonList.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 animate-bounce-in">
+          <button 
+            onClick={handleCompareClick}
+            className="bg-black text-white px-8 py-4 rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-3 border-2 border-white/20"
+          >
+            <span className="relative">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-black">
+                {comparisonList.length}
+              </span>
+            </span>
+            <span className="font-bold text-sm uppercase tracking-wider">Compare Selected</span>
+            {comparisonList.length < 2 && (
+               <span className="text-xs text-gray-400 font-normal normal-case">(Select at least 2)</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Why Us Section */}
       <div className="bg-gray-50 py-16 border-y-2 border-black">
@@ -516,7 +782,7 @@ export default function Home() {
                   )}
 
                   <div className="flex gap-4 sticky bottom-0 bg-white pt-4 border-t-2 border-gray-100">
-                    <button
+                    {/* <button
                       onClick={() => {
                         closePropertyModal()
                         setAuthMode('signup')
@@ -525,7 +791,7 @@ export default function Home() {
                       className="flex-1 bg-black text-white py-3.5 px-6 rounded-xl text-sm font-bold uppercase tracking-wider hover:bg-gray-800 transition-all cursor-pointer shadow-lg hover:shadow-xl"
                     >
                       Apply Now
-                    </button>
+                    </button> */}
                     <button
                       onClick={() => {
                         closePropertyModal()

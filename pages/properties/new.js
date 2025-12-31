@@ -17,13 +17,16 @@ export default function NewProperty() {
     building_no: '',
     street: '',
     address: '',
-    street: '',
     city: '',
     zip: '',
     location_link: '',
     owner_phone: '',
     owner_email: '',
     price: '',
+    // New Cost Fields
+    utilities_cost: '',
+    internet_cost: '',
+    association_dues: '',
     bedrooms: 1,
     bathrooms: 1,
     area_sqft: '',
@@ -36,26 +39,9 @@ export default function NewProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Kitchen',
-    'Wifi',
-    'Pool',
-    'TV',
-    'Elevator',
-    'Air conditioning',
-    'Heating',
-    'Washing machine',
-    'Dryer',
-    'Parking',
-    'Gym',
-    'Security',
-    'Balcony',
-    'Garden',
-    'Pet friendly',
-    'Furnished',
-    'Carbon monoxide alarm',
-    'Smoke alarm',
-    'Fire extinguisher',
-    'First aid kit'
+    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating',
+    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
+    'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
   ]
 
   const toggleAmenity = (amenity) => {
@@ -147,9 +133,8 @@ export default function NewProperty() {
         .upload(fileName, file)
 
       if (error) {
-        // Check if bucket doesn't exist
         if (error.message.includes('Bucket not found') || error.message.includes('bucket')) {
-          throw new Error('Storage bucket not set up. Please create "property-images" bucket in Supabase Dashboard → Storage. See IMAGE_UPLOAD_GUIDE.md for instructions.')
+          throw new Error('Storage bucket not set up. Please create "property-images" bucket in Supabase Dashboard.')
         }
         throw error
       }
@@ -185,11 +170,24 @@ export default function NewProperty() {
     const validImageUrls = imageUrls.filter(url => url.trim() !== '')
 
     setLoading(true)
-    const { error } = await supabase.from('properties').insert({
+
+    // Helper to ensure numeric fields are sent as numbers or 0 (not empty strings)
+    const sanitizeNumber = (val) => (val === '' || val === null ? 0 : val)
+
+    const payload = {
       ...formData,
+      price: sanitizeNumber(formData.price),
+      utilities_cost: sanitizeNumber(formData.utilities_cost),
+      internet_cost: sanitizeNumber(formData.internet_cost),
+      association_dues: sanitizeNumber(formData.association_dues),
+      bedrooms: sanitizeNumber(formData.bedrooms),
+      bathrooms: sanitizeNumber(formData.bathrooms),
+      area_sqft: sanitizeNumber(formData.area_sqft),
       landlord: session.user.id,
       images: validImageUrls.length > 0 ? validImageUrls : null
-    })
+    }
+
+    const { error } = await supabase.from('properties').insert(payload)
 
     if (error) {
       setMessage('Error creating property: ' + error.message)
@@ -202,7 +200,6 @@ export default function NewProperty() {
 
   if (!session || !profile) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Loading...</div>
 
-  // Block access for non-landlords
   if (profile.role !== 'landlord') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -436,6 +433,51 @@ export default function NewProperty() {
                 </div>
             </div>
 
+            {/* NEW: Additional Monthly Estimates (Real Cost Calculator Inputs) */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
+                <span className="w-1.5 h-4 bg-black rounded-full"></span> Monthly Estimates (for Tenant Calculator)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Est. Utilities (₱)</label>
+                  <input
+                    type="number"
+                    name="utilities_cost"
+                    min="0"
+                    placeholder="e.g. 2500"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.utilities_cost}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Internet (₱)</label>
+                  <input
+                    type="number"
+                    name="internet_cost"
+                    min="0"
+                    placeholder="e.g. 1500"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.internet_cost}
+                    onChange={handleChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Assoc. Dues (₱)</label>
+                  <input
+                    type="number"
+                    name="association_dues"
+                    min="0"
+                    placeholder="e.g. 1000"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.association_dues}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Description & Terms */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-50">
                <div className="space-y-2">
@@ -526,7 +568,7 @@ export default function NewProperty() {
                       type="checkbox"
                       checked={formData.amenities.includes(amenity)}
                       onChange={() => toggleAmenity(amenity)}
-                      className="hidden" // Hiding default checkbox for cleaner pill design
+                      className="hidden"
                     />
                     {amenity}
                   </label>
