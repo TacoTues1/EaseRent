@@ -827,10 +827,10 @@ export default function Dashboard() {
         )}
 
         {/* All Properties Section - Fixed height container to prevent layout shift */}
-        <div className="min-h-[500px] mb-12">
+        <div className="mb-0">
           {/* Section Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 pb-4">
-              <div className="mb-4 sm:mb-0 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
+              <div className="mb-2 sm:mb-0 w-full sm:w-auto">
                   <h2 className="text-2xl font-black text-black uppercase">
                   {profile.role === 'landlord' ? 'Your Properties' : 'All Properties'}
                   </h2>
@@ -938,45 +938,24 @@ export default function Dashboard() {
                            </svg>
                          </button>
                        )}
-                       
+
                        {/* Compare Checkbox */}
-                       <label className="flex items-center gap-1 sm:gap-2 cursor-pointer group/check">
-                          <input 
-                            type="checkbox" 
-                            className="hidden"
-                            checked={isSelectedForCompare}
-                            onChange={(e) => toggleComparison(e, property)}
-                          />
-                          <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
-                            {isSelectedForCompare ? (
-                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                            ) : (
-                                <span className="text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover/check:opacity-100 transition-opacity absolute right-10 bg-black text-white px-2 py-1 rounded">Compare</span>
-                            )}
-                            {!isSelectedForCompare && (
-                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                            )}
-                          </div>
+                       <label className="flex items-center cursor-pointer">
+                         <input 
+                           type="checkbox" 
+                           className="hidden"
+                           checked={isSelectedForCompare}
+                           onChange={(e) => toggleComparison(e, property)}
+                         />
+                         <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                           {isSelectedForCompare ? (
+                             <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                           ) : (
+                             <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                           )}
+                         </div>
                        </label>
                     </div>
-
-                    {/* Navigation Arrows - Smaller on mobile */}
-                    {images.length > 1 && (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); prevImage(property.id, images.length); }}
-                          className="absolute left-1.5 sm:left-2 md:left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
-                        >
-                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); nextImage(property.id, images.length); }}
-                          className="absolute right-1.5 sm:right-2 md:right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
-                        >
-                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </button>
-                      </div>
-                    )}
                     
                     {/* Image Indicators - Smaller on mobile */}
                     {images.length > 1 && (
@@ -1124,10 +1103,10 @@ export default function Dashboard() {
 
         {/* Guest Favorites Section (Tenants Only) */}
         {profile.role === 'tenant' && guestFavorites.length > 0 && (
-          <div className="mb-12 mt-8">
+          <div className="mb-2 mt-2">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Guest Favorites</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Tenants Favorites</h2>
                 <p className="text-sm text-gray-500">Most loved by our community</p>
               </div>
               {/* See More link */}
@@ -1147,16 +1126,17 @@ export default function Dashboard() {
                   const currentIndex = currentImageIndex[property.id] || 0
                   const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
                   const isFavorite = favorites.includes(property.id)
+                  const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
                   
                   return (
                     <div 
                       key={property.id} 
-                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md"
+                      className={`group bg-white rounded-2xl shadow-sm border overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
                       onClick={() => router.push(`/properties/${property.id}`)}
                     >
                       <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                         <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
-                        <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
+                        <div className="absolute top-3 right-3 z-20 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <button 
                             onClick={(e) => toggleFavorite(e, property.id)}
                             className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}
@@ -1165,6 +1145,17 @@ export default function Dashboard() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
                           </button>
+                          {/* Compare Checkbox */}
+                          <label className="flex items-center cursor-pointer">
+                            <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                              {isSelectedForCompare ? (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                              )}
+                            </div>
+                          </label>
                         </div>
                         <div className="absolute top-3 left-3 z-10">
                           <span className="px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-1">
@@ -1224,8 +1215,8 @@ export default function Dashboard() {
 
         {/* Top Rated Section (Tenants Only) */}
         {profile.role === 'tenant' && topRated.length > 0 && (
-          <div className="mb-12">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+          <div className="mb-10">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
                 <p className="text-sm text-gray-500">Highest rated by tenants</p>
@@ -1247,16 +1238,17 @@ export default function Dashboard() {
                   const currentIndex = currentImageIndex[property.id] || 0
                   const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
                   const isFavorite = favorites.includes(property.id)
+                  const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
                   
                   return (
                     <div 
                       key={property.id} 
-                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md"
+                      className={`group bg-white rounded-2xl shadow-sm border overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
                       onClick={() => router.push(`/properties/${property.id}`)}
                     >
                       <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                         <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
-                        <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
+                        <div className="absolute top-3 right-3 z-20 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <button 
                             onClick={(e) => toggleFavorite(e, property.id)}
                             className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}
@@ -1265,6 +1257,17 @@ export default function Dashboard() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
                           </button>
+                          {/* Compare Checkbox */}
+                          <label className="flex items-center cursor-pointer">
+                            <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                              {isSelectedForCompare ? (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                              ) : (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                              )}
+                            </div>
+                          </label>
                         </div>
                         <div className="absolute top-3 left-3 z-10">
                           <span className="px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-yellow-400 to-orange-500 text-white flex items-center gap-1">

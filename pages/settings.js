@@ -157,16 +157,26 @@ export default function Settings() {
   }
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    toast.success('Signed out successfully', {
-      icon: '✓',
-      style: {
-        border: '1px solid black',
-        padding: '16px',
-        color: 'black',
-      },
-    })
-    router.push('/')
+    try {
+      // Sign out with global scope to clear session from all tabs/windows
+      await supabase.auth.signOut({ scope: 'global' })
+      // Clear any cached data
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('supabase.auth.token')
+      }
+      toast.success('Signed out successfully', {
+        icon: '✓',
+        style: {
+          border: '1px solid black',
+          padding: '16px',
+          color: 'black',
+        },
+      })
+      router.push('/')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      router.push('/')
+    }
   }
 
   if (!session || loading) {

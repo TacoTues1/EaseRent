@@ -142,7 +142,7 @@ export default function Navbar() {
         .select('*')
         .eq('recipient', userId)
         .order('created_at', { ascending: false })
-        .limit(5) // Limit to 5 for the dropdown
+        .limit(6) // Limit to 6 for the dropdown
       
       if (data) setNotifications(data)
     } catch (err) {
@@ -186,11 +186,24 @@ export default function Navbar() {
   }
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    setSession(null)
-    setProfile(null)
-    toast.success('Signed out successfully')
-    router.push('/')
+    try {
+      // Sign out with global scope to clear session from all tabs/windows
+      await supabase.auth.signOut({ scope: 'global' })
+      setSession(null)
+      setProfile(null)
+      // Clear any cached data
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('supabase.auth.token')
+      }
+      toast.success('Signed out successfully')
+      router.push('/')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Force clear session even if signOut fails
+      setSession(null)
+      setProfile(null)
+      router.push('/')
+    }
   }
 
   const isActive = (path) => router.pathname === path
@@ -321,7 +334,7 @@ export default function Navbar() {
                         <Link href="/notifications" onClick={() => setShowNotifDropdown(false)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">View All</Link>
                       </div>
                       
-                      <div className="max-h-[60vh] overflow-y-auto">
+                      <div className="max-h-[80vh] overflow-y-auto">
                         {notifications.length === 0 ? (
                           <div className="p-8 text-center">
                             <p className="text-sm text-gray-500">No new notifications</p>

@@ -528,8 +528,8 @@ export default function AllProperties() {
         </div>
 
         {/* All Properties Section Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 pb-4">
-          <div className="mb-4 sm:mb-0 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-2">
+          <div className="mb-2 sm:mb-0 w-full sm:w-auto">
             <h2 className="text-2xl font-black text-black uppercase">All Properties</h2>
             <p className="text-sm text-gray-500">Browse all available listings</p>
           </div>
@@ -537,7 +537,7 @@ export default function AllProperties() {
 
         {/* All Properties Grid */}
         {loading ? (
-          <div className="text-center py-20">
+          <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div>
           </div>
         ) : properties.length === 0 ? (
@@ -559,7 +559,7 @@ export default function AllProperties() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-12">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 mb-12">
             {properties.map((property) => {
               const images = getPropertyImages(property)
               const currentIndex = currentImageIndex[property.id] || 0
@@ -712,14 +712,14 @@ export default function AllProperties() {
 
         {/* Guest Favorites Section */}
         {guestFavorites.length > 0 && (
-          <div className="mb-12">
-            <div className="flex items-center gap-3 mb-6">
+          <div className="mb-2">
+            <div className="flex items-center gap-3 mb-2">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Guest Favorites</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Tenants Favorites</h2>
                 <p className="text-sm text-gray-500">Most loved by our community</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {guestFavorites.map((property) => {
                   const images = getPropertyImages(property)
                   const currentIndex = currentImageIndex[property.id] || 0
@@ -793,14 +793,14 @@ export default function AllProperties() {
 
         {/* Top Rated Section */}
         {topRated.length > 0 && (
-          <div className="mb-12">
-            <div className="flex items-center gap-3 mb-6">
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
                 <p className="text-sm text-gray-500">Highest rated by tenants</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {topRated.map((property) => {
                   const images = getPropertyImages(property)
                   const currentIndex = currentImageIndex[property.id] || 0
