@@ -114,6 +114,29 @@ export default function PropertyDetail() {
     if (data) setReviews(data)
   }
 
+  // Generate Google Maps embed URL from landlord's link or address
+  const getMapEmbedUrl = () => {
+    if (property?.location_link) {
+      // Extract coordinates from various Google Maps URL formats
+      const link = property.location_link
+      const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+      const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/)
+      const placeMatch = link.match(/place\/(-?\d+\.\d+),(-?\d+\.\d+)/)
+      const llMatch = link.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/)
+      
+      const match = atMatch || qMatch || placeMatch || llMatch
+      if (match) {
+        const lat = match[1]
+        const lng = match[2]
+        // Use place embed with coordinates for red marker
+        return `https://www.google.com/maps?q=${lat},${lng}&z=17&output=embed`
+      }
+    }
+    // Fallback to address-based search with marker
+    const address = `${property?.address || ''}, ${property?.city || ''} ${property?.zip || ''}`
+    return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=17&output=embed`
+  }
+
   async function handleApply(e) {
     e.preventDefault()
     if (!session) {
@@ -180,48 +203,13 @@ export default function PropertyDetail() {
     setSubmitting(false)
   }
   
-  const handleGetDirections = (e) => {
-    e.preventDefault()
-    // Construct search query from property details
+  // Generate directions URL - uses landlord's link or falls back to address search
+  const getDirectionsUrl = () => {
+    if (property.location_link) {
+      return property.location_link
+    }
     const destinationQuery = `${property.address}, ${property.city}, ${property.zip || ''}`
-    
-    // Function to generate the correct Google Maps URL
-    const generateMapsUrl = (lat = null, lng = null) => {
-        const baseUrl = "https://www.google.com/maps/dir/?api=1";
-        const destination = `&destination=${encodeURIComponent(destinationQuery)}`;
-        const origin = lat && lng ? `&origin=${lat},${lng}` : "";
-        return `${baseUrl}${destination}${origin}`;
-    }
-
-    // Default fallback (opens maps with just destination)
-    const fallbackUrl = property.location_link || generateMapsUrl();
-
-    if (!navigator.geolocation) {
-      window.open(fallbackUrl, '_blank')
-      return
-    }
-
-    const toastId = toast.loading('Getting your location for directions...')
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        toast.dismiss(toastId)
-        const { latitude, longitude } = position.coords
-        // Open maps with both origin (user location) and destination
-        const directionsUrl = generateMapsUrl(latitude, longitude)
-        window.open(directionsUrl, '_blank')
-      },
-      (error) => {
-        toast.dismiss(toastId)
-        console.error('Geolocation error:', error)
-        if (error.code === error.PERMISSION_DENIED) {
-          toast.error('Location denied. Opening map directly.')
-        } else {
-          toast.error('Could not determine location. Opening map directly.')
-        }
-        window.open(fallbackUrl, '_blank')
-      }
-    )
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
@@ -234,12 +222,8 @@ export default function PropertyDetail() {
   const isOwner = profile?.id === property.landlord
   const isLandlord = profile?.role === 'landlord'
 
-  // --- Real Cost Calculation ---
-  const rent = Number(property.price) || 0
-  const utilities = Number(property.utilities_cost) || 0
-  const internet = Number(property.internet_cost) || 0
-  const dues = Number(property.association_dues) || 0
-  const totalRealCost = rent + utilities + internet + dues
+  // Construct full address for display and mapping
+  const fullAddress = `${property.address}, ${property.city} ${property.zip || ''}`
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 font-sans">
@@ -342,47 +326,26 @@ export default function PropertyDetail() {
           {/* Right Column - Sidebar */}
           <div className="flex flex-col gap-4">
 
-            {/* Real Cost Calculator Card */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-600">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  </div>
-                  <h3 className="font-bold text-gray-900 text-sm">"Real Cost" Estimator</h3>
+            {/* Mini Map / Location Card */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                {/* Google Maps Embed - Accurate Location */}
+                <div className="w-full h-80 bg-gray-50 rounded-lg mb-4 overflow-hidden relative border border-gray-200">
+                   <iframe 
+                      width="100%" 
+                      height="100%" 
+                      frameBorder="0" 
+                      style={{ border: 0 }}
+                      src={getMapEmbedUrl()}
+                      className="absolute inset-0"
+                      title="Property Location"
+                      allowFullScreen
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                   ></iframe>
                 </div>
-                
-                <div className="space-y-3 mb-4 text-sm">
-                  <div className="flex justify-between items-center text-gray-600">
-                    <span>Base Rent</span>
-                    <span className="font-semibold text-gray-900">₱{rent.toLocaleString()}</span>
-                  </div>
-                  {utilities > 0 && (
-                     <div className="flex justify-between items-center text-gray-500 text-xs">
-                        <span>Est. Utilities</span>
-                        <span>+ ₱{utilities.toLocaleString()}</span>
-                     </div>
-                  )}
-                  {internet > 0 && (
-                     <div className="flex justify-between items-center text-gray-500 text-xs">
-                        <span>Internet</span>
-                        <span>+ ₱{internet.toLocaleString()}</span>
-                     </div>
-                  )}
-                  {dues > 0 && (
-                     <div className="flex justify-between items-center text-gray-500 text-xs">
-                        <span>Assoc. Dues</span>
-                        <span>+ ₱{dues.toLocaleString()}</span>
-                     </div>
-                  )}
-                </div>
-                
-                <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
-                  <span className="font-bold text-black text-sm">Est. Monthly Total</span>
-                  <span className="font-black text-xl text-black">₱{totalRealCost.toLocaleString()}</span>
-                </div>
-                
-                <div className="mt-3 text-[10px] text-gray-400 bg-gray-50 p-2 rounded leading-relaxed">
-                  * Estimates provided by landlord. Actual utility usage may vary based on consumption.
+                <div className="flex items-center gap-2 mt-3">
+                   <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg></div>
+                   <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-black font-medium transition-colors cursor-pointer">Get Directions</a>
                 </div>
             </div>
              
@@ -394,7 +357,7 @@ export default function PropertyDetail() {
                     </div>
                     <div className="flex-1 overflow-hidden">
                        <p className="font-bold text-gray-900 text-sm truncate">{landlordProfile?.first_name ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Property Owner'}</p>
-                       <p className="text-xs text-gray-500">Landlord</p>
+                       <p className="text-xs text-gray-500">Posted By</p>
                     </div>
                 </div>
                 {isOwner ? (
@@ -438,10 +401,14 @@ export default function PropertyDetail() {
              </div>
 
              {/* Contact Details */}
-             {(property.owner_phone || property.owner_email || property.location_link) && (
+             {(property.owner_phone || property.owner_email) && (
                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
                   <h3 className="font-bold text-gray-900 mb-3">Contact Details of Landlord</h3>
                   <div className="flex flex-col gap-2.5">
+                     <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
+                        <span className="text-gray-600 font-medium">{fullAddress}</span>
+                     </div>
                      {property.owner_phone && (
                         <div className="flex items-center gap-2">
                            <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg></div>
@@ -454,16 +421,6 @@ export default function PropertyDetail() {
                            <a href={`mailto:${property.owner_email}`} className="text-gray-600 hover:text-black font-medium transition-colors cursor-pointer truncate">{property.owner_email}</a>
                         </div>
                      )}
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
-                          <span>{property.building_no && `${property.building_no}, `}{property.street}, {property.address} {property.city} {property.zip}</span>
-                        </div>
-                     </div>
-                     <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
-                        <button onClick={handleGetDirections} className="text-blue-600 hover:text-blue-800 font-medium transition-colors cursor-pointer text-left">Get Directions</button>
-                     </div>
                   </div>
                </div>
              )}
@@ -520,4 +477,4 @@ export default function PropertyDetail() {
       />
     </div>
   )
-} 
+}

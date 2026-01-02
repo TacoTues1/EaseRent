@@ -169,7 +169,7 @@ export default function Compare() {
                                     <td key={property.id} className="p-4 pt-8">
                                         <button 
                                             onClick={() => router.push(`/properties/${property.id}`)}
-                                            className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800 shadow-md transition-all"
+                                            className="w-full bg-black text-white py-3 rounded-xl font-bold text-sm hover:bg-gray-800 shadow-md transition-all cursor-pointer"
                                         >
                                             View Details
                                         </button>

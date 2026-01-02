@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast from 'react-hot-toast'
-import { createNotification } from '../lib/notifications'
+import Footer from '../components/Footer'
 
 export default function Dashboard() {
   const [session, setSession] = useState(null)
@@ -35,20 +35,54 @@ export default function Dashboard() {
   // Search & Filter State (Tenants Only)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAmenities, setSelectedAmenities] = useState([])
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' })
+  const [sortBy, setSortBy] = useState('newest')
   const [isExpanded, setIsExpanded] = useState(false) 
   
   // --- Filter Dropdown State ---
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
+  const [showPriceDropdown, setShowPriceDropdown] = useState(false)
   const filterRef = useRef(null)
+  const priceRef = useRef(null)
   
   // --- Comparison Feature State ---
   const [comparisonList, setComparisonList] = useState([])
+  
+  // --- Favorites & Property Stats (Tenants) ---
+  const [favorites, setFavorites] = useState([])
+  const [propertyStats, setPropertyStats] = useState({})
+  const [guestFavorites, setGuestFavorites] = useState([])
+  const [topRated, setTopRated] = useState([])
+  
+  // --- Display limit for property sections ---
+  const maxDisplayItems = 8
 
   const router = useRouter()
 
   const filterAmenities = [
     'Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly'
   ]
+
+  // Auto-slide images for property cards
+  useEffect(() => {
+    const allProperties = [...properties, ...guestFavorites, ...topRated]
+    if (allProperties.length === 0) return
+    
+    const interval = setInterval(() => {
+      setCurrentImageIndex(prev => {
+        const newIndex = { ...prev }
+        allProperties.forEach(property => {
+          if (property.images && Array.isArray(property.images) && property.images.length > 1) {
+            const currentIdx = prev[property.id] || 0
+            newIndex[property.id] = (currentIdx + 1) % property.images.length
+          }
+        })
+        return newIndex
+      })
+    }, 3000) // Change image every 3 seconds
+    
+    return () => clearInterval(interval)
+  }, [properties, guestFavorites, topRated])
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -77,6 +111,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (profile) {
       loadProperties()
+      loadPropertyStats()
       if (profile.role === 'landlord') {
         loadOccupancies()
         loadPendingEndRequests()
@@ -84,6 +119,8 @@ export default function Dashboard() {
       } else if (profile.role === 'tenant') {
         loadTenantOccupancy()
         checkPendingReviews(session.user.id)
+        loadUserFavorites()
+        loadFeaturedSections()
       }
     }
   }, [profile])
@@ -94,24 +131,18 @@ export default function Dashboard() {
       if (filterRef.current && !filterRef.current.contains(event.target)) {
         setShowFilterDropdown(false)
       }
+      if (priceRef.current && !priceRef.current.contains(event.target)) {
+        setShowPriceDropdown(false)
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [filterRef]);
+  }, [filterRef, priceRef]);
 
-  // Real-time Search (Tenants)
-  useEffect(() => {
-    if (profile && profile.role === 'tenant') {
-      const delayDebounceFn = setTimeout(() => {
-        const shouldExpand = searchQuery.length > 0 ? true : isExpanded
-        if (searchQuery.length > 0 && !isExpanded) setIsExpanded(true)
-        loadProperties(shouldExpand)
-      }, 300)
-      return () => clearTimeout(delayDebounceFn)
-    }
-  }, [searchQuery, selectedAmenities])
+  // Load properties on profile load (no auto-search for tenants)
+  // Search is triggered manually via Search button
 
   async function checkPendingReviews(userId) {
     const { data: endedOccupancies } = await supabase
@@ -125,7 +156,7 @@ export default function Dashboard() {
     const { data: existingReviews } = await supabase
       .from('reviews')
       .select('occupancy_id')
-      .eq('tenant_id', userId)
+      .eq('user_id', userId)
     
     const reviewedOccupancyIds = existingReviews?.map(r => r.occupancy_id) || []
     const unreviewed = endedOccupancies.find(o => !reviewedOccupancyIds.includes(o.id))
@@ -144,6 +175,7 @@ export default function Dashboard() {
       .from('reviews')
       .insert({
         property_id: reviewTarget.property_id,
+        user_id: session.user.id,
         tenant_id: session.user.id,
         occupancy_id: reviewTarget.id,
         rating: reviewRating,
@@ -197,18 +229,33 @@ export default function Dashboard() {
     let query = supabase
       .from('properties')
       .select('*, landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)')
-      .order('created_at', { ascending: false })
 
     if (profile?.role === 'landlord') {
-      query = query.eq('landlord', session.user.id)
+      query = query.eq('landlord', session.user.id).order('created_at', { ascending: false })
     } else {
       if (searchQuery) {
         query = query.or(`title.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`)
       }
+      if (priceRange.min) {
+        query = query.gte('price', parseInt(priceRange.min))
+      }
+      if (priceRange.max) {
+        query = query.lte('price', parseInt(priceRange.max))
+      }
       if (selectedAmenities.length > 0) {
         query = query.contains('amenities', selectedAmenities)
       }
-      if (!expanded && !searchQuery && selectedAmenities.length === 0) {
+      // Apply sorting
+      if (sortBy === 'newest') {
+        query = query.order('created_at', { ascending: false })
+      } else if (sortBy === 'oldest') {
+        query = query.order('created_at', { ascending: true })
+      } else if (sortBy === 'price_low') {
+        query = query.order('price', { ascending: true })
+      } else if (sortBy === 'price_high') {
+        query = query.order('price', { ascending: false })
+      }
+      if (!expanded && !searchQuery && selectedAmenities.length === 0 && !priceRange.min && !priceRange.max) {
         query = query.limit(5)
       }
     }
@@ -219,9 +266,26 @@ export default function Dashboard() {
     setLoading(false)
   }
 
-  const handleSeeMore = () => { setIsExpanded(true); setSearchQuery(''); loadProperties(true) }
-  const handleSeeFewer = () => { setIsExpanded(false); setSearchQuery(''); loadProperties(false) }
-  const handleSearch = () => { setIsExpanded(true); loadProperties(true) }
+  const handleSeeMore = () => { router.push('/properties') }
+  
+  // Handle search button click - redirect to all properties page with filters (tenants only)
+  const handleSearch = () => {
+    // Only search if at least one filter is applied
+    const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
+    if (!hasFilters) return
+    
+    const params = new URLSearchParams()
+    if (searchQuery.trim()) params.set('search', searchQuery.trim())
+    if (priceRange.min) params.set('minPrice', priceRange.min)
+    if (priceRange.max) params.set('maxPrice', priceRange.max)
+    if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','))
+    if (sortBy !== 'newest') params.set('sort', sortBy)
+    
+    router.push(`/properties${params.toString() ? '?' + params.toString() : ''}`)
+  }
+  
+  // Check if search button should be enabled
+  const canSearch = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
 
   async function loadPropertySummaries() {
     const { data: myProps } = await supabase.from('properties').select('id, title').eq('landlord', session.user.id)
@@ -251,6 +315,119 @@ export default function Dashboard() {
   }
 
   function getPropertyOccupancy(propertyId) { return occupancies.find(o => o.property_id === propertyId) }
+
+  // Load user's favorite properties
+  async function loadUserFavorites() {
+    if (!session) return
+    try {
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('property_id')
+        .eq('user_id', session.user.id)
+      if (error) {
+        console.log('Favorites not available:', error.message)
+        return
+      }
+      if (data) {
+        setFavorites(data.map(f => f.property_id))
+      }
+    } catch (err) {
+      console.log('Error loading favorites:', err.message)
+    }
+  }
+
+  // Load property stats (favorites count, ratings)
+  async function loadPropertyStats() {
+    try {
+      const { data, error } = await supabase
+        .from('property_stats')
+        .select('*')
+      if (error) {
+        console.log('Property stats not available:', error.message)
+        return
+      }
+      if (data) {
+        const statsMap = {}
+        data.forEach(stat => {
+          statsMap[stat.property_id] = {
+            favorite_count: stat.favorite_count || 0,
+            avg_rating: stat.avg_rating || 0,
+            review_count: stat.review_count || 0
+          }
+        })
+        setPropertyStats(statsMap)
+      }
+    } catch (err) {
+      console.log('Error loading property stats:', err.message)
+    }
+  }
+
+  // Load Guest Favorites and Top Rated for tenants
+  async function loadFeaturedSections() {
+    try {
+      const { data: allProps } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('status', 'available')
+
+      const { data: stats, error: statsError } = await supabase
+        .from('property_stats')
+        .select('*')
+
+      if (statsError) {
+        console.log('Property stats not available:', statsError.message)
+        return
+      }
+
+      if (allProps && stats) {
+        const statsMap = {}
+        stats.forEach(s => { 
+          statsMap[s.property_id] = {
+            favorite_count: s.favorite_count || 0,
+            avg_rating: s.avg_rating || 0,
+            review_count: s.review_count || 0
+          }
+        })
+
+        // Guest Favorites - properties with 1+ favorites
+        const favorites = allProps
+          .filter(p => statsMap[p.id]?.favorite_count >= 1)
+          .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
+          .slice(0, 5)
+        setGuestFavorites(favorites)
+
+        // Top Rated - properties with highest ratings
+        const rated = allProps
+          .filter(p => statsMap[p.id]?.review_count > 0)
+          .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
+          .slice(0, 5)
+        setTopRated(rated)
+      }
+    } catch (err) {
+      console.log('Featured sections not available:', err.message)
+    }
+  }
+
+  // Toggle favorite on a property
+  async function toggleFavorite(e, propertyId) {
+    e.stopPropagation()
+    if (!session) {
+      toast.error('Please login to save favorites')
+      return
+    }
+    const isFavorite = favorites.includes(propertyId)
+    if (isFavorite) {
+      await supabase.from('favorites').delete().eq('user_id', session.user.id).eq('property_id', propertyId)
+      setFavorites(favorites.filter(id => id !== propertyId))
+      toast.success('Removed from favorites')
+    } else {
+      await supabase.from('favorites').insert({ user_id: session.user.id, property_id: propertyId })
+      setFavorites([...favorites, propertyId])
+      toast.success('Added to favorites')
+    }
+    loadPropertyStats()
+    loadFeaturedSections()
+  }
 
   async function loadAcceptedApplicationsForProperty(propertyId) {
     const { data } = await supabase.from('applications').select(`*, tenant_profile:profiles!applications_tenant_fkey(id, first_name, middle_name, last_name, phone)`).eq('property_id', propertyId).eq('status', 'accepted').not('tenant', 'is', null)
@@ -365,27 +542,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Hero Section */}
-      <div className="bg-black text-white pt-10 pb-8 shadow-sm mb-5">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-start gap-1">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-              {profile.role === 'landlord' ? 'Landlord Workspace' : 'Tenant Portal'}
-            </span>
-            <h1 className="text-3xl font-bold text-white">
-              Welcome, {profile.first_name}!
-            </h1>
-            <p className="text-gray-400 text-sm">
-              {profile.role === 'landlord' 
-                ? 'Here is an overview of your properties and tenant requests.' 
-                : 'Find your perfect home or manage your current stay.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 mt-8 relative z-10">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 relative z-10 flex-1">
         
         {/* Tenant Current Occupancy Section */}
         {profile.role === 'tenant' && tenantOccupancy && (
@@ -465,104 +623,228 @@ export default function Dashboard() {
 
         {/* Search and Filter Bar - ONLY FOR TENANTS */}
         {profile.role === 'tenant' && (
-          <div className="flex flex-col gap-6 mb-8">
-            <div className="w-full max-w-3xl mx-auto bg-white p-3 rounded-2xl shadow-lg border border-gray-100 flex flex-col sm:flex-row gap-3 items-center relative z-30">
-              {/* Search Input */}
-              <div className="relative flex-1 w-full">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <>
+            <div className="flex justify-center mb-8">
+              <div className="w-full max-w-3xl bg-white p-3 rounded-2xl shadow-lg border border-gray-100 relative z-30">
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                  {/* Search Input */}
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="Search properties..." 
+                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black text-sm font-medium"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
+                    />
                   </div>
-                  <input 
-                  type="text" 
-                  placeholder="Search by city, address, or property..." 
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black text-sm font-medium"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  />
-              </div>
 
-              <div className="flex gap-2 w-full sm:w-auto items-center">
-                {/* Filter Dropdown */}
-                <div className="relative flex-1 sm:flex-none" ref={filterRef}>
-                    <button 
-                        onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                        className={`w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all border whitespace-nowrap cursor-pointer ${
-                            showFilterDropdown || selectedAmenities.length > 0
+                  {/* Search Button */}
+                  <button
+                    onClick={handleSearch}
+                    disabled={!canSearch}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 ${
+                      canSearch 
+                        ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Search
+                  </button>
+
+                  {/* Filter & Sort Controls */}
+                  <div className="flex gap-2">
+                    {/* Price Filter Button */}
+                    <div className="relative" ref={priceRef}>
+                      <button 
+                        onClick={() => setShowPriceDropdown(!showPriceDropdown)}
+                        className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer ${
+                          priceRange.min || priceRange.max
                             ? 'bg-gray-900 text-white border-black' 
                             : 'bg-white text-gray-700 border-gray-200 hover:border-black'
                         }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                      >
+                        <span>₱</span>
+                        Price
+                        {(priceRange.min || priceRange.max) && (
+                          <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
+                        )}
+                      </button>
+
+                      {showPriceDropdown && (
+                        <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                          <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xs font-bold text-gray-500 uppercase">Price Range</h3>
+                            {(priceRange.min || priceRange.max) && (
+                              <button 
+                                onClick={() => setPriceRange({ min: '', max: '' })}
+                                className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2 mb-3">
+                            <input 
+                              type="number" 
+                              placeholder="Min Price" 
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black"
+                              value={priceRange.min}
+                              onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
+                            />
+                            <input 
+                              type="number" 
+                              placeholder="Max Price" 
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black"
+                              value={priceRange.max}
+                              onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
+                            />
+                          </div>
+                          <div className="border-t border-gray-100 pt-2">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By</p>
+                            <div className="flex flex-col gap-1">
+                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name="priceSortDashboard"
+                                  checked={sortBy === 'price_low'}
+                                  onChange={() => setSortBy('price_low')}
+                                  className="w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: Low to High</span>
+                              </label>
+                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name="priceSortDashboard"
+                                  checked={sortBy === 'price_high'}
+                                  onChange={() => setSortBy('price_high')}
+                                  className="w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: High to Low</span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Filter Button */}
+                    <div className="relative" ref={filterRef}>
+                      <button 
+                        onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                        className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer ${
+                          showFilterDropdown || selectedAmenities.length > 0
+                            ? 'bg-gray-900 text-white border-black' 
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-black'
+                        }`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        </svg>
                         Filters
                         {selectedAmenities.length > 0 && (
-                            <span className="bg-white text-black text-[10px] w-5 h-5 flex items-center justify-center rounded-full ml-1">
-                                {selectedAmenities.length}
-                            </span>
+                          <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
+                            {selectedAmenities.length}
+                          </span>
                         )}
-                    </button>
+                      </button>
 
-                    {/* Dropdown Content */}
-                    {showFilterDropdown && (
-                        <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 z-40 animate-in fade-in zoom-in-95 duration-200">
-                            <div className="flex justify-between items-center mb-3">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Amenities</h3>
-                                {selectedAmenities.length > 0 && (
-                                    <button 
-                                        onClick={() => setSelectedAmenities([])}
-                                        className="text-[10px] font-bold text-red-500 hover:text-red-700 underline"
-                                    >
-                                        Clear all
-                                    </button>
-                                )}
+                      {showFilterDropdown && (
+                        <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                          <div className="mb-3">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By Date</p>
+                            <div className="flex flex-col gap-1">
+                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name="dateSortDashboard"
+                                  checked={sortBy === 'newest'}
+                                  onChange={() => setSortBy('newest')}
+                                  className="w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Newest First</span>
+                              </label>
+                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name="dateSortDashboard"
+                                  checked={sortBy === 'oldest'}
+                                  onChange={() => setSortBy('oldest')}
+                                  className="w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Oldest First</span>
+                              </label>
                             </div>
-                            <div className="flex flex-col gap-1 max-h-60 overflow-y-auto pr-1">
-                                {filterAmenities.map(amenity => (
-                                    <label key={amenity} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                        <div className="relative flex items-center">
-                                            <input 
-                                                type="checkbox" 
-                                                className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all"
-                                                checked={selectedAmenities.includes(amenity)}
-                                                onChange={() => toggleAmenity(amenity)}
-                                            />
-                                            <svg className="absolute w-3 h-3 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                                        </div>
-                                        <span className="text-sm font-medium text-gray-700 group-hover:text-black transition-colors">{amenity}</span>
-                                    </label>
-                                ))}
+                          </div>
+                          <div className="border-t border-gray-100 pt-2">
+                            <div className="flex justify-between items-center mb-1.5">
+                              <h3 className="text-[10px] font-bold text-gray-500 uppercase">Amenities</h3>
+                              {selectedAmenities.length > 0 && (
+                                <button 
+                                  onClick={() => setSelectedAmenities([])}
+                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+                                >
+                                  Clear
+                                </button>
+                              )}
                             </div>
+                            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                              {filterAmenities.map(amenity => (
+                                <label key={amenity} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                                  <div className="relative flex items-center">
+                                    <input 
+                                      type="checkbox" 
+                                      className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all"
+                                      checked={selectedAmenities.includes(amenity)}
+                                      onChange={() => toggleAmenity(amenity)}
+                                    />
+                                    <svg className="absolute w-2.5 h-2.5 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                  </div>
+                                  <span className="text-xs font-medium text-gray-700 group-hover:text-black transition-colors">{amenity}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                    )}
+                      )}
+                    </div>
+                  </div>
                 </div>
-
-                {/* Search Button */}
-                <button 
-                  onClick={handleSearch}
-                  className="flex-1 sm:flex-none w-full sm:w-auto justify-center bg-black text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-gray-800 transition-colors shadow-md flex items-center gap-2 whitespace-nowrap cursor-pointer"
-                >
-                  Search
-                </button>
               </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Section Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 border-b border-gray-100 pb-4">
-            <div className="mb-4 sm:mb-0 w-full sm:w-auto">
-                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-1">
-                {profile.role === 'landlord' ? 'Your Properties' : (isExpanded ? 'All Properties' : 'Featured Properties')}
-                </h2>
-                <div className="w-16 h-1 bg-black mt-2"></div>
-                {profile.role === 'landlord' && (
-                  <p className="text-gray-500 text-sm mt-2">
-                    Manage listings, assignments, and property details.
-                  </p>
-                )}
-            </div>
-            
-<div className="flex gap-2 w-full sm:w-auto justify-end">              {profile.role === 'landlord' ? (
+        {/* All Properties Section - Fixed height container to prevent layout shift */}
+        <div className="min-h-[500px] mb-12">
+          {/* Section Header */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 pb-4">
+              <div className="mb-4 sm:mb-0 w-full sm:w-auto">
+                  <h2 className="text-2xl font-black text-black uppercase">
+                  {profile.role === 'landlord' ? 'Your Properties' : 'All Properties'}
+                  </h2>
+                  {profile.role === 'landlord' ? (
+                    <p className="text-gray-500 text-sm mt-1">
+                      Manage listings, assignments, and property details.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-500">List of Properties</p>
+                  )}
+              </div>
+              
+              <div className="flex items-center gap-4">
+                {profile.role === 'landlord' ? (
                   <button
                   onClick={() => router.push('/properties/new')}
                   className="flex items-center gap-2 px-5 py-2.5 bg-black text-white rounded-full shadow-lg text-sm font-semibold cursor-pointer"
@@ -571,67 +853,59 @@ export default function Dashboard() {
                   Add New Property
                   </button>
               ) : (
-                <>
-                  {!isExpanded ? (
-                    <button 
-                      onClick={handleSeeMore}
-                      className="group flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black transition-colors cursor-pointer"
-                    >
-                      See More
-                      <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                      </svg>
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={handleSeeFewer}
-                      className="group flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-black transition-colors cursor-pointer"
-                    >
-                      <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
-                      </svg>
-                      See Fewer
-                    </button>
-                  )}
-                </>
+                /* See More link for Tenants */
+                <span 
+                  onClick={handleSeeMore}
+                  className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1"
+                >
+                  See More
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
               )}
             </div>
         </div>
         
-        {loading ? (
-          <div className="text-center py-20">
-             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div>
-          </div>
-        ) : properties.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
-             {/* ... no results JSX ... */}
-             <div className="w-20 h-20 mx-auto mb-6 bg-gray-50 rounded-full flex items-center justify-center">
-              <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+          {loading ? (
+            <div className="text-center py-20 h-[400px] flex items-center justify-center">
+               <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">No properties found</h3>
-            <p className="text-gray-500 mb-8 max-w-sm mx-auto">
-              {profile.role === 'landlord' 
-                ? "You don't have any properties matching these filters." 
-                : 'No properties match your search. Try adjusting your filters.'}
-            </p>
-            <button 
-                onClick={() => { setSearchQuery(''); setSelectedAmenities([]) }}
-                className="text-black font-bold underline text-sm"
-            >
-                Clear all filters
-            </button>
-          </div>
-        ) : (
-          /* Grid Layout - 5 Columns for Tenants, 3 Columns for Landlords */
-          <div className={profile.role === 'tenant' ? 
-              "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6" : 
-              "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6"
-            }>
-            {properties.map((property) => {
+          ) : properties.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100 h-[400px] flex flex-col items-center justify-center">
+               {/* ... no results JSX ... */}
+               <div className="w-20 h-20 mx-auto mb-6 bg-gray-50 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">No properties found</h3>
+              <p className="text-gray-500 mb-8 max-w-sm mx-auto">
+                {profile.role === 'landlord' 
+                  ? "You don't have any properties matching these filters." 
+                  : 'No properties match your search. Try adjusting your filters.'}
+              </p>
+              <button 
+                  onClick={() => { setSearchQuery(''); setSelectedAmenities([]) }}
+                  className="text-black font-bold underline text-sm"
+              >
+                  Clear all filters
+              </button>
+            </div>
+          ) : (
+            <div className={profile.role === 'tenant' ? 
+                "grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" : 
+                "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+              }>
+            {(profile.role === 'tenant' ? 
+              // Show up to 8 properties for tenants
+              properties.slice(0, maxDisplayItems)
+            : properties).map((item) => {
+              const property = item
               const images = getPropertyImages(property)
               const currentIndex = currentImageIndex[property.id] || 0
               const occupancy = getPropertyOccupancy(property.id)
               const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
+              const isFavorite = favorites.includes(property.id)
+              const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
               
               return (
                 <div 
@@ -639,7 +913,8 @@ export default function Dashboard() {
                   className={`group bg-white rounded-2xl shadow-sm border overflow-hidden cursor-pointer flex flex-col  transition-all duration-300 ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
                   onClick={() => handlePropertyAction(property.id)}
                 >
-                  {/* Image Slider - Top */}
+                  {/* Image Slider - Top - Matches Guest Favorites card size */}
+                  {/* TO ADJUST IMAGE ASPECT RATIO: Change aspect-[4/3] below */}
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     <img 
                       src={images[currentIndex]} 
@@ -647,54 +922,70 @@ export default function Dashboard() {
                       className="w-full h-full object-cover"
                     />
                     
-                    {/* --- NEW: Compare Checkbox --- */}
-                    <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
-                       <label className="flex items-center gap-2 cursor-pointer group/check">
+                    {/* Top Right Icons - Favorite & Compare - Smaller on mobile */}
+                    <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                       {/* Favorite Heart Button (Tenants Only) */}
+                       {profile.role === 'tenant' && (
+                         <button 
+                           onClick={(e) => toggleFavorite(e, property.id)}
+                           className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${
+                             isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'
+                           }`}
+                           title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                         >
+                           <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                           </svg>
+                         </button>
+                       )}
+                       
+                       {/* Compare Checkbox */}
+                       <label className="flex items-center gap-1 sm:gap-2 cursor-pointer group/check">
                           <input 
                             type="checkbox" 
                             className="hidden"
                             checked={isSelectedForCompare}
                             onChange={(e) => toggleComparison(e, property)}
                           />
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                          <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
                             {isSelectedForCompare ? (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                             ) : (
                                 <span className="text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover/check:opacity-100 transition-opacity absolute right-10 bg-black text-white px-2 py-1 rounded">Compare</span>
                             )}
                             {!isSelectedForCompare && (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                             )}
                           </div>
                        </label>
                     </div>
 
-                    {/* Navigation Arrows */}
+                    {/* Navigation Arrows - Smaller on mobile */}
                     {images.length > 1 && (
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <button
                           onClick={(e) => { e.stopPropagation(); prevImage(property.id, images.length); }}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-7 h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
+                          className="absolute left-1.5 sm:left-2 md:left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
                         >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); nextImage(property.id, images.length); }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-7 h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
+                          className="absolute right-1.5 sm:right-2 md:right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur-sm text-black w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full shadow-md cursor-pointer"
                         >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                         </button>
                       </div>
                     )}
                     
-                    {/* Image Indicators */}
+                    {/* Image Indicators - Smaller on mobile */}
                     {images.length > 1 && (
-                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10">
+                      <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
                         {images.map((_, idx) => (
                           <div
                             key={idx}
-                            className={`h-1 rounded-full transition-all duration-300 shadow-sm ${
-                              idx === currentIndex ? 'w-4 bg-white' : 'w-1 bg-white/60'
+                            className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${
+                              idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'
                             }`}
                           />
                         ))}
@@ -704,45 +995,73 @@ export default function Dashboard() {
                     {/* Gradient Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
 
-                    {/* Status Badge */}
-                    <div className="absolute top-3 left-3 z-10">
-                       <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-md shadow-sm backdrop-blur-md ${
+                    {/* Status Badge & Guest Favorite Badge - Smaller on mobile */}
+                    <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
+                       <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${
                         property.status === 'available'
                           ? 'bg-white text-black' 
                           : 'bg-black/80 text-white'
                       }`}>
                         {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
                       </span>
+                      {stats.favorite_count >= 1 && (
+                        <span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1">
+                          <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                          <span className="hidden sm:inline">Guest Favorite</span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Price Overlay */}
-                    <div className="absolute bottom-3 left-3 z-10 text-white">
-                      <p className="text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
-                      <p className="text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
+                    <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                      <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                      <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
                     </div>
                   </div>
                   
                   {/* Property Info - Bottom */}
-                  <div className="p-4 flex-1 flex flex-col">
-                    <div className="mb-3">
-                        <div className="flex justify-between items-start mb-0.5">
-                            <h3 className="text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                  <div className="p-1.5 sm:p-2">
+                    <div className="mb-0.5 sm:mb-1">
+                        <div className="flex justify-between items-start">
+                            <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                            {/* Rating Display */}
+                            {stats.review_count > 0 && (
+                              <div className="flex items-center gap-1 text-xs shrink-0">
+                                <svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24">
+                                  <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                                </svg>
+                                <span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span>
+                                <span className="text-gray-400">({stats.review_count})</span>
+                              </div>
+                            )}
                         </div>
-                        <div className="flex items-center gap-1 text-gray-500 text-xs">
+                        <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
                             <span className="truncate">{property.city}, Philippines</span>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3 mb-4 text-gray-600 text-xs">
-                       <span className="font-medium">{property.bedrooms} beds</span>
+                    <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                       <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                         <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                         {property.bedrooms}
+                       </span>
                        <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                       <span className="font-medium">{property.bathrooms} baths</span>
+                       <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                         <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>
+                         {property.bathrooms}
+                       </span>
                        <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                       <span className="font-medium">{property.area_sqft} sqm</span>
+                       <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                         <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                         {property.area_sqft} sqm
+                       </span>
                     </div>
 
-                    <div className="mt-auto flex flex-col gap-2">
-                        {profile.role === 'landlord' ? (
+                    {/* Landlord Actions Only */}
+                    {profile.role === 'landlord' && (
+                      <div className="mt-auto flex flex-col gap-2">
                           <div className="flex gap-2">
                              <button
                               onClick={(e) => {
@@ -764,20 +1083,8 @@ export default function Dashboard() {
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                               </button>
                           </div>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePropertyAction(property.id);
-                            }}
-                            className="w-full bg-black text-white py-2.5 px-3 rounded-xl text-xs font-bold shadow-md cursor-pointer"
-                          >
-                            View Details
-                          </button>
-                        )}
                         
-                        {/* Landlord Actions (Assign/Kick Out) */}
-                        {profile.role === 'landlord' && (
+                          {/* Landlord Actions (Assign/Kick Out) */}
                           <div className="pt-2 border-t border-gray-100">
                              {occupancy ? (
                                 <div className="flex items-center justify-between bg-gray-50 px-2 py-1.5 rounded-lg">
@@ -804,12 +1111,213 @@ export default function Dashboard() {
                                 </button>
                              )}
                           </div>
-                        )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
             })}
+            
+            </div>
+          )}
+        </div>
+
+        {/* Guest Favorites Section (Tenants Only) */}
+        {profile.role === 'tenant' && guestFavorites.length > 0 && (
+          <div className="mb-12 mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Guest Favorites</h2>
+                <p className="text-sm text-gray-500">Most loved by our community</p>
+              </div>
+              {/* See More link */}
+              <span 
+                onClick={handleSeeMore}
+                className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1 mt-4 sm:mt-0"
+              >
+                See More
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                {guestFavorites.slice(0, maxDisplayItems).map((property) => {
+                  const images = getPropertyImages(property)
+                  const currentIndex = currentImageIndex[property.id] || 0
+                  const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
+                  const isFavorite = favorites.includes(property.id)
+                  
+                  return (
+                    <div 
+                      key={property.id} 
+                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md"
+                      onClick={() => router.push(`/properties/${property.id}`)}
+                    >
+                      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                        <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
+                        <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={(e) => toggleFavorite(e, property.id)}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}
+                          >
+                            <svg className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="absolute top-3 left-3 z-10">
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                            {stats.favorite_count} favorites
+                          </span>
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                        <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                          <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                          <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
+                        </div>
+                      </div>
+                      <div className="p-2 sm:p-3">
+                        <div className="mb-1 sm:mb-2">
+                            <div className="flex justify-between items-start mb-0.5">
+                              <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                              {stats.review_count > 0 && (
+                                <div className="flex items-center gap-1 text-xs shrink-0">
+                                  <svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24">
+                                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                                  </svg>
+                                  <span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                                <span className="truncate">{property.city}, Philippines</span>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                             {property.bedrooms}
+                           </span>
+                           <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>
+                             {property.bathrooms}
+                           </span>
+                           <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                             {property.area_sqft} sqm
+                           </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+        )}
+
+        {/* Top Rated Section (Tenants Only) */}
+        {profile.role === 'tenant' && topRated.length > 0 && (
+          <div className="mb-12">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
+                <p className="text-sm text-gray-500">Highest rated by tenants</p>
+              </div>
+              {/* See More link */}
+              <span 
+                onClick={handleSeeMore}
+                className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1 mt-4 sm:mt-0"
+              >
+                See More
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </span>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                {topRated.slice(0, maxDisplayItems).map((property) => {
+                  const images = getPropertyImages(property)
+                  const currentIndex = currentImageIndex[property.id] || 0
+                  const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
+                  const isFavorite = favorites.includes(property.id)
+                  
+                  return (
+                    <div 
+                      key={property.id} 
+                      className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md"
+                      onClick={() => router.push(`/properties/${property.id}`)}
+                    >
+                      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                        <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
+                        <div className="absolute top-3 right-3 z-20" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={(e) => toggleFavorite(e, property.id)}
+                            className={`w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}
+                          >
+                            <svg className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="absolute top-3 left-3 z-10">
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-yellow-400 to-orange-500 text-white flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                            </svg>
+                            {stats.avg_rating.toFixed(1)} rating
+                          </span>
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                        <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                          <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                          <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
+                        </div>
+                      </div>
+                      <div className="p-2 sm:p-3">
+                        <div className="mb-1 sm:mb-2">
+                            <div className="flex justify-between items-start mb-0.5">
+                              <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                              <div className="flex items-center gap-1 text-xs shrink-0">
+                                <svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24">
+                                  <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                                </svg>
+                                <span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span>
+                                <span className="text-gray-400">({stats.review_count})</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                                <span className="truncate">{property.city}, Philippines</span>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                             {property.bedrooms}
+                           </span>
+                           <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>
+                             {property.bathrooms}
+                           </span>
+                           <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                           <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                             <svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                             {property.area_sqft} sqm
+                           </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
           </div>
         )}
       </div>
@@ -819,7 +1327,7 @@ export default function Dashboard() {
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 animate-bounce-in">
           <button 
             onClick={handleCompareClick}
-            className="bg-black text-white px-8 py-4 rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-3 border-2 border-white/20"
+            className="bg-black text-white px-8 py-4 rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-3 border-2 border-white/20 cursor-pointer"
           >
             <span className="relative">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
@@ -932,6 +1440,8 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      <Footer />
     </div>
   )
 }

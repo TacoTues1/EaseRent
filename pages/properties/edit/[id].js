@@ -500,51 +500,6 @@ export default function EditProperty() {
                 </div>
             </div>
 
-             {/* NEW: Additional Monthly Estimates (Real Cost Calculator Inputs) */}
-             <div>
-              <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
-                <span className="w-1.5 h-4 bg-black rounded-full"></span> Monthly Estimates (for Tenant Calculator)
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 ml-1">Est. Utilities (₱)</label>
-                  <input
-                    type="number"
-                    name="utilities_cost"
-                    min="0"
-                    placeholder="e.g. 2500"
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
-                    value={formData.utilities_cost}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 ml-1">Internet (₱)</label>
-                  <input
-                    type="number"
-                    name="internet_cost"
-                    min="0"
-                    placeholder="e.g. 1500"
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
-                    value={formData.internet_cost}
-                    onChange={handleChange}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500 ml-1">Assoc. Dues (₱)</label>
-                  <input
-                    type="number"
-                    name="association_dues"
-                    min="0"
-                    placeholder="e.g. 1000"
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
-                    value={formData.association_dues}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Description & Terms */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-50">
                <div className="space-y-2">

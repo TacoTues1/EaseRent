@@ -220,7 +220,7 @@ export default function Navbar() {
 
                 <div className="hidden sm:flex items-center gap-2">
                   <button onClick={() => { setAuthMode('signin'); setShowAuthModal(true) }} className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer sm:px-4 sm:py-2 sm:text-sm">Login</button>
-                  <button onClick={() => { setAuthMode('signup'); setShowAuthModal(true) }} className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer sm:px-5 sm:py-2 sm:text-sm">Register</button>
+                  <button onClick={() => { setAuthMode('signup'); setShowAuthModal(true) }} className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2 sm:text-sm">Register</button>
                 </div>
 
                 <div className="sm:hidden flex items-center">
@@ -396,9 +396,14 @@ export default function Navbar() {
 
                       <div className="p-2 space-y-1">
                         {profile?.role === 'landlord' && (
-                          <Link href="/schedule" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
-                            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Schedule
-                          </Link>
+                          <>
+                            <Link href="/properties" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
+                              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> All Properties
+                            </Link>
+                            <Link href="/schedule" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
+                              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Schedule
+                            </Link>
+                          </>
                         )}
                         <Link href="/payments" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
                           <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
@@ -419,60 +424,56 @@ export default function Navbar() {
           </div>
         </nav>
 
-        {/* Mobile Floating Menu (Detached) - Preserved as is */}
+        {/* Mobile Floating Menu (Detached) - Compact Version */}
         {showMobileMenu && (
           <div className="md:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
-            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                <div>
-                  <div className="font-bold text-gray-900 text-lg">{profile?.first_name} {profile?.last_name}</div>
-                  <div className="text-sm text-gray-500">{session?.user?.email}</div>
+                  <div className="font-bold text-gray-900 text-sm">{profile?.first_name} {profile?.last_name}</div>
+                  <div className="text-xs text-gray-500 truncate max-w-[180px]">{session?.user?.email}</div>
                </div>
-               <span className={`px-3 py-1 text-xs font-bold uppercase tracking-wide rounded-full ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
+               <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
                   {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
                </span>
             </div>
 
-            <div className="p-4 grid grid-cols-1 gap-2">
-              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Dashboard</Link>
-
+            <div className="p-2 grid grid-cols-2 gap-1">
+              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Dashboard</Link>
+              
               {profile?.role === 'landlord' && (
                 <>
-                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Add Property</Link>
-                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/applications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Applications</Link>
-                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Bookings</Link>
+                  <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>All Properties</Link>
+                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Add Property</Link>
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Applications</Link>
+                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Bookings</Link>
+                  <Link href="/schedule" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/schedule') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Schedule</Link>
                 </>
               )}
 
               {profile?.role === 'tenant' && (
                 <>
-                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/applications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>My Applications</Link>
-                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Maintenance</Link>
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>My Applications</Link>
+                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Maintenance</Link>
                 </>
               )}
 
-              <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/messages') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>Messages</Link>
+              <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/messages') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Messages</Link>
               
-              <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
-                <span>Notifications</span>
-                {unreadCount > 0 && <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${isActive('/notifications') ? 'bg-white text-black' : 'bg-black text-white'}`}>{unreadCount}</span>}
+              <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                Notifications
+                {unreadCount > 0 && <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isActive('/notifications') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>{unreadCount}</span>}
               </Link>
             </div>
 
-            <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-2">
-              {profile?.role === 'landlord' && (
-                <Link href="/schedule" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Schedule
-                </Link>
-              )}
-              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
+            <div className="p-2 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-1">
+              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
               </Link>
-              <div className="h-px bg-gray-200/50 my-1 mx-4"></div>
-              <Link href="/settings" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-xl transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Settings
+              <Link href="/settings" onClick={() => setShowMobileMenu(false)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Settings
               </Link>
-              <button onClick={() => { setShowMobileMenu(false); handleSignOut() }} className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl w-full text-left transition-all">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> Sign Out
+              <button onClick={() => { setShowMobileMenu(false); handleSignOut() }} className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> Sign Out
               </button>
             </div>
           </div>
