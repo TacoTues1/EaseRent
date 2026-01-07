@@ -30,7 +30,6 @@ export default function Home() {
   // --- Filter Dropdown State ---
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [showPriceDropdown, setShowPriceDropdown] = useState(false)
-  const [isScrolled, setIsScrolled] = useState(false)
   const filterRef = useRef(null)
   const priceRef = useRef(null)
 
@@ -100,15 +99,6 @@ export default function Home() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [filterRef, priceRef]);
-
-  // Scroll effect for search bar animation
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 100)
-    }
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
 
   // Load session and favorites on mount
   useEffect(() => {
@@ -420,22 +410,22 @@ export default function Home() {
       {/* Featured Properties Section */}
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-1">
         
-        {/* Search and Filter Bar - with Scroll Animation */}
-        <div className={`sticky top-21 z-40 transition-all duration-300 ease-out ${isScrolled ? 'py-2' : 'py-0'}`}>
+        {/* Search and Filter Bar */}
+        <div className="sticky top-3 z-40 py-2">
           <div className="flex justify-center mb-1">
-            <div className={`w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 transition-all duration-300 ease-out ${isScrolled ? 'max-w-2xl p-1.5' : 'max-w-3xl p-2'}`}>
+            <div className="w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 max-w-3xl p-2">
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
                 {/* Search Input */}
                 <div className="relative flex-1">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className={`text-gray-400 transition-all duration-300 ease-out ${isScrolled ? 'w-4 h-4' : 'w-5 h-5'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
                   <input 
                     type="text" 
                     placeholder="Search properties..." 
-                    className={`w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium transition-all duration-300 ease-out ${isScrolled ? 'pl-9 pr-3 py-2 text-xs' : 'pl-10 pr-4 py-2.5 text-sm'}`}
+                    className="w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium pl-10 pr-4 py-2.5 text-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
@@ -446,32 +436,32 @@ export default function Home() {
                 <button
                   onClick={handleSearch}
                   disabled={!canSearch}
-                  className={`rounded-xl font-bold transition-all duration-300 ease-out flex items-center gap-2 ${isScrolled ? 'px-3 py-2 text-xs' : 'px-5 py-2.5 text-sm'} ${
+                  className={`rounded-xl font-bold flex items-center gap-2 px-5 py-2.5 text-sm ${
                     canSearch 
                       ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  {!isScrolled && 'Search'}
+                  Search
                 </button>
 
                 {/* Filter & Sort Controls */}
-                <div className={`flex transition-all duration-300 ease-out ${isScrolled ? 'gap-1' : 'gap-2'}`}>
+                <div className="flex gap-2">
                   {/* Price Filter Button */}
                   <div className="relative" ref={priceRef}>
                     <button 
                       onClick={() => setShowPriceDropdown(!showPriceDropdown)}
-                      className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
+                      className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
                         priceRange.min || priceRange.max
                           ? 'bg-gray-900 text-white border-black' 
                           : 'bg-white text-gray-700 border-gray-200 hover:border-black'
                       }`}
                     >
                       <span>₱</span>
-                      {!isScrolled && 'Price'}
+                      Price
                     {(priceRange.min || priceRange.max) && (
                       <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
                     )}
@@ -505,14 +495,14 @@ export default function Home() {
                 <div className="relative" ref={filterRef}>
                   <button 
                     onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                    className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
+                    className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
                       showFilterDropdown || selectedAmenities.length > 0
                         ? 'bg-gray-900 text-white border-black' 
                         : 'bg-white text-gray-700 border-gray-200 hover:border-black'
                     }`}
                   >
-                    <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
-                    {!isScrolled && 'Filters'}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    Filters
                     {selectedAmenities.length > 0 && (
                       <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
                         {selectedAmenities.length}

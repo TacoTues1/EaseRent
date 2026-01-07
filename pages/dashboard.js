@@ -635,204 +635,135 @@ export default function Dashboard() {
         {/* Search and Filter Bar - ONLY FOR TENANTS - with Scroll Animation */}
         {profile.role === 'tenant' && (
           <>
-            <div className={`sticky top-21 z-40 transition-all duration-300 ease-out ${isScrolled ? 'py-2' : 'py-0'}`}>
-              <div className="flex justify-center mb-8">
-                <div className={`w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 transition-all duration-300 ease-out ${isScrolled ? 'max-w-2xl p-2' : 'max-w-3xl p-3'}`}>
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
-                    {/* Search Input */}
-                    <div className="relative flex-1">
-                      <div className="absolute inset-y-0 left-0 pl-1 flex items-center pointer-events-none">
-                        <svg className={`text-gray-400 transition-all duration-300 ease-out ${isScrolled ? 'w-4 h-4' : 'w-5 h-5'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                      </div>
-                      <input 
-                        type="text" 
-                        placeholder="Search properties..." 
-                        className={`w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium transition-all duration-300 ease-out ${isScrolled ? 'pl-9 pr-3 py-2 text-xs' : 'pl-10 pr-4 py-2.5 text-sm'}`}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
-                      />
-                    </div>
+            <div className="sticky top-3 z-40 py-2">
+          <div className="flex justify-center mb-1">
+            <div className="w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 max-w-3xl p-2">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+                   {/* Search Input */}
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Search properties..." 
+                    className="w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium pl-10 pr-4 py-2.5 text-sm"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
+                  />
+                </div>
 
-                    {/* Search Button */}
-                    <button
-                      onClick={handleSearch}
-                      disabled={!canSearch}
-                      className={`rounded-xl font-bold transition-all duration-300 ease-out flex items-center gap-2 ${isScrolled ? 'px-3 py-2 text-xs' : 'px-5 py-2.5 text-sm'} ${
-                        canSearch 
-                          ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
-                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      {!isScrolled && 'Search'}
-                    </button>
+                {/* Search Button */}
+                <button
+                  onClick={handleSearch}
+                  disabled={!canSearch}
+                  className={`rounded-xl font-bold flex items-center gap-2 px-5 py-2.5 text-sm ${
+                    canSearch 
+                      ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Search
+                </button>
 
                     {/* Filter & Sort Controls */}
-                    <div className={`flex transition-all duration-300 ease-out ${isScrolled ? 'gap-1' : 'gap-2'}`}>
-                      {/* Price Filter Button */}
-                      <div className="relative" ref={priceRef}>
-                        <button 
-                          onClick={() => setShowPriceDropdown(!showPriceDropdown)}
-                          className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
-                            priceRange.min || priceRange.max
-                            ? 'bg-gray-900 text-white border-black' 
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-black'
-                        }`}
-                      >
-                        <span>₱</span>
-                        {!isScrolled && 'Price'}
-                        {(priceRange.min || priceRange.max) && (
-                          <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
-                        )}
-                      </button>
+                <div className="flex gap-2">
+                  {/* Price Filter Button */}
+                  <div className="relative" ref={priceRef}>
+                    <button 
+                      onClick={() => setShowPriceDropdown(!showPriceDropdown)}
+                      className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
+                        priceRange.min || priceRange.max
+                          ? 'bg-gray-900 text-white border-black' 
+                          : 'bg-white text-gray-700 border-gray-200 hover:border-black'
+                      }`}
+                    >
+                      <span>₱</span>
+                      Price
+                    {(priceRange.min || priceRange.max) && (
+                      <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
+                    )}
+                  </button>
 
-                      {showPriceDropdown && (
-                        <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
-                          <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
-                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xs font-bold text-gray-500 uppercase">Price Range</h3>
-                            {(priceRange.min || priceRange.max) && (
-                              <button 
-                                onClick={() => setPriceRange({ min: '', max: '' })}
-                                className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-2 mb-3">
-                            <input 
-                              type="number" 
-                              placeholder="Min Price" 
-                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black"
-                              value={priceRange.min}
-                              onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                            />
-                            <input 
-                              type="number" 
-                              placeholder="Max Price" 
-                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black"
-                              value={priceRange.max}
-                              onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                            />
-                          </div>
-                          <div className="border-t border-gray-100 pt-2">
-                            <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By</p>
-                            <div className="flex flex-col gap-1">
-                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                <input 
-                                  type="radio" 
-                                  name="priceSortDashboard"
-                                  checked={sortBy === 'price_low'}
-                                  onChange={() => setSortBy('price_low')}
-                                  className="w-3.5 h-3.5 cursor-pointer"
-                                />
-                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: Low to High</span>
-                              </label>
-                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                <input 
-                                  type="radio" 
-                                  name="priceSortDashboard"
-                                  checked={sortBy === 'price_high'}
-                                  onChange={() => setSortBy('price_high')}
-                                  className="w-3.5 h-3.5 cursor-pointer"
-                                />
-                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: High to Low</span>
-                              </label>
-                            </div>
-                          </div>
+                  {showPriceDropdown && (
+                    <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                      <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase">Price Range</h3>
+                        {(priceRange.min || priceRange.max) && (
+                          <button onClick={() => setPriceRange({ min: '', max: '' })} className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer">Clear</button>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2 mb-3">
+                        <input type="number" placeholder="Min Price" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black" value={priceRange.min} onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))} />
+                        <input type="number" placeholder="Max Price" className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-black" value={priceRange.max} onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))} />
+                      </div>
+                      <div className="border-t border-gray-100 pt-2">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By</p>
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors"><input type="radio" name="priceSort" checked={sortBy === 'price_low'} onChange={() => setSortBy('price_low')} className="w-3.5 h-3.5 cursor-pointer" /><span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: Low to High</span></label>
+                          <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors"><input type="radio" name="priceSort" checked={sortBy === 'price_high'} onChange={() => setSortBy('price_high')} className="w-3.5 h-3.5 cursor-pointer" /><span className="text-xs font-medium text-gray-700 group-hover:text-black">Price: High to Low</span></label>
                         </div>
-                      )}
+                      </div>
                     </div>
+                  )}
+                </div>
 
                     {/* Filter Button */}
-                    <div className="relative" ref={filterRef}>
-                      <button 
-                        onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                        className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
-                          showFilterDropdown || selectedAmenities.length > 0
-                            ? 'bg-gray-900 text-white border-black' 
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-black'
-                        }`}
-                      >
-                        <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                        </svg>
-                        {!isScrolled && 'Filters'}
-                        {selectedAmenities.length > 0 && (
-                          <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
-                            {selectedAmenities.length}
-                          </span>
-                        )}
-                      </button>
+                <div className="relative" ref={filterRef}>
+                  <button 
+                    onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                    className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
+                      showFilterDropdown || selectedAmenities.length > 0
+                        ? 'bg-gray-900 text-white border-black' 
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-black'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                    Filters
+                    {selectedAmenities.length > 0 && (
+                      <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
+                        {selectedAmenities.length}
+                      </span>
+                    )}
+                  </button>
 
-                      {showFilterDropdown && (
-                        <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
-                          <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
-                          <div className="mb-3">
-                            <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By Date</p>
-                            <div className="flex flex-col gap-1">
-                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                <input 
-                                  type="radio" 
-                                  name="dateSortDashboard"
-                                  checked={sortBy === 'newest'}
-                                  onChange={() => setSortBy('newest')}
-                                  className="w-3.5 h-3.5 cursor-pointer"
-                                />
-                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Newest First</span>
-                              </label>
-                              <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                <input 
-                                  type="radio" 
-                                  name="dateSortDashboard"
-                                  checked={sortBy === 'oldest'}
-                                  onChange={() => setSortBy('oldest')}
-                                  className="w-3.5 h-3.5 cursor-pointer"
-                                />
-                                <span className="text-xs font-medium text-gray-700 group-hover:text-black">Oldest First</span>
-                              </label>
-                            </div>
-                          </div>
-                          <div className="border-t border-gray-100 pt-2">
-                            <div className="flex justify-between items-center mb-1.5">
-                              <h3 className="text-[10px] font-bold text-gray-500 uppercase">Amenities</h3>
-                              {selectedAmenities.length > 0 && (
-                                <button 
-                                  onClick={() => setSelectedAmenities([])}
-                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
-                                >
-                                  Clear
-                                </button>
-                              )}
-                            </div>
-                            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                              {filterAmenities.map(amenity => (
-                                <label key={amenity} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
-                                  <div className="relative flex items-center">
-                                    <input 
-                                      type="checkbox" 
-                                      className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all"
-                                      checked={selectedAmenities.includes(amenity)}
-                                      onChange={() => toggleAmenity(amenity)}
-                                    />
-                                    <svg className="absolute w-2.5 h-2.5 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                                    </svg>
-                                  </div>
-                                  <span className="text-xs font-medium text-gray-700 group-hover:text-black transition-colors">{amenity}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
+                  {/* Filter Dropdown Content */}
+                  {showFilterDropdown && (
+                    <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                      <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
+                      <div className="mb-3">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By Date</p>
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors"><input type="radio" name="dateSort" checked={sortBy === 'newest'} onChange={() => setSortBy('newest')} className="w-3.5 h-3.5 cursor-pointer" /><span className="text-xs font-medium text-gray-700 group-hover:text-black">Newest First</span></label>
+                          <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors"><input type="radio" name="dateSort" checked={sortBy === 'oldest'} onChange={() => setSortBy('oldest')} className="w-3.5 h-3.5 cursor-pointer" /><span className="text-xs font-medium text-gray-700 group-hover:text-black">Oldest First</span></label>
                         </div>
-                      )}
+                      </div>
+                      <div className="border-t border-gray-100 pt-2">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <h3 className="text-[10px] font-bold text-gray-500 uppercase">Amenities</h3>
+                          {selectedAmenities.length > 0 && (
+                            <button onClick={() => setSelectedAmenities([])} className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer">Clear</button>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                          {filterAmenities.map(amenity => (
+                            <label key={amenity} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors">
+                              <div className="relative flex items-center"><input type="checkbox" className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all" checked={selectedAmenities.includes(amenity)} onChange={() => toggleAmenity(amenity)} /><svg className="absolute w-2.5 h-2.5 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg></div>
+                              <span className="text-xs font-medium text-gray-700 group-hover:text-black transition-colors">{amenity}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     </div>
+                  )}
+                </div>
                   </div>
                 </div>
               </div>
