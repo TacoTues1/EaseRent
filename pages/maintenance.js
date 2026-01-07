@@ -12,12 +12,16 @@ export default function MaintenancePage() {
   const [properties, setProperties] = useState([])
   const [occupiedProperty, setOccupiedProperty] = useState(null) 
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [responseText, setResponseText] = useState('')
   
-  // File Upload State
-  const [proofFile, setProofFile] = useState(null)
+  // Filter & Search State
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [searchId, setSearchId] = useState('')
+  
+  // File Upload State (supports multiple files)
+  const [proofFiles, setProofFiles] = useState([])
   const [uploading, setUploading] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -181,49 +185,80 @@ export default function MaintenancePage() {
     toast.success('Response sent to tenant!')
   }
 
-  // --- File Upload Logic ---
-  async function uploadProofFile() {
-    if (!proofFile) return null
+  // --- File Upload Logic (Multiple Files) ---
+  async function uploadProofFiles() {
+    if (proofFiles.length === 0) return []
 
-    const fileExt = proofFile.name.split('.').pop()
-    const fileName = `${Math.random()}.${fileExt}`
-    const filePath = `${session.user.id}/${fileName}`
+    const uploadPromises = proofFiles.map(async (file) => {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+      const filePath = `${session.user.id}/${fileName}`
 
-    const { error: uploadError } = await supabase.storage
-      .from('maintenance-uploads')
-      .upload(filePath, proofFile)
+      const { error: uploadError } = await supabase.storage
+        .from('maintenance-uploads')
+        .upload(filePath, file)
 
-    if (uploadError) {
-      throw uploadError
+      if (uploadError) {
+        throw uploadError
+      }
+
+      const { data } = supabase.storage
+        .from('maintenance-uploads')
+        .getPublicUrl(filePath)
+
+      return data.publicUrl
+    })
+
+    return Promise.all(uploadPromises)
+  }
+
+  function handleFileSelect(e) {
+    const newFiles = Array.from(e.target.files)
+    const maxFiles = 10
+    const maxSize = 50 * 1024 * 1024 // 50MB per file
+
+    // Filter valid files
+    const validFiles = newFiles.filter(file => {
+      if (file.size > maxSize) {
+        toast.error(`${file.name} exceeds 50MB limit`)
+        return false
+      }
+      return true
+    })
+
+    // Check total count
+    if (proofFiles.length + validFiles.length > maxFiles) {
+      toast.error(`Maximum ${maxFiles} files allowed`)
+      return
     }
 
-    const { data } = supabase.storage
-      .from('maintenance-uploads')
-      .getPublicUrl(filePath)
+    setProofFiles(prev => [...prev, ...validFiles])
+  }
 
-    return data.publicUrl
+  function removeFile(index) {
+    setProofFiles(prev => prev.filter((_, i) => i !== index))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
     
-    // Validation: Require Proof
-    if (!proofFile) {
-        toast.error('You must attach a picture or video as proof.')
+    // Validation: Require at least one proof file
+    if (proofFiles.length === 0) {
+        toast.error('You must attach at least one picture or video as proof.')
         return
     }
 
     setUploading(true)
-    const toastId = toast.loading('Uploading proof...')
+    const toastId = toast.loading(`Uploading ${proofFiles.length} file(s)...`)
 
     try {
-        const attachmentUrl = await uploadProofFile()
+        const attachmentUrls = await uploadProofFiles()
 
         const { data: insertData, error } = await supabase.from('maintenance_requests').insert({
           ...formData,
           tenant: session.user.id,
-          status: 'pending', // Default status is now Pending
-          attachment_url: attachmentUrl // Save the file URL
+          status: 'pending',
+          attachment_urls: attachmentUrls // Save array of file URLs
         }).select('*, properties(title, landlord)')
     
         if (error) throw error
@@ -244,8 +279,8 @@ export default function MaintenancePage() {
           }
     
           setFormData({ property_id: '', title: '', description: '', priority: 'normal' })
-          setProofFile(null) // Reset file
-          setShowForm(false)
+          setProofFiles([]) // Reset files
+          setShowModal(false)
           loadRequests()
           toast.success('Request submitted successfully!', { id: toastId })
         }
@@ -259,13 +294,20 @@ export default function MaintenancePage() {
 
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
+  // Filter requests based on status and search
+  const filteredRequests = requests.filter(req => {
+    const matchesStatus = statusFilter === 'all' || req.status === statusFilter
+    const matchesSearch = searchId === '' || req.id.toLowerCase().includes(searchId.toLowerCase())
+    return matchesStatus && matchesSearch
+  })
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans text-black">
       <Toaster position="top-center" />
       <div className="max-w-5xl mx-auto">
         
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight uppercase">
               {profile?.role === 'landlord' ? 'Maintenance Board' : 'My Maintenance'}
@@ -278,152 +320,249 @@ export default function MaintenancePage() {
           </div>
           {profile?.role === 'tenant' && (
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => setShowModal(true)}
               className="w-full sm:w-auto px-6 py-3 bg-black text-white hover:bg-gray-800 rounded-xl font-bold text-sm shadow-lg cursor-pointer"
             >
-              {showForm ? 'Cancel Request' : '+ New Request'}
+              + New Request
             </button>
           )}
         </div>
 
-        {/* Request Form */}
-        {showForm && (
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 mb-8 animate-in slide-in-from-top-4">
-            <h2 className="text-lg font-bold mb-6 border-b border-gray-100 pb-2">Submit Maintenance Request</h2>
-            {properties.length === 0 ? (
-              <div className="p-8 text-center bg-yellow-50 rounded-xl border border-yellow-100">
-                <svg className="mx-auto h-12 w-12 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <h3 className="text-lg font-bold text-yellow-800 mb-2">No Active Lease</h3>
-                <p className="text-sm text-yellow-700 mb-4">
-                  You can only submit requests for properties you are currently renting.
-                </p>
-                <button onClick={() => router.push('/applications')} className="px-6 py-2 bg-black text-white rounded-lg font-bold text-sm cursor-pointer">View Applications</button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {/* Property Selector */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Property</label>
-                  <div className="w-full border bg-gray-50 rounded-xl px-4 py-3 flex items-center gap-3">
-                    <div className="bg-green-100 p-1.5 rounded-full">
-                        <svg className="w-4 h-4 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                    </div>
-                    <span className="font-bold text-sm">{occupiedProperty?.title || properties[0]?.title}</span>
-                    <span className="ml-auto text-[10px] uppercase font-bold text-green-700 bg-green-100 px-2 py-1 rounded">Current Home</span>
-                  </div>
-                </div>
+        {/* Filter & Search Bar */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-col sm:flex-row gap-3">
+          {/* Search by ID */}
+          <div className="flex-1 relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by Request ID..."
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+            />
+          </div>
+          
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-500 uppercase">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="closed">Closed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
 
-                {/* Title & Priority */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Issue Title</label>
-                      <input
-                        type="text"
+        {/* New Request Modal */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
+                <h2 className="text-lg font-bold">New Maintenance Request</h2>
+                <button 
+                  onClick={() => setShowModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="p-6">
+                {properties.length === 0 ? (
+                  <div className="p-8 text-center bg-yellow-50 rounded-xl border border-yellow-100">
+                    <svg className="mx-auto h-12 w-12 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h3 className="text-lg font-bold text-yellow-800 mb-2">No Active Lease</h3>
+                    <p className="text-sm text-yellow-700 mb-4">
+                      You can only submit requests for properties you are currently renting.
+                    </p>
+                    <button onClick={() => router.push('/applications')} className="px-6 py-2 bg-black text-white rounded-lg font-bold text-sm cursor-pointer">View Applications</button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    {/* Property Selector */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Property</label>
+                      <div className="w-full border bg-gray-50 rounded-xl px-4 py-3 flex items-center gap-3">
+                        <div className="bg-green-100 p-1.5 rounded-full">
+                            <svg className="w-4 h-4 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                        </div>
+                        <span className="font-bold text-sm">{occupiedProperty?.title || properties[0]?.title}</span>
+                        <span className="ml-auto text-[10px] uppercase font-bold text-green-700 bg-green-100 px-2 py-1 rounded">Current Home</span>
+                      </div>
+                    </div>
+
+                    {/* Title & Priority */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Issue Title</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Leaking faucet in kitchen"
+                            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+                            value={formData.title}
+                            onChange={e => setFormData({ ...formData, title: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Priority</label>
+                          <select
+                            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black outline-none bg-white cursor-pointer"
+                            value={formData.priority}
+                            onChange={e => setFormData({ ...formData, priority: e.target.value })}
+                          >
+                            <option value="low">Low (Cosmetic)</option>
+                            <option value="normal">Normal (Functional)</option>
+                            <option value="high">High (Urgent)</option>
+                          </select>
+                        </div>
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Description</label>
+                      <textarea
+                        rows="4"
                         required
-                        placeholder="e.g. Leaking faucet in kitchen"
-                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black focus:border-transparent outline-none"
-                        value={formData.title}
-                        onChange={e => setFormData({ ...formData, title: e.target.value })}
+                        placeholder="Describe the issue in detail..."
+                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black focus:border-transparent outline-none resize-none"
+                        value={formData.description}
+                        onChange={e => setFormData({ ...formData, description: e.target.value })}
                       />
                     </div>
+
+                    {/* File Upload (Required - Multiple Files) */}
                     <div>
-                      <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Priority</label>
-                      <select
-                        className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black outline-none bg-white cursor-pointer"
-                        value={formData.priority}
-                        onChange={e => setFormData({ ...formData, priority: e.target.value })}
-                      >
-                        <option value="low">Low (Cosmetic)</option>
-                        <option value="normal">Normal (Functional)</option>
-                        <option value="high">High (Urgent)</option>
-                      </select>
-                    </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">Description</label>
-                  <textarea
-                    rows="4"
-                    required
-                    placeholder="Describe the issue in detail..."
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-black focus:border-transparent outline-none resize-none"
-                    value={formData.description}
-                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                  />
-                </div>
-
-                {/* File Upload (Required) */}
-                <div>
-                    <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">
-                        Proof (Photo or Video) <span className="text-red-500">*Required</span>
-                    </label>
-                    <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${proofFile ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-black'}`}>
-                        <input 
-                            type="file" 
-                            accept="image/*,video/*"
-                            id="proof-upload"
-                            className="hidden"
-                            onChange={(e) => setProofFile(e.target.files[0])}
-                        />
-                        <label htmlFor="proof-upload" className="cursor-pointer w-full h-full block">
-                            {proofFile ? (
-                                <div className="flex items-center justify-center gap-2 text-green-700 font-bold">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                    {proofFile.name}
-                                </div>
-                            ) : (
+                        <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5">
+                            Proof (Photos or Videos) <span className="text-red-500">*At least 1 required</span>
+                            <span className="text-gray-400 ml-2">({proofFiles.length}/10 files)</span>
+                        </label>
+                        <div className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${proofFiles.length > 0 ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-black'}`}>
+                            <input 
+                                type="file" 
+                                accept="image/*,video/*"
+                                id="proof-upload"
+                                className="hidden"
+                                multiple
+                                onChange={handleFileSelect}
+                            />
+                            <label htmlFor="proof-upload" className="cursor-pointer w-full h-full block">
                                 <div className="flex flex-col items-center gap-1 text-gray-500">
                                     <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                    <span className="text-sm font-bold">Click to upload photo or video</span>
-                                    <span className="text-xs">Max 50MB</span>
+                                    <span className="text-sm font-bold">Click to add photos or videos</span>
+                                    <span className="text-xs">Max 10 files, 50MB each</span>
                                 </div>
-                            )}
-                        </label>
+                            </label>
+                        </div>
+                        
+                        {/* File Previews */}
+                        {proofFiles.length > 0 && (
+                            <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                                {proofFiles.map((file, index) => (
+                                    <div key={index} className="relative group">
+                                        <div className="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
+                                            {file.type.startsWith('video/') ? (
+                                                <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                </div>
+                                            ) : (
+                                                <img 
+                                                    src={URL.createObjectURL(file)} 
+                                                    alt={`Preview ${index + 1}`}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeFile(index)}
+                                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                </div>
 
-                <div className="flex justify-end pt-2">
-                    <button 
-                        type="submit" 
-                        disabled={uploading}
-                        className="px-8 py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                    >
-                        {uploading ? 'Uploading Proof & Submitting...' : 'Submit Request'}
-                    </button>
-                </div>
-              </form>
-            )}
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                        <button 
+                            type="button"
+                            onClick={() => setShowModal(false)}
+                            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-50 cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            type="submit" 
+                            disabled={uploading}
+                            className="px-8 py-3 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg cursor-pointer"
+                        >
+                            {uploading ? 'Submitting...' : 'Submit Request'}
+                        </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {/* Requests List */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {loading ? (
             <div className="text-center py-20"><div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div></div>
-          ) : requests.length === 0 ? (
+          ) : filteredRequests.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
               <p className="text-gray-900 font-bold mb-1">
-                {profile?.role === 'landlord' ? 'All caught up!' : 'No requests yet.'}
+                {requests.length === 0 
+                  ? (profile?.role === 'landlord' ? 'All caught up!' : 'No requests yet.')
+                  : 'No matching requests found.'}
               </p>
               <p className="text-sm text-gray-500">
-                {profile?.role === 'landlord' ? 'No open maintenance requests.' : 'Submit a request above if something needs fixing.'}
+                {requests.length === 0 
+                  ? (profile?.role === 'landlord' ? 'No open maintenance requests.' : 'Click "+ New Request" to submit one.')
+                  : 'Try adjusting your search or filter.'}
               </p>
             </div>
           ) : (
-            requests.map(req => (
+            filteredRequests.map(req => (
               <div key={req.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-                {/* Header Strip */}
+                {/* Header Strip with ID and Status */}
                 <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div className="flex items-center gap-3">
-                        <span className={`px-3 py-1 text-[10px] uppercase font-bold rounded-full tracking-wider ${
-                            statusColors[req.status] || 'bg-gray-100 text-gray-800'
-                        }`}>
-                            {req.status?.replace('_', ' ')}
-                        </span>
-                        <span className="text-xs text-gray-400 font-medium">#{req.id.substring(0, 8)}</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-400">ID:</span>
+                          <span className="text-xs font-mono font-bold text-black bg-gray-200 px-2 py-1 rounded">{req.id.substring(0, 8).toUpperCase()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-400">Status:</span>
+                          <span className={`px-3 py-1 text-[10px] uppercase font-bold rounded-full tracking-wider ${
+                              statusColors[req.status] || 'bg-gray-100 text-gray-800'
+                          }`}>
+                              {req.status?.replace('_', ' ')}
+                          </span>
+                        </div>
                     </div>
                     <span className="text-xs font-bold text-gray-500">
                         {new Date(req.created_at).toLocaleDateString()} at {new Date(req.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -492,8 +631,34 @@ export default function MaintenancePage() {
                       )}
                     </div>
 
-                    {/* Proof Media Preview */}
-                    {req.attachment_url && (
+                    {/* Proof Media Preview (Multiple) */}
+                    {req.attachment_urls && req.attachment_urls.length > 0 && (
+                        <div className="w-full md:w-72 flex-shrink-0">
+                            <p className="text-xs font-bold uppercase text-gray-400 mb-2">Proof of Issue ({req.attachment_urls.length} file{req.attachment_urls.length > 1 ? 's' : ''})</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {req.attachment_urls.map((url, index) => (
+                                    <a key={index} href={url} target="_blank" rel="noreferrer" className="block group relative overflow-hidden rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all">
+                                        {url.match(/\.(mp4|webm|ogg|mov)$/i) ? (
+                                            <div className="w-full h-20 bg-gray-900 flex items-center justify-center">
+                                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                            </div>
+                                        ) : (
+                                            <img src={url} alt={`Proof ${index + 1}`} className="w-full h-20 object-cover transform group-hover:scale-105 transition-transform" />
+                                        )}
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none"></div>
+                                        <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[8px] px-1.5 py-0.5 rounded backdrop-blur-sm">
+                                            {index + 1}
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {/* Backward compatibility for old single attachment_url */}
+                    {req.attachment_url && !req.attachment_urls && (
                         <div className="w-full md:w-64 flex-shrink-0">
                             <p className="text-xs font-bold uppercase text-gray-400 mb-2">Proof of Issue</p>
                             <a href={req.attachment_url} target="_blank" rel="noreferrer" className="block group relative overflow-hidden rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all">

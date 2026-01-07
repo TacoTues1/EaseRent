@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { createNotification } from '../lib/notifications'
 import { useRouter } from 'next/router'
 import toast from 'react-hot-toast'
 import Footer from '../components/Footer'
@@ -42,6 +43,7 @@ export default function Dashboard() {
   // --- Filter Dropdown State ---
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [showPriceDropdown, setShowPriceDropdown] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
   const filterRef = useRef(null)
   const priceRef = useRef(null)
   
@@ -140,6 +142,15 @@ export default function Dashboard() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [filterRef, priceRef]);
+
+  // Scroll effect for search bar animation
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 100)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Load properties on profile load (no auto-search for tenants)
   // Search is triggered manually via Search button
@@ -542,7 +553,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 relative z-10 flex-1">
         
         {/* Tenant Current Occupancy Section */}
@@ -621,66 +632,68 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Search and Filter Bar - ONLY FOR TENANTS */}
+        {/* Search and Filter Bar - ONLY FOR TENANTS - with Scroll Animation */}
         {profile.role === 'tenant' && (
           <>
-            <div className="flex justify-center mb-8">
-              <div className="w-full max-w-3xl bg-white p-3 rounded-2xl shadow-lg border border-gray-100 relative z-30">
-                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                  {/* Search Input */}
-                  <div className="relative flex-1">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className={`sticky top-21 z-40 transition-all duration-300 ease-out ${isScrolled ? 'py-2' : 'py-0'}`}>
+              <div className="flex justify-center mb-8">
+                <div className={`w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 transition-all duration-300 ease-out ${isScrolled ? 'max-w-2xl p-2' : 'max-w-3xl p-3'}`}>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
+                    {/* Search Input */}
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-0 pl-1 flex items-center pointer-events-none">
+                        <svg className={`text-gray-400 transition-all duration-300 ease-out ${isScrolled ? 'w-4 h-4' : 'w-5 h-5'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Search properties..." 
+                        className={`w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium transition-all duration-300 ease-out ${isScrolled ? 'pl-9 pr-3 py-2 text-xs' : 'pl-10 pr-4 py-2.5 text-sm'}`}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
+                      />
+                    </div>
+
+                    {/* Search Button */}
+                    <button
+                      onClick={handleSearch}
+                      disabled={!canSearch}
+                      className={`rounded-xl font-bold transition-all duration-300 ease-out flex items-center gap-2 ${isScrolled ? 'px-3 py-2 text-xs' : 'px-5 py-2.5 text-sm'} ${
+                        canSearch 
+                          ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
-                    </div>
-                    <input 
-                      type="text" 
-                      placeholder="Search properties..." 
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black text-sm font-medium"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && canSearch && handleSearch()}
-                    />
-                  </div>
+                      {!isScrolled && 'Search'}
+                    </button>
 
-                  {/* Search Button */}
-                  <button
-                    onClick={handleSearch}
-                    disabled={!canSearch}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 ${
-                      canSearch 
-                        ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    Search
-                  </button>
-
-                  {/* Filter & Sort Controls */}
-                  <div className="flex gap-2">
-                    {/* Price Filter Button */}
-                    <div className="relative" ref={priceRef}>
-                      <button 
-                        onClick={() => setShowPriceDropdown(!showPriceDropdown)}
-                        className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer ${
-                          priceRange.min || priceRange.max
+                    {/* Filter & Sort Controls */}
+                    <div className={`flex transition-all duration-300 ease-out ${isScrolled ? 'gap-1' : 'gap-2'}`}>
+                      {/* Price Filter Button */}
+                      <div className="relative" ref={priceRef}>
+                        <button 
+                          onClick={() => setShowPriceDropdown(!showPriceDropdown)}
+                          className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
+                            priceRange.min || priceRange.max
                             ? 'bg-gray-900 text-white border-black' 
                             : 'bg-white text-gray-700 border-gray-200 hover:border-black'
                         }`}
                       >
                         <span>₱</span>
-                        Price
+                        {!isScrolled && 'Price'}
                         {(priceRange.min || priceRange.max) && (
                           <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
                         )}
                       </button>
 
                       {showPriceDropdown && (
-                        <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                        <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                          <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                           <div className="flex justify-between items-center mb-2">
                             <h3 className="text-xs font-bold text-gray-500 uppercase">Price Range</h3>
                             {(priceRange.min || priceRange.max) && (
@@ -741,16 +754,16 @@ export default function Dashboard() {
                     <div className="relative" ref={filterRef}>
                       <button 
                         onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                        className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap cursor-pointer ${
+                        className={`flex items-center gap-1.5 rounded-xl font-bold transition-all duration-300 ease-out border whitespace-nowrap cursor-pointer ${isScrolled ? 'px-2 py-2 text-[10px]' : 'px-3 py-2.5 text-xs'} ${
                           showFilterDropdown || selectedAmenities.length > 0
                             ? 'bg-gray-900 text-white border-black' 
                             : 'bg-white text-gray-700 border-gray-200 hover:border-black'
                         }`}
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`transition-all duration-300 ease-out ${isScrolled ? 'w-3 h-3' : 'w-4 h-4'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                         </svg>
-                        Filters
+                        {!isScrolled && 'Filters'}
                         {selectedAmenities.length > 0 && (
                           <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
                             {selectedAmenities.length}
@@ -759,7 +772,8 @@ export default function Dashboard() {
                       </button>
 
                       {showFilterDropdown && (
-                        <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                        <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                          <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                           <div className="mb-3">
                             <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By Date</p>
                             <div className="flex flex-col gap-1">
@@ -822,6 +836,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
+            </div>
             </div>
           </>
         )}
@@ -892,7 +907,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className={profile.role === 'tenant' ? 
-                "grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" : 
+                "grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4" : 
                 "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
               }>
             {(profile.role === 'tenant' ? 
@@ -1120,7 +1135,7 @@ export default function Dashboard() {
                 </svg>
               </span>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {guestFavorites.slice(0, maxDisplayItems).map((property) => {
                   const images = getPropertyImages(property)
                   const currentIndex = currentImageIndex[property.id] || 0
@@ -1232,7 +1247,7 @@ export default function Dashboard() {
                 </svg>
               </span>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {topRated.slice(0, maxDisplayItems).map((property) => {
                   const images = getPropertyImages(property)
                   const currentIndex = currentImageIndex[property.id] || 0

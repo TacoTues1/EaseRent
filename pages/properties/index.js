@@ -382,7 +382,8 @@ export default function AllProperties() {
                   </button>
 
                   {showPriceDropdown && (
-                    <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                    <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                      <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                       <div className="flex justify-between items-center mb-2">
                         <h3 className="text-xs font-bold text-gray-500 uppercase">Price Range</h3>
                         {(priceRange.min || priceRange.max) && (
@@ -461,7 +462,8 @@ export default function AllProperties() {
                   </button>
 
                   {showFilterDropdown && (
-                    <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 z-50">
+                    <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
+                      <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                       <div className="mb-3">
                         <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">Sort By Date</p>
                         <div className="flex flex-col gap-1">

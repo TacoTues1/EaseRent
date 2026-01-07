@@ -189,18 +189,10 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="bg-white  border-black">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-black tracking-tight">Settings</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your account and profile information</p>
-        </div>
-      </div>
-
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Profile Information Card */}
-        <div className="bg-white border-2 border-black overflow-hidden mb-8 rounded-xl">
+        <div className="bg-white overflow-hidden mb-8 rounded-xl">
           <div className="px-6 py-4 bg-white border-b-2 border-black">
             <h2 className="text-lg font-bold text-black uppercase tracking-wider">Profile Information</h2>
           </div>
@@ -389,19 +381,18 @@ export default function Settings() {
             </div>
 
             {/* Role (Read-only) */}
-            <div className="mb-8">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+            <div className="mb-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
                 Account Type
               </label>
-              <div className="flex items-center gap-3">
-                <span className={`px-4 py-2 text-sm font-bold border-2 border-black rounded-full inline-flex items-center gap-2 ${
+              <div className="flex flex-col gap-2">
+                <span className={`w-fit px-2 py-1 text-sm font-bold border-2 border-black rounded-full inline-flex items-center gap-2 ${
                   profile?.role === 'landlord' 
                     ? 'bg-black text-white' 
                     : 'bg-white text-black'
                 }`}>
-                  {profile?.role === 'landlord' ? '🏢 Landlord Account' : '🏠 Tenant Account'}
+                  {profile?.role === 'landlord' ? 'Landlord Account' : 'Tenant Account'}
                 </span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Read Only</span>
               </div>
             </div>
 
@@ -423,49 +414,6 @@ export default function Settings() {
               </button>
             </div>
           </form>
-        </div>
-
-        {/* Account Actions Card */}
-        <div className="bg-white border-2 border-black overflow-hidden rounded-xl shadow-md">
-          <div className="px-6 py-4 bg-white border-b-2 border-black">
-            <h2 className="text-lg font-bold text-black uppercase tracking-wider">Account Actions</h2>
-          </div>
-          
-          <div className="p-6">
-            <div className="space-y-6">
-              {/* Sign Out */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-black">Sign Out</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Securely log out of your account on this device</div>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="px-6 py-2 border-2 border-black bg-white text-black hover:bg-black hover:text-white font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Sign Out
-                </button>
-              </div>
-
-              {/* Account Info */}
-              <div className="pt-6 border-t border-gray-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-gray-400 font-mono">
-                  <div>
-                    <span className="font-bold uppercase tracking-wider text-gray-300 mr-2">Joined</span>
-                    {profile?.created_at && new Date(profile.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </div>
-                  <div>
-                    <span className="font-bold uppercase tracking-wider text-gray-300 mr-2">ID</span>
-                    {session.user.id}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

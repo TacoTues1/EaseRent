@@ -49,6 +49,33 @@ export default function NotificationsPage() {
     )
   }
 
+  async function markAsUnread(id, e) {
+    e.stopPropagation()
+    await supabase
+      .from('notifications')
+      .update({ read: false })
+      .eq('id', id)
+    
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, read: false } : n)
+    )
+    toast.success('Marked as unread')
+  }
+
+  async function toggleReadStatus(id, currentStatus, e) {
+    e.stopPropagation()
+    const newStatus = !currentStatus
+    await supabase
+      .from('notifications')
+      .update({ read: newStatus })
+      .eq('id', id)
+    
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, read: newStatus } : n)
+    )
+    toast.success(newStatus ? 'Marked as read' : 'Marked as unread')
+  }
+
   function handleNotificationClick(notif) {
     // Mark as read
     if (!notif.read) {
@@ -175,12 +202,12 @@ export default function NotificationsPage() {
             notifications.map(notif => (
               <div
                 key={notif.id}
+                onClick={() => handleNotificationClick(notif)}
                 className={`group relative p-5 rounded-xl border transition-all cursor-pointer ${
                   !notif.read 
                     ? 'bg-white border-black shadow-sm' 
                     : 'bg-gray-50 border-transparent hover:bg-white hover:border-gray-200'
                 }`}
-                onClick={() => handleNotificationClick(notif)}
               >
                 <div className="flex justify-between items-start gap-4">
                   <div className="flex-1">
@@ -201,22 +228,35 @@ export default function NotificationsPage() {
                     <p className={`text-sm mb-1 ${!notif.read ? 'font-bold text-black' : 'font-medium text-gray-600'}`}>
                       {notif.message}
                     </p>
-                    
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-black mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span>View Details</span>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-                    </div>
                   </div>
 
-                  <button
-                    onClick={(e) => deleteNotification(notif.id, e)}
-                    className="flex-shrink-0 p-2 text-gray-300 hover:text-black transition-colors cursor-pointer"
-                    title="Delete notification"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  {/* Action Icons */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => toggleReadStatus(notif.id, notif.read, e)}
+                      className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                        notif.read 
+                          ? 'text-gray-400 hover:text-black hover:bg-gray-100' 
+                          : 'text-green-500 hover:text-green-600 hover:bg-green-50'
+                      }`}
+                      title={notif.read ? 'Mark as unread' : 'Mark as read'}
+                    >
+                      {notif.read ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => deleteNotification(notif.id, e)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      title="Delete"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))

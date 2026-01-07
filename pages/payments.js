@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast, { Toaster } from 'react-hot-toast'
 import Link from 'next/link'
+import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 
 export default function PaymentsPage() {
   const router = useRouter()
@@ -31,6 +32,7 @@ export default function PaymentsPage() {
   const [billReceiptPreview, setBillReceiptPreview] = useState(null)
   const [showBillReceiptModal, setShowBillReceiptModal] = useState(false)
   const [selectedBillReceipt, setSelectedBillReceipt] = useState(null)
+  const [paypalProcessing, setPaypalProcessing] = useState(false)
   
   // Edit bill states
   const [showEditModal, setShowEditModal] = useState(false)
@@ -1173,7 +1175,7 @@ export default function PaymentsPage() {
                 {/* Payment Method Selection */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('cash')}
@@ -1183,7 +1185,8 @@ export default function PaymentsPage() {
                           : 'border-gray-200 bg-white hover:border-gray-400 text-black'
                       }`}
                     >
-                      <span className="font-bold">Cash</span>
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                      <span className="font-bold text-sm">Cash</span>
                     </button>
                     
                     <button
@@ -1204,7 +1207,23 @@ export default function PaymentsPage() {
                             : 'border-gray-200 bg-white hover:border-gray-400 text-black'
                       }`}
                     >
-                      <span className="font-bold">QR Code</span>
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                      <span className="font-bold text-sm">QR Code</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('paypal')}
+                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
+                        paymentMethod === 'paypal' 
+                          ? 'border-[#0070ba] bg-[#0070ba] text-white' 
+                          : 'border-gray-200 bg-white hover:border-[#0070ba] text-black'
+                      }`}
+                    >
+                      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c2.078 0 3.604.476 4.538 1.415.924.93 1.251 2.262.973 3.96l-.006.04v.022c-.298 1.947-1.268 3.479-2.884 4.558-1.569 1.047-3.618 1.578-6.092 1.578h-1.62a.77.77 0 0 0-.759.688l-.946 5.993a.641.641 0 0 1-.633.543h-.68zm13.795-14.2l-.006.046c-.37 2.416-1.511 4.249-3.395 5.452-1.813 1.158-4.227 1.745-7.176 1.745h-1.62c-.682 0-1.261.461-1.417 1.122l-.946 5.993a.641.641 0 0 1-.633.543H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c4.214 0 6.716 1.967 7.685 5.397z"/>
+                      </svg>
+                      <span className="font-bold text-sm">PayPal</span>
                     </button>
                   </div>
                 </div>
@@ -1273,21 +1292,153 @@ export default function PaymentsPage() {
                   </div>
                 )}
 
+                {/* PayPal Payment Flow */}
+                {paymentMethod === 'paypal' && (
+                  <div className="space-y-4 bg-[#ffc439]/10 border border-[#0070ba]/30 p-4 rounded-xl">
+                    <div className="text-center mb-4">
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with PayPal</p>
+                      <p className="text-xs text-gray-500">Secure payment powered by PayPal</p>
+                    </div>
+                    
+                    <PayPalScriptProvider options={{ 
+                      clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || 'test',
+                      currency: 'USD'
+                    }}>
+                      <PayPalButtons
+                        style={{ 
+                          layout: 'vertical',
+                          color: 'blue',
+                          shape: 'rect',
+                          label: 'pay'
+                        }}
+                        disabled={paypalProcessing}
+                        createOrder={async () => {
+                          setPaypalProcessing(true)
+                          try {
+                            const total = (
+                              parseFloat(selectedBill.rent_amount || 0) +
+                              parseFloat(selectedBill.water_bill || 0) +
+                              parseFloat(selectedBill.electrical_bill || 0) +
+                              parseFloat(selectedBill.other_bills || 0)
+                            ).toFixed(2)
+
+                            const response = await fetch('/api/paypal/create-order', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                amount: total,
+                                currency: 'USD',
+                                description: `EaseRent Payment - ${selectedBill.properties?.title}`,
+                                paymentRequestId: selectedBill.id
+                              })
+                            })
+
+                            const data = await response.json()
+                            if (data.orderId) {
+                              return data.orderId
+                            }
+                            throw new Error(data.error || 'Failed to create order')
+                          } catch (error) {
+                            console.error('PayPal Create Order Error:', error)
+                            toast.error('Failed to initialize PayPal payment')
+                            setPaypalProcessing(false)
+                            throw error
+                          }
+                        }}
+                        onApprove={async (data) => {
+                          try {
+                            const response = await fetch('/api/paypal/capture-order', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ orderId: data.orderID })
+                            })
+
+                            const captureData = await response.json()
+
+                            if (captureData.success) {
+                              // Update payment request status
+                              await supabase
+                                .from('payment_requests')
+                                .update({
+                                  status: 'pending_confirmation',
+                                  paid_at: new Date().toISOString(),
+                                  payment_method: 'paypal',
+                                  tenant_reference_number: captureData.transactionId
+                                })
+                                .eq('id', selectedBill.id)
+
+                              // Notify landlord
+                              const total = (
+                                parseFloat(selectedBill.rent_amount || 0) +
+                                parseFloat(selectedBill.water_bill || 0) +
+                                parseFloat(selectedBill.electrical_bill || 0) +
+                                parseFloat(selectedBill.other_bills || 0)
+                              ).toLocaleString('en-US', { minimumFractionDigits: 2 })
+
+                              await supabase.from('notifications').insert({
+                                recipient: selectedBill.landlord,
+                                actor: session.user.id,
+                                type: 'payment_confirmation_needed',
+                                message: `Tenant paid ₱${total} for ${selectedBill.properties?.title || 'property'} via PayPal (Transaction: ${captureData.transactionId}). Please confirm payment receipt.`,
+                                link: '/payments',
+                                data: { payment_request_id: selectedBill.id }
+                              })
+
+                              setShowPaymentModal(false)
+                              setSelectedBill(null)
+                              setPaymentMethod('cash')
+                              loadPaymentRequests()
+                              toast.success('PayPal payment successful! Waiting for landlord confirmation.')
+                            } else {
+                              throw new Error(captureData.error || 'Payment capture failed')
+                            }
+                          } catch (error) {
+                            console.error('PayPal Capture Error:', error)
+                            toast.error('Payment failed. Please try again.')
+                          } finally {
+                            setPaypalProcessing(false)
+                          }
+                        }}
+                        onError={(err) => {
+                          console.error('PayPal Error:', err)
+                          toast.error('PayPal payment failed')
+                          setPaypalProcessing(false)
+                        }}
+                        onCancel={() => {
+                          toast.error('Payment cancelled')
+                          setPaypalProcessing(false)
+                        }}
+                      />
+                    </PayPalScriptProvider>
+
+                    {paypalProcessing && (
+                      <div className="text-center py-2">
+                        <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-[#0070ba]"></div>
+                        <p className="text-xs text-gray-500 mt-2">Processing payment...</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Buttons */}
                 <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={submitPayment}
-                    disabled={uploadingProof}
-                    className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
-                  >
-                    {uploadingProof ? 'Submitting...' : 'Submit Payment'}
-                  </button>
+                  {paymentMethod !== 'paypal' && (
+                    <button
+                      onClick={submitPayment}
+                      disabled={uploadingProof}
+                      className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
+                    >
+                      {uploadingProof ? 'Submitting...' : 'Submit Payment'}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowPaymentModal(false)
                       setSelectedBill(null)
+                      setPaymentMethod('cash')
+                      setPaypalProcessing(false)
                     }}
-                    className="px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors"
+                    className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'paypal' ? 'flex-1' : ''}`}
                   >
                     Cancel
                   </button>

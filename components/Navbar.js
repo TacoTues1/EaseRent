@@ -163,7 +163,7 @@ export default function Navbar() {
     }
   }
 
-  // Handle clicking a specific notification in the dropdown
+  // Handle clicking a specific notification in the dropdown (View Details)
   async function handleNotificationClick(notif) {
     setShowNotifDropdown(false)
 
@@ -177,12 +177,33 @@ export default function Navbar() {
     if (notif.link) {
       router.push(notif.link)
     } else {
-      // Default routing logic based on type (copied from notifications.js)
+      // Default routing logic based on type
       if (notif.type === 'payment' || notif.type === 'payment_confirmed') router.push('/payments')
       else if (notif.type === 'maintenance') router.push('/maintenance')
       else if (notif.type === 'message') router.push('/messages')
+      else if (notif.type === 'booking_request' || notif.type === 'booking_approved' || notif.type === 'booking_rejected') router.push('/bookings')
+      else if (notif.type === 'application' || notif.type.includes('application_')) router.push('/applications')
+      else if (notif.type === 'end_occupancy_request' || notif.type === 'end_request_approved' || notif.type === 'end_request_rejected') router.push('/dashboard')
       else router.push('/notifications')
     }
+  }
+
+  // Toggle read/unread status for a notification
+  async function toggleNotifReadStatus(e, notif) {
+    e.stopPropagation()
+    const newStatus = !notif.read
+    await supabase.from('notifications').update({ read: newStatus }).eq('id', notif.id)
+    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: newStatus } : n))
+    loadUnreadCount(session.user.id)
+  }
+
+  // Delete a notification from dropdown
+  async function deleteNotifFromDropdown(e, notifId) {
+    e.stopPropagation()
+    await supabase.from('notifications').delete().eq('id', notifId)
+    setNotifications(prev => prev.filter(n => n.id !== notifId))
+    loadUnreadCount(session.user.id)
+    toast.success('Notification deleted')
   }
 
   async function handleSignOut() {
@@ -212,7 +233,7 @@ export default function Navbar() {
   if (!session) {
     return (
       <>
-        <div ref={navRef} className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
           <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
             <div className="px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
@@ -265,7 +286,7 @@ export default function Navbar() {
   // --- Authenticated Navbar ---
   return (
     <>
-      <div ref={navRef} className="fixed top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+      <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
         <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -344,16 +365,39 @@ export default function Navbar() {
                             <div 
                               key={notif.id}
                               onClick={() => handleNotificationClick(notif)}
-                              className={`px-5 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors flex gap-3 ${!notif.read ? 'bg-blue-50/30' : ''}`}
+                              className={`group px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${!notif.read ? 'bg-blue-50/30' : ''}`}
                             >
-                              <div className="flex-shrink-0 mt-1">
-                                <div className={`w-2 h-2 rounded-full ${!notif.read ? 'bg-blue-500' : 'bg-transparent'}`}></div>
-                              </div>
-                              <div className="flex-1">
-                                <p className={`text-sm ${!notif.read ? 'font-semibold text-black' : 'text-gray-600'}`}>{notif.message}</p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {new Date(notif.created_at).toLocaleDateString()} • {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </p>
+                              <div className="flex gap-3">
+                                <div className="flex-shrink-0 mt-1">
+                                  <div className={`w-2 h-2 rounded-full ${!notif.read ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm ${!notif.read ? 'font-semibold text-black' : 'text-gray-600'}`}>{notif.message}</p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {new Date(notif.created_at).toLocaleDateString()} • {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </div>
+                                {/* Action Icons */}
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => toggleNotifReadStatus(e, notif)}
+                                    className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-100 rounded-lg cursor-pointer"
+                                    title={notif.read ? 'Mark as unread' : 'Mark as read'}
+                                  >
+                                    {notif.read ? (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                    ) : (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={(e) => deleteNotifFromDropdown(e, notif.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg cursor-pointer"
+                                    title="Delete"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))
