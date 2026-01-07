@@ -22,6 +22,7 @@ export default function Settings() {
   const [otpSent, setOtpSent] = useState(false)
   const [otp, setOtp] = useState('')
   const [otpLoading, setOtpLoading] = useState(false)
+  const [verifiedPhone, setVerifiedPhone] = useState('')  // Track the phone number that was verified
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -61,18 +62,22 @@ export default function Settings() {
       setMiddleName(data.middle_name || '')
       setLastName(data.last_name || '')
       setPhone(data.phone || '')
+      // Track verified phone from profile
+      if (data.phone_verified && data.phone) {
+        setVerifiedPhone(data.phone)
+      }
     }
     setLoading(false)
   }
 
-  // Check if the input phone number matches the verified auth phone
+  // Check if the input phone number matches the verified phone
   const isPhoneVerified = () => {
-    // Check if session phone exists, is confirmed, and matches current input
-    // We strip spaces/dashes for comparison just in case
-    const currentInput = phone.replace(/\D/g, '')
-    const authPhone = session?.user?.phone?.replace(/\D/g, '') || ''
+    // Normalize both phones for comparison
+    const normalizePhone = (p) => p?.replace(/\D/g, '') || ''
+    const currentInput = normalizePhone(phone)
+    const verified = normalizePhone(verifiedPhone)
     
-    return session?.user?.phone_confirmed_at && currentInput === authPhone && currentInput.length > 0
+    return verified.length > 0 && currentInput === verified
   }
 
   async function handleSendVerification() {
@@ -82,16 +87,27 @@ export default function Settings() {
     }
 
     setOtpLoading(true)
-    // This sends the SMS via Supabase Auth
-    const { error } = await supabase.auth.updateUser({ phone: phone })
+    
+    try {
+      const response = await fetch('/api/verify-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', phone })
+      })
 
-    if (error) {
-      toast.error(error.message)
-      setVerifying(false)
-    } else {
-      setOtpSent(true)
-      toast.success('Verification code sent to your phone!')
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || 'Failed to send verification code')
+      } else {
+        setOtpSent(true)
+        toast.success('Verification code sent to your phone!')
+      }
+    } catch (error) {
+      toast.error('Failed to send verification code')
+      console.error(error)
     }
+    
     setOtpLoading(false)
   }
 
@@ -102,31 +118,42 @@ export default function Settings() {
     }
 
     setOtpLoading(true)
-    // Verify the code
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: phone,
-      token: otp,
-      type: 'phone_change'
-    })
+    
+    try {
+      const response = await fetch('/api/verify-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'verify', 
+          phone, 
+          code: otp,
+          userId: session.user.id
+        })
+      })
 
-    if (error) {
-      toast.error(error.message)
-    } else {
-      toast.success('Phone verified successfully!')
-      setVerifying(false)
-      setOtpSent(false)
-      setOtp('')
-      
-      // Update the profile immediately to match the verified auth user
-      await supabase
-        .from('profiles')
-        .update({ phone: phone })
-        .eq('id', session.user.id)
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || 'Verification failed')
+        if (data.attemptsRemaining !== undefined) {
+          toast.error(`${data.attemptsRemaining} attempts remaining`)
+        }
+      } else {
+        toast.success('Phone verified successfully!')
+        setVerifying(false)
+        setOtpSent(false)
+        setOtp('')
+        setVerifiedPhone(data.phone) // Update verified phone
+        setPhone(data.phone) // Update phone to normalized format
         
-      // Refresh session to update the "Verified" UI status
-      const { data: { session: newSession } } = await supabase.auth.refreshSession()
-      if (newSession) setSession(newSession)
+        // Reload profile to get updated data
+        loadProfile(session.user.id)
+      }
+    } catch (error) {
+      toast.error('Verification failed')
+      console.error(error)
     }
+    
     setOtpLoading(false)
   }
 
@@ -308,6 +335,19 @@ export default function Settings() {
                     className="px-6 py-3 bg-black text-white text-sm font-bold border-2 border-black rounded-lg cursor-pointer"
                   >
                     Verify
+                  </button>
+                )}
+                
+                {isPhoneVerified() && !verifying && !otpSent && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVerifiedPhone('') // Clear verified status to allow editing
+                      setVerifying(true)
+                    }}
+                    className="px-6 py-3 bg-white text-black text-sm font-bold border-2 border-black rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    Change
                   </button>
                 )}
               </div>
