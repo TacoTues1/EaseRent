@@ -287,8 +287,8 @@ export default function Navbar() {
           {showPublicMobileMenu && (
             <div className="sm:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
               <div className="p-4 grid grid-cols-1 gap-2">
-                <button onClick={() => { setAuthMode('signin'); setShowAuthModal(true); setShowPublicMobileMenu(false) }} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Login</button>
-                <button onClick={() => { setAuthMode('signup'); setShowAuthModal(true); setShowPublicMobileMenu(false) }} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium bg-black text-white shadow-md hover:bg-gray-900 transition-all">Register</button>
+                <button onClick={() => router.push('/login')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Login</button>
+                <button onClick={() => router.push('/register')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium bg-black text-white shadow-md hover:bg-gray-900 transition-all">Register</button>
               </div>
             </div>
           )}
