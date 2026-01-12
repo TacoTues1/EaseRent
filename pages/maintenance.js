@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function MaintenancePage() {
   const router = useRouter()
@@ -142,7 +142,14 @@ export default function MaintenancePage() {
       .eq('id', requestId)
 
     if (!error) {
-      toast.success(`Status updated to ${newStatus.replace('_', ' ')}`)
+      showToast.success(`Status updated to ${newStatus.replace('_', ' ')}`, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       loadRequests()
       
       const request = requests.find(r => r.id === requestId)
@@ -160,7 +167,15 @@ export default function MaintenancePage() {
         })
       }
     } else {
-      toast.error('Failed to update status')
+      showToast.error("Failed to update status", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
     }
   }
 
@@ -182,7 +197,15 @@ export default function MaintenancePage() {
 
     setResponseText('')
     setSelectedRequest(null)
-    toast.success('Response sent to tenant!')
+    showToast.success("Response sent to tenant!", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
   }
 
   // --- File Upload Logic (Multiple Files) ---
@@ -220,7 +243,15 @@ export default function MaintenancePage() {
     // Filter valid files
     const validFiles = newFiles.filter(file => {
       if (file.size > maxSize) {
-        toast.error(`${file.name} exceeds 50MB limit`)
+        showToast.warning(`${file.name} exceeds 50MB limit`, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         return false
       }
       return true
@@ -228,7 +259,14 @@ export default function MaintenancePage() {
 
     // Check total count
     if (proofFiles.length + validFiles.length > maxFiles) {
-      toast.error(`Maximum ${maxFiles} files allowed`)
+      showToast.error(`Maximum ${maxFiles} files allowed`, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       return
     }
 
@@ -244,12 +282,27 @@ export default function MaintenancePage() {
     
     // Validation: Require at least one proof file
     if (proofFiles.length === 0) {
-        toast.error('You must attach at least one picture or video as proof.')
+        showToast.error("You must attach at least one picture or video as proof.", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         return
     }
 
     setUploading(true)
-    const toastId = toast.loading(`Uploading ${proofFiles.length} file(s)...`)
+    const toastId = showToast.info("Uploading files", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
 
     try {
         const attachmentUrls = await uploadProofFiles()
@@ -282,11 +335,26 @@ export default function MaintenancePage() {
           setProofFiles([]) // Reset files
           setShowModal(false)
           loadRequests()
-          toast.success('Request submitted successfully!', { id: toastId })
+          showToast.success("Request submitted successfully! "+ { id: toastId }, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         }
     } catch (error) {
         console.error(error)
-        toast.error('Error submitting request: ' + error.message, { id: toastId })
+        showToast.error('Error submitting request: ' + error.message, { id: toastId }, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     } finally {
         setUploading(false)
     }

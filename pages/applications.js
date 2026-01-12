@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function ApplicationsPage() {
   const router = useRouter()
@@ -216,10 +216,24 @@ export default function ApplicationsPage() {
         })
       }
 
-      toast.success(`Application ${newStatus}`)
+      showToast.success(`Application ${newStatus}`, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       loadApplications()
     } else {
-      toast.error('Failed to update application status')
+      showToast.error('Failed to update application status', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 
@@ -239,11 +253,25 @@ export default function ApplicationsPage() {
     if (!error) {
       setShowDeleteModal(false)
       setApplicationToDelete(null)
-      toast.success('Application deleted successfully')
+      showToast.success('Application deleted successfully', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       loadApplications()
     } else {
       console.error('Error deleting application:', error)
-      toast.error('Failed to delete application')
+      showToast.error('Failed to delete application', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 
@@ -330,12 +358,26 @@ export default function ApplicationsPage() {
         link: '/applications'
       })
 
-      toast.success('Viewing request sent! Waiting for landlord approval.')
+      showToast.success('Viewing request sent! Waiting for landlord approval.', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       closeBookingModal()
       loadApplications()
     } catch (err) {
       console.error('Error creating booking:', err)
-      toast.error('Failed to schedule viewing')
+      showToast.error('Failed to schedule viewing', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     } finally {
       setSubmittingBooking(false)
     }
@@ -367,12 +409,26 @@ export default function ApplicationsPage() {
           link: '/applications'
         })
       }
-      toast.success('Booking approved!')
+      showToast.success('Booking approved!', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       loadPendingBookings()
       loadApplications()
     } else {
       console.error('Error approving booking:', error)
-      toast.error('Failed to approve booking')
+      showToast.error('Failed to approve booking', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 
@@ -402,11 +458,25 @@ export default function ApplicationsPage() {
           link: '/applications'
         })
       }
-      toast.success('Booking rejected')
+      showToast.success('Booking rejected', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       loadPendingBookings()
       loadApplications()
     } else {
-      toast.error('Failed to reject booking')
+      showToast.error('Failed to reject booking', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 

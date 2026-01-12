@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function NotificationsPage() {
   const router = useRouter()
@@ -59,7 +59,15 @@ export default function NotificationsPage() {
     setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: false } : n)
     )
-    toast.success('Marked as unread')
+    showToast.success("Marked as unread", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
   }
 
   async function toggleReadStatus(id, currentStatus, e) {
@@ -73,7 +81,14 @@ export default function NotificationsPage() {
     setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: newStatus } : n)
     )
-    toast.success(newStatus ? 'Marked as read' : 'Marked as unread')
+    showToast.success(newStatus ? 'Marked as read' : 'Marked as unread', {
+      duration: 4000,
+      progress: true,
+      position: "top-center",
+      transition: "bounceIn",
+      icon: '',
+      sound: true,
+    })
   }
 
   function handleNotificationClick(notif) {
@@ -133,18 +148,24 @@ export default function NotificationsPage() {
     
     if (!error) {
       setNotifications(prev => prev.filter(n => n.id !== deleteConfirm.id))
-      toast.success('Notification deleted', {
-        icon: '✓',
-        style: {
-          border: '1px solid black',
-          padding: '16px',
-          color: 'black',
-        },
-      })
+      showToast.success("Notification deleted", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
     } else {
-      toast.error('Failed to delete', {
-        icon: '✕',
-      })
+      showToast.error("Failed to delete", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
     
     setDeleteConfirm(null)

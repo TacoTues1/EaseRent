@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function Settings() {
   const router = useRouter()
@@ -82,7 +82,15 @@ export default function Settings() {
 
   async function handleSendVerification() {
     if (!phone) {
-      toast.error('Please enter a phone number first')
+      showToast.error("Please enter a phone number first", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
       return
     }
 
@@ -98,13 +106,34 @@ export default function Settings() {
       const data = await response.json()
 
       if (!response.ok) {
-        toast.error(data.error || 'Failed to send verification code')
+        showToast.error(data.error || 'Failed to send verification code', {
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        });
       } else {
         setOtpSent(true)
-        toast.success('Verification code sent to your phone!')
+        showToast.success('Verification code sent to your phone!', {
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        });
       }
     } catch (error) {
-      toast.error('Failed to send verification code')
+      showToast.error('Failed to send verification code', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       console.error(error)
     }
     
@@ -113,7 +142,14 @@ export default function Settings() {
 
   async function handleVerifyOtp() {
     if (!otp || otp.length < 6) {
-      toast.error('Please enter the 6-digit code')
+      showToast.error('Please enter the 6-digit code', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       return
     }
 
@@ -134,12 +170,34 @@ export default function Settings() {
       const data = await response.json()
 
       if (!response.ok) {
-        toast.error(data.error || 'Verification failed')
+        showToast.error(data.error || 'Verification failed', {
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        });
         if (data.attemptsRemaining !== undefined) {
-          toast.error(`${data.attemptsRemaining} attempts remaining`)
+          showToast.error(`${data.attemptsRemaining} attempts remaining`, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         }
       } else {
-        toast.success('Phone verified successfully!')
+        showToast.success('Phone verified successfully!', {
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        });
         setVerifying(false)
         setOtpSent(false)
         setOtp('')
@@ -150,7 +208,14 @@ export default function Settings() {
         loadProfile(session.user.id)
       }
     } catch (error) {
-      toast.error('Verification failed')
+      showToast.error('Verification failed', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       console.error(error)
     }
     
@@ -382,7 +447,7 @@ export default function Settings() {
                   ) : (
                     <div>
                       <p className="text-sm font-bold text-black mb-3">
-                        Enter the 6-digit code sent to your phone.
+                        Enter the 6-digit code sent to your phone, that valid only for 10 minutes.
                       </p>
                       <div className="flex gap-2 mb-3">
                         <input

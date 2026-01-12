@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function SchedulePage() {
   const router = useRouter()
@@ -35,7 +35,14 @@ export default function SchedulePage() {
   useEffect(() => {
     if (session && profile) {
       if (profile.role !== 'landlord') {
-        toast.error('Only landlords can access this page')
+        showToast.warning("Only landlords can access this page", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
         router.push('/dashboard')
         return
       }
@@ -68,7 +75,15 @@ export default function SchedulePage() {
 
     if (error) {
       console.error('Error loading time slots:', error)
-      toast.error('Failed to load time slots')
+      showToast.error("Failed to load time slots", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
     } else {
       setTimeSlots(data || [])
     }
@@ -78,7 +93,14 @@ export default function SchedulePage() {
     const selectedDates = Object.keys(selectedDateSlots).filter(date => selectedDateSlots[date])
     
     if (selectedDates.length === 0) {
-      toast.error('Please select at least one date with a time slot')
+      showToast.warning('Please select at least one date with a time slot', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       return
     }
 
@@ -117,7 +139,14 @@ export default function SchedulePage() {
     }
 
     if (slotsToCreate.length === 0) {
-      toast.error('All selected dates are in the past')
+      showToast.warning('All selected dates are in the past', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       setSubmitting(false)
       return
     }
@@ -129,15 +158,23 @@ export default function SchedulePage() {
 
     if (error) {
       console.error('Error adding time slots:', error)
-      toast.error('Failed to add time slots')
+      showToast.error("Failed to add time slots", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
     } else {
-      toast.success(`${slotsToCreate.length} time slot(s) added successfully`, {
-        icon: '✓',
-        style: {
-          border: '1px solid black',
-          padding: '16px',
-          color: 'black',
-        },
+      showToast.success(`${slotsToCreate.length} time slot(s) added successfully`, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
       })
       setShowAddModal(false)
       setSelectedDateSlots({})
@@ -212,17 +249,34 @@ export default function SchedulePage() {
 
     if (error) {
       console.error('Error deleting time slot:', error)
-      toast.error('Failed to delete time slot')
+      showToast.error('Failed to delete time slot', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     } else {
-      toast.success('Time slot deleted successfully', {
-        icon: '✓',
-        style: {
-          border: '1px solid black',
-          padding: '16px',
-          color: 'black',
-        },
-      })
+      showToast.success('Time slot deleted successfully', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       loadTimeSlots()
+    }
+  }
+
+  function getTimeSlotLabel(startTime, endTime) {
+    const start = new Date(startTime)
+    const startHour = start.getHours()
+    
+    // Morning: 8-11
+    if (startHour === 8) {
+      return { label: 'Morning', time: '8:00 AM - 11:00 AM', color: 'border border-black text-black' }
     }
   }
 

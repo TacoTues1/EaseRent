@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function Messages() {
   const [session, setSession] = useState(null)
@@ -405,7 +405,14 @@ export default function Messages() {
         setShowNewConversation(false)
         return
       }
-      toast.error('Failed to start conversation. Please try again.')
+      showToast.error('Failed to start conversation. Please try again.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     } else {
       const { data: profiles } = await supabase
         .from('profiles')
@@ -474,13 +481,27 @@ export default function Messages() {
     const newFiles = Array.from(e.target.files)
     const allFiles = [...selectedFiles, ...newFiles]
     if (allFiles.length > 5) {
-      toast.error('You can only upload up to 5 files at a time')
+      showToast.error('You can only upload up to 5 files at a time', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       e.target.value = ''
       return
     }
     const invalidFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024)
     if (invalidFiles.length > 0) {
-      toast.error('Each file must be less than 10MB')
+      showToast.error('Each file must be less than 10MB', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       e.target.value = ''
       return
     }
@@ -599,7 +620,14 @@ export default function Messages() {
           if (error) {
             console.error('Error sending message:', error)
             setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
-            toast.error('Failed to send file: ' + fileData.name)
+            showToast.error('Failed to send file: ' + fileData.name, {
+              duration: 4000,
+              progress: true,
+              position: "top-center",
+              transition: "bounceIn",
+              icon: '',
+              sound: true,
+            });
           } else {
             setMessages(prev => prev.map(m => 
               m.id === optimisticMessage.id ? { ...data, sender: { first_name: profile.first_name, last_name: profile.last_name, role: profile.role } } : m
@@ -646,7 +674,14 @@ export default function Messages() {
         if (error) {
           console.error('Error sending message:', error)
           setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
-          toast.error('Failed to send message')
+          showToast.error('Failed to send message', {
+            duration: 4000,
+            progress: true,
+            position: "top-center",
+            transition: "bounceIn",
+            icon: '',
+            sound: true,
+          });
           setNewMessage(messageText)
         } else {
           setMessages(prev => prev.map(m => 
@@ -668,7 +703,14 @@ export default function Messages() {
       }, 100)
     } catch (err) {
       console.error('Error in sendMessage:', err)
-      toast.error(err.message || 'Failed to send message')
+      showToast.error(err.message || 'Failed to send message', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     } finally {
       setUploadingFile(false)
     }
@@ -682,7 +724,14 @@ export default function Messages() {
     setDeleteConfirmId(null)
     const conversation = conversations.find(c => c.id === conversationId)
     if (!conversation) {
-      toast.error('Conversation not found')
+      showToast.error('Conversation not found', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       return
     }
     const isLandlord = conversation.landlord_id === session.user.id
@@ -696,14 +745,29 @@ export default function Messages() {
 
     if (error) {
       console.error('Error hiding conversation:', error)
-      toast.error('Failed to delete conversation. Please try again.')
+      showToast.error('Failed to delete conversation. Please try again.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     } else {
       setConversations(prev => prev.filter(c => c.id !== conversationId))
       if (selectedConversation?.id === conversationId) {
         setSelectedConversation(null)
         setMessages([])
       }
-      toast.success('Conversation deleted successfully')
+      showToast.success("Conversation deleted successfully", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
     }
   }
 

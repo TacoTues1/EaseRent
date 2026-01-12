@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function EditProperty() {
   const router = useRouter()
@@ -258,10 +258,25 @@ export default function EditProperty() {
       .eq('id', id)
 
     if (error) {
-      toast.error('Error deleting property: ' + error.message)
+      showToast.error('Error deleting property: ' + error.message, {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
       setLoading(false)
     } else {
-      toast.success('Property deleted successfully!')
+      showToast.success('Property deleted successfully!', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       setTimeout(() => router.push('/dashboard'), 1500)
     }
   }

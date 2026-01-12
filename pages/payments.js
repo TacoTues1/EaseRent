@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 import Link from 'next/link'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 
@@ -174,7 +174,15 @@ export default function PaymentsPage() {
     
     // Validate required uploads
     if (!billReceiptFile) {
-      toast.error('Please upload the bill receipt/screenshot')
+      showToast.warning("Please upload the bill receipt/screenshot", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
       return
     }
     
@@ -273,17 +281,24 @@ export default function PaymentsPage() {
       setBillReceiptPreview(null)
       setShowFormModal(false)
       loadPaymentRequests()
-      toast.success('Payment request sent', {
-        icon: '✓',
-        style: {
-          border: '1px solid black',
-          padding: '16px',
-          color: 'black',
-        },
+      showToast.success('Payment request sent', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
       })
     } catch (error) {
       console.error('Error creating payment request:', error)
-      toast.error('Failed to send payment request')
+      showToast.error('Failed to send payment request', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     }
   }
 
@@ -298,7 +313,14 @@ export default function PaymentsPage() {
     // Validate QR payment requirements
     if (paymentMethod === 'qr_code') {
       if (!referenceNumber.trim() && !proofFile) {
-        toast.error('Please enter reference number or upload payment proof')
+        showToast.error('Please enter reference number or upload payment proof', {
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        })
         return
       }
     }
@@ -362,17 +384,24 @@ export default function PaymentsPage() {
       setProofPreview(null)
       setReferenceNumber('')
       loadPaymentRequests()
-      toast.success('Payment submitted! Waiting for landlord confirmation.', {
-        icon: '✓',
-        style: {
-          border: '1px solid black',
-          padding: '16px',
-          color: 'black',
-        },
+      showToast.success('Payment submitted! Waiting for landlord confirmation.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
       })
     } catch (error) {
       console.error('Payment error:', error)
-      toast.error('Payment failed. Please try again.')
+      showToast.error('Payment failed. Please try again.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     } finally {
       setUploadingProof(false)
     }
@@ -432,12 +461,15 @@ export default function PaymentsPage() {
           reject('Failed to confirm payment')
         }
       })
+    showToast.info("Confirming payment...", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "topBounce",
+    icon: '',
+    sound: true,
+  });
 
-    toast.promise(confirmPromise, {
-      loading: 'Confirming payment...',
-      success: (msg) => msg,
-      error: (err) => err,
-    })
   }
 
   async function handleCancelBill(requestId) {
@@ -449,10 +481,24 @@ export default function PaymentsPage() {
 
     if (!error) {
       loadPaymentRequests()
-      toast.success('Payment request cancelled.')
+      showToast.success('Payment request cancelled.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     } else {
       console.error('Error cancelling:', error)
-      toast.error('Failed to cancel payment request.')
+      showToast.error('Failed to cancel payment request.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     }
   }
 
@@ -490,10 +536,24 @@ export default function PaymentsPage() {
       setShowEditModal(false)
       setEditingBill(null)
       loadPaymentRequests()
-      toast.success('Bill updated successfully!')
+      showToast.success('Bill updated successfully!', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     } else {
       console.error('Error updating bill:', error)
-      toast.error('Failed to update bill.')
+      showToast.error('Failed to update bill.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
     }
   }
 
@@ -1195,7 +1255,14 @@ export default function PaymentsPage() {
                         if (selectedBill.qr_code_url) {
                           setPaymentMethod('qr_code')
                         } else {
-                          toast.error('Landlord has not provided a QR code')
+                          showToast.error('Landlord has not provided a QR code', {
+                            duration: 4000,
+                            progress: true,
+                            position: "top-center",
+                            transition: "bounceIn",
+                            icon: '',
+                            sound: true,
+                          })
                         }
                       }}
                       disabled={!selectedBill.qr_code_url}
@@ -1301,8 +1368,8 @@ export default function PaymentsPage() {
                     </div>
                     
                     <PayPalScriptProvider options={{ 
-                      clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || 'test',
-                      currency: 'USD'
+                      clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
+                      currency: 'PHP'
                     }}>
                       <PayPalButtons
                         style={{ 
@@ -1327,7 +1394,7 @@ export default function PaymentsPage() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 amount: total,
-                                currency: 'USD',
+                                currency: 'PHP',
                                 description: `EaseRent Payment - ${selectedBill.properties?.title}`,
                                 paymentRequestId: selectedBill.id
                               })
@@ -1340,7 +1407,14 @@ export default function PaymentsPage() {
                             throw new Error(data.error || 'Failed to create order')
                           } catch (error) {
                             console.error('PayPal Create Order Error:', error)
-                            toast.error('Failed to initialize PayPal payment')
+                            showToast.error('Failed to initialize PayPal payment', {
+                              duration: 4000,
+                              progress: true,
+                              position: "top-center",
+                              transition: "bounceIn",
+                              icon: '',
+                              sound: true,
+                            })
                             setPaypalProcessing(false)
                             throw error
                           }
@@ -1388,24 +1462,52 @@ export default function PaymentsPage() {
                               setSelectedBill(null)
                               setPaymentMethod('cash')
                               loadPaymentRequests()
-                              toast.success('PayPal payment successful! Waiting for landlord confirmation.')
+                              showToast.success('PayPal payment successful! Waiting for landlord confirmation.', {
+                                duration: 4000,
+                                progress: true,
+                                position: "top-center",
+                                transition: "bounceIn",
+                                icon: '',
+                                sound: true,
+                              })
                             } else {
                               throw new Error(captureData.error || 'Payment capture failed')
                             }
                           } catch (error) {
                             console.error('PayPal Capture Error:', error)
-                            toast.error('Payment failed. Please try again.')
+                            showToast.error('Payment failed. Please try again.', {
+                              duration: 4000,
+                              progress: true,
+                              position: "top-center",
+                              transition: "bounceIn",
+                              icon: '',
+                              sound: true,
+                            })
                           } finally {
                             setPaypalProcessing(false)
                           }
                         }}
                         onError={(err) => {
                           console.error('PayPal Error:', err)
-                          toast.error('PayPal payment failed')
+                          showToast.error('PayPal payment failed', {
+                            duration: 4000,
+                            progress: true,
+                            position: "top-center",
+                            transition: "bounceIn",
+                            icon: '',
+                            sound: true,
+                          })
                           setPaypalProcessing(false)
                         }}
                         onCancel={() => {
-                          toast.error('Payment cancelled')
+                          showToast.error('Payment cancelled', {
+                            duration: 4000,
+                            progress: true,
+                            position: "top-center",
+                            transition: "bounceIn",
+                            icon: '',
+                            sound: true,
+                          })
                           setPaypalProcessing(false)
                         }}
                       />

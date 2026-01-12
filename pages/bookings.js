@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import toast, { Toaster } from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 import { createNotification } from '../lib/notifications'
 
 export default function BookingsPage() {
@@ -26,7 +26,15 @@ export default function BookingsPage() {
   useEffect(() => {
     if (session && profile) {
       if (profile.role !== 'landlord') {
-        toast.success('Please Check your Email for Viewing Details')
+        showToast.success("Please Check your Email for Viewing Details", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         router.push('/dashboard')
         return
       }
@@ -88,7 +96,14 @@ export default function BookingsPage() {
 
     if (error) {
       console.error('Error loading bookings:', error)
-      toast.error('Failed to load bookings')
+      showToast.error('Failed to load bookings', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       setLoading(false)
       return
     }
@@ -183,20 +198,49 @@ export default function BookingsPage() {
         }
 
         if (response.ok && result?.success) {
-          toast.success('Booking approved! Email sent to tenant.')
+          showToast.success("Booking approved! Email sent to tenant.", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
         } else {
           console.error('Failed to send email:', result?.error || `HTTP ${response.status}`)
-          toast.success('Booking approved! (Email notification failed)')
+          showToast.success('Booking approved! (Email notification failed)', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
         }
       } catch (emailError) {
         console.error('Error sending email:', emailError)
-        toast.success('Booking approved! (Email notification unavailable)')
+        showToast.warning('Booking approved! (Email notification unavailable)', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       }
 
       loadBookings()
     } else {
       console.error('Error approving booking:', error)
-      toast.error('Failed to approve booking')
+      showToast.error('Failed to approve booking', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 
@@ -224,11 +268,25 @@ export default function BookingsPage() {
         link: '/bookings'
       })
 
-      toast.success('Booking rejected')
+      showToast.success('Booking rejected', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
       loadBookings()
     } else {
       console.error('Error rejecting booking:', error)
-      toast.error('Failed to reject booking')
+      showToast.error('Failed to reject booking', {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
     }
   }
 

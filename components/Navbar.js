@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
-import toast from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify'
 
 export default function Navbar() {
   const router = useRouter()
@@ -203,7 +203,15 @@ export default function Navbar() {
     await supabase.from('notifications').delete().eq('id', notifId)
     setNotifications(prev => prev.filter(n => n.id !== notifId))
     loadUnreadCount(session.user.id)
-    toast.success('Notification deleted')
+    showToast.success("Notification deleted", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
   }
 
   async function handleSignOut() {
@@ -216,7 +224,15 @@ export default function Navbar() {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('supabase.auth.token')
       }
-      toast.success('Signed out successfully')
+      showToast.success("Signed out successfully", {
+    duration: 4000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+  });
+
       router.push('/')
     } catch (error) {
       console.error('Sign out error:', error)
@@ -234,7 +250,7 @@ export default function Navbar() {
     return (
       <>
         <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
-          <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+          <nav className="max-w-4xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
             <div className="px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
                 <div className="flex items-center">
@@ -253,8 +269,8 @@ export default function Navbar() {
                 </div>
 
                 <div className="hidden sm:flex items-center gap-2">
-                  <button onClick={() => { setAuthMode('signin'); setShowAuthModal(true) }} className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer sm:px-4 sm:py-2 sm:text-sm">Login</button>
-                  <button onClick={() => { setAuthMode('signup'); setShowAuthModal(true) }} className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2 sm:text-sm">Register</button>
+                  <button onClick={() => router.push('/login')} className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer sm:px-4 sm:py-2 sm:text-sm">Login</button>
+                  <button onClick={() => router.push('/register')} className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2 sm:text-sm">Register</button>
                 </div>
 
                 <div className="sm:hidden flex items-center">
@@ -287,7 +303,7 @@ export default function Navbar() {
   return (
     <>
       <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
-        <nav className="max-w-7xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+        <nav className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               
@@ -300,7 +316,7 @@ export default function Navbar() {
                 <div className="hidden md:flex relative gap-1">
                   <div className="absolute bottom-0 h-0.5 bg-black rounded-full" style={{ left: `${underlineStyle.left}px`, width: `${underlineStyle.width}px`, opacity: underlineStyle.width ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                   
-                  <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Dashboard</Link>
+                  <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Home</Link>
                   
                   {profile?.role === 'landlord' && (
                     <>
@@ -495,7 +511,7 @@ export default function Navbar() {
             </div>
 
             <div className="p-2 grid grid-cols-2 gap-1">
-              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Dashboard</Link>
+              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Home</Link>
               
               {profile?.role === 'landlord' && (
                 <>
