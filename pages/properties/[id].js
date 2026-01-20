@@ -76,6 +76,7 @@ export default function PropertyDetail() {
       .from('properties')
       .select('*')
       .eq('id', id)
+      .eq('is_deleted', false)
       .maybeSingle()
     
     if (propertyError) {
@@ -114,28 +115,50 @@ export default function PropertyDetail() {
     if (data) setReviews(data)
   }
 
-  // Generate Google Maps embed URL from landlord's link or address
-  const getMapEmbedUrl = () => {
-    if (property?.location_link) {
-      // Extract coordinates from various Google Maps URL formats
-      const link = property.location_link
-      const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
-      const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/)
-      const placeMatch = link.match(/place\/(-?\d+\.\d+),(-?\d+\.\d+)/)
-      const llMatch = link.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/)
-      
-      const match = atMatch || qMatch || placeMatch || llMatch
-      if (match) {
-        const lat = match[1]
-        const lng = match[2]
-        // Use place embed with coordinates for red marker
-        return `https://www.google.com/maps?q=${lat},${lng}&z=17&output=embed`
-      }
+  // Helper to extract coordinates from Google Maps links
+  const extractCoordinates = (link) => {
+    if (!link) return null;
+    const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const placeMatch = link.match(/place\/(-?\d+\.\d+),(-?\d+\.\d+)/);
+    
+    const match = atMatch || qMatch || placeMatch;
+    if (match) {
+      return { lat: match[1], lng: match[2] };
     }
-    // Fallback to address-based search with marker
+    return null;
+  };
+
+  const getMapEmbedUrl = () => {
+    const coords = extractCoordinates(property?.location_link)
+    if (coords) {
+      return `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=17&output=embed`
+    }
     const address = `${property?.address || ''}, ${property?.city || ''} ${property?.zip || ''}`
     return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=17&output=embed`
   }
+
+  // --- NEW: Handle internal navigation to getDirections page ---
+  const handleInternalDirections = (e) => {
+    e.preventDefault();
+    
+    // 1. Try to get explicit coordinates from the link
+    const coords = extractCoordinates(property?.location_link);
+    
+    // 2. Build address string
+    const fullAddr = `${property.address}, ${property.city}`;  
+    // 3. Navigate
+    router.push({
+      pathname: '/getDirections',
+      query: { 
+        to: fullAddr,
+        // Pass coordinates if found, otherwise undefined (getDirections will Geocode the address)
+        lat: coords ? coords.lat : undefined,
+        lng: coords ? coords.lng : undefined,
+        auto: 'true'
+      }
+    });
+  };
 
   async function handleApply(e) {
     e.preventDefault()
@@ -202,15 +225,6 @@ export default function PropertyDetail() {
     }
     setSubmitting(false)
   }
-  
-  // Generate directions URL - uses landlord's link or falls back to address search
-  const getDirectionsUrl = () => {
-    if (property.location_link) {
-      return property.location_link
-    }
-    const destinationQuery = `${property.address}, ${property.city}, ${property.zip || ''}`
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationQuery)}`
-  }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
   if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
@@ -222,7 +236,6 @@ export default function PropertyDetail() {
   const isOwner = profile?.id === property.landlord
   const isLandlord = profile?.role === 'landlord'
 
-  // Construct full address for display and mapping
   const fullAddress = `${property.address}, ${property.city} ${property.zip || ''}`
 
   return (
@@ -345,7 +358,14 @@ export default function PropertyDetail() {
                 </div>
                 <div className="flex items-center gap-2 mt-3">
                    <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg></div>
-                   <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-black font-medium transition-colors cursor-pointer">Get Directions</a>
+                   
+                   {/* UPDATED: Get Directions Button navigates to internal page */}
+                   <button 
+                     onClick={handleInternalDirections}
+                     className="text-xs text-gray-600 hover:text-black font-bold uppercase tracking-wider transition-colors cursor-pointer border-b border-transparent hover:border-black"
+                   >
+                     Get Directions
+                   </button>
                 </div>
             </div>
              

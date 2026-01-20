@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
@@ -10,14 +10,13 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
-
-  // Form state
+  const lastUserId = useRef(null)
   const [firstName, setFirstName] = useState('')
   const [middleName, setMiddleName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
-
-  // Verification State
+  const [birthday, setBirthday] = useState('')
+  const [gender, setGender] = useState('')
   const [verifying, setVerifying] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
   const [otp, setOtp] = useState('')
@@ -28,7 +27,16 @@ export default function Settings() {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
         setSession(result.data.session)
-        loadProfile(result.data.session.user.id)
+        const userId = result.data.session.user.id
+        
+        // Only load profile if it hasn't been loaded for this user yet
+        if (lastUserId.current !== userId) {
+          lastUserId.current = userId
+          loadProfile(userId)
+        } else {
+          // If we already have the user loaded, stop loading state
+          setLoading(false)
+        }
       } else {
         router.push('/')
       }
@@ -37,7 +45,13 @@ export default function Settings() {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setSession(session)
-        loadProfile(session.user.id)
+        const userId = session.user.id
+        
+        // Only reload profile if the user ID has actually changed
+        if (lastUserId.current !== userId) {
+          lastUserId.current = userId
+          loadProfile(userId)
+        }
       } else {
         router.push('/')
       }
@@ -62,6 +76,10 @@ export default function Settings() {
       setMiddleName(data.middle_name || '')
       setLastName(data.last_name || '')
       setPhone(data.phone || '')
+      // Ensure date format is YYYY-MM-DD in case DB returns a timestamp
+      setBirthday(data.birthday ? data.birthday.split('T')[0] : '') 
+      setGender(data.gender || '')
+      
       // Track verified phone from profile
       if (data.phone_verified && data.phone) {
         setVerifiedPhone(data.phone)
@@ -83,13 +101,13 @@ export default function Settings() {
   async function handleSendVerification() {
     if (!phone) {
       showToast.error("Please enter a phone number first", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
       return
     }
@@ -180,13 +198,13 @@ export default function Settings() {
         });
         if (data.attemptsRemaining !== undefined) {
           showToast.error(`${data.attemptsRemaining} attempts remaining`, {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+            duration: 4000,
+            progress: true,
+            position: "top-center",
+            transition: "bounceIn",
+            icon: '',
+            sound: true,
+          });
 
         }
       } else {
@@ -233,7 +251,10 @@ export default function Settings() {
         first_name: firstName,
         middle_name: middleName || 'N/A',
         last_name: lastName,
-        phone: phone // This updates the profile display, but doesn't verify it alone
+        phone: phone, 
+        // Send null instead of empty string to prevent Postgres invalid input syntax for date
+        birthday: birthday || null, 
+        gender: gender || null
       })
       .eq('id', session.user.id)
 
@@ -256,7 +277,7 @@ export default function Settings() {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('supabase.auth.token')
       }
-      toast.success('Signed out successfully', {
+      showToast.success('Signed out successfully', {
         icon: '✓',
         style: {
           border: '1px solid black',
@@ -327,7 +348,7 @@ export default function Settings() {
                   onChange={(e) => setFirstName(e.target.value)}
                   required
                   className="w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all"
-                  placeholder="Juan"
+                  placeholder="Firstname"
                 />
               </div>
               <div>
@@ -340,7 +361,7 @@ export default function Settings() {
                   onChange={(e) => setLastName(e.target.value)}
                   required
                   className="w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all"
-                  placeholder="Dela Cruz"
+                  placeholder="Lastname"
                 />
               </div>
             </div>
@@ -355,9 +376,50 @@ export default function Settings() {
                 value={middleName === 'N/A' ? '' : middleName}
                 onChange={(e) => setMiddleName(e.target.value)}
                 className="w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all"
-                placeholder="Santos"
+                placeholder="Middlename"
               />
             </div>
+            <div className="flex gap-4 mb-6">
+                <div className="w-1/2">
+                  <label htmlFor="birthday" className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                    Birthday
+                  </label>
+                  <input
+                    id="birthday"
+                    name="birthday"
+                    type="date"
+                    required
+                    value={birthday}
+                    onChange={(e) => setBirthday(e.target.value)}
+                    className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all"
+                  />
+                </div>
+                <div className="w-1/2">
+                  <label htmlFor="gender" className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                    Gender
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="gender"
+                      name="gender"
+                      required
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all bg-white"
+                    >
+                      <option value="" disabled>Select Gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-700">
+                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
             {/* Phone Verification Section */}
             <div className="mb-6">
@@ -377,6 +439,7 @@ export default function Settings() {
                 <input
                   type="tel"
                   value={phone}
+                  disabled={isPhoneVerified()} 
                   onChange={(e) => {
                     setPhone(e.target.value)
                     // If user changes phone, hide verification UI until they request again
@@ -387,10 +450,10 @@ export default function Settings() {
                   }}
                   className={`flex-1 px-4 py-3 border-2 rounded-lg font-medium outline-none transition-all ${
                     isPhoneVerified() 
-                      ? 'border-black bg-white text-black' 
+                      ? 'border-black bg-gray-50 text-gray-500 cursor-not-allowed' 
                       : 'border-black bg-white text-black focus:ring-2 focus:ring-black focus:ring-offset-1'
                   }`}
-                  placeholder="+63 912 345 6789"
+                  placeholder="Number"
                 />
                 
                 {!isPhoneVerified() && !verifying && !otpSent && (
@@ -437,7 +500,14 @@ export default function Settings() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setVerifying(false)}
+                          onClick={() => {
+                            setVerifying(false)
+                            // Revert to the original profile state if we cancel
+                            if (profile?.phone && profile?.phone_verified) {
+                              setVerifiedPhone(profile.phone)
+                              setPhone(profile.phone)
+                            }
+                          }}
                           className="px-4 py-2 bg-white text-black text-sm font-bold border-2 border-black rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                           Cancel

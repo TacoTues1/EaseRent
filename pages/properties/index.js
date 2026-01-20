@@ -228,6 +228,7 @@ export default function AllProperties() {
       .from('properties')
       .select('*')
       .eq('status', 'available')
+      .eq('is_deleted', false)
 
     // Apply search filter
     if (searchQuery.trim()) {

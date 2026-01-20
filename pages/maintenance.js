@@ -371,7 +371,6 @@ export default function MaintenancePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans text-black">
-      <Toaster position="top-center" />
       <div className="max-w-5xl mx-auto">
         
         {/* Header */}

@@ -18,6 +18,8 @@ export default function Navbar() {
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [showPublicMobileMenu, setShowPublicMobileMenu] = useState(false)
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
+  const [isDuplicate, setIsDuplicate] = useState(false)
+  const disabledClass = isDuplicate ? "opacity-40 pointer-events-none grayscale" : ""
   
   const navRef = useRef(null)
   const notifRef = useRef(null) // Ref for notification dropdown
@@ -119,8 +121,21 @@ export default function Navbar() {
   async function loadProfile(userId) {
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      if (data) setProfile(data)
-    } catch (err) { console.error(err) }
+      if (data) 
+        setProfile(data)
+      if (data.phone) {
+            const { data: duplicates } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('phone', data.phone)
+              .neq('id', userId)
+            
+            if (duplicates && duplicates.length > 0) {
+                setIsDuplicate(true)
+            }
+      }
+      } 
+      catch (err) { console.error(err) }
   }
 
   async function loadUnreadCount(userId) {
@@ -214,24 +229,37 @@ export default function Navbar() {
 
   }
 
-  async function handleSignOut() {
+ async function handleSignOut() {
     try {
-      // Sign out with global scope to clear session from all tabs/windows
+      // 1. Sign out from Supabase
       await supabase.auth.signOut({ scope: 'global' })
+      
+      // 2. Clear local state
       setSession(null)
       setProfile(null)
-      // Clear any cached data
+      
+      // 3. FORCE CLEAR LOCAL STORAGE
+      // Supabase v2 uses keys like "sb-<project-id>-auth-token"
+      // We manually clear anything starting with "sb-" or "supabase" to be safe
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('supabase.auth.token')
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+            localStorage.removeItem(key)
+          }
+          if (key === 'supabase.auth.token') {
+             localStorage.removeItem(key)
+          }
+        })
       }
+
       showToast.success("Signed out successfully", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
       router.push('/')
     } catch (error) {
@@ -239,6 +267,16 @@ export default function Navbar() {
       // Force clear session even if signOut fails
       setSession(null)
       setProfile(null)
+      
+      // Apply the same manual cleanup in the catch block
+      if (typeof window !== 'undefined') {
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+            localStorage.removeItem(key)
+          }
+        })
+      }
+      
       router.push('/')
     }
   }
@@ -320,19 +358,19 @@ export default function Navbar() {
                   
                   {profile?.role === 'landlord' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Applications</Link>
-                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Bookings</Link>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Applications</Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Bookings</Link>
                     </>
                   )}
 
                   {profile?.role === 'tenant' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>My Applications</Link>
-                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Maintenance</Link>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>My Applications</Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Maintenance</Link>
                     </>
                   )}
 
-                  <Link href="/messages" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/messages') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Messages</Link>
+                  <Link href="/messages" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/messages') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Messages</Link>
                 </div>
               </div>
 
@@ -343,7 +381,7 @@ export default function Navbar() {
               <div className="flex items-center gap-3">
                 
                 {/* --- DESKTOP NOTIFICATIONS (FACEBOOK STYLE) --- */}
-                <div className="relative hidden md:block" ref={notifRef}>
+                <div className={`relative hidden md:block ${disabledClass}`} ref={notifRef}>
                   <button 
                     onClick={toggleNotifications}
                     className={`relative p-2 rounded-full transition-all cursor-pointer ${
@@ -515,38 +553,38 @@ export default function Navbar() {
               
               {profile?.role === 'landlord' && (
                 <>
-                  <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>All Properties</Link>
-                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Add Property</Link>
-                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Applications</Link>
-                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Bookings</Link>
-                  <Link href="/schedule" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/schedule') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Schedule</Link>
+                  <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>All Properties</Link>
+                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Add Property</Link>
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Applications</Link>
+                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Bookings</Link>
+                  <Link href="/schedule" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/schedule') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Schedule</Link>
                 </>
               )}
 
               {profile?.role === 'tenant' && (
                 <>
-                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>My Applications</Link>
-                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Maintenance</Link>
+                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Applications</Link>
+                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Maintenance</Link>
                 </>
               )}
 
-              <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/messages') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Messages</Link>
+              <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/messages') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Messages</Link>
               
-              <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+              <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
                 Notifications
                 {unreadCount > 0 && <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isActive('/notifications') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>{unreadCount}</span>}
               </Link>
             </div>
 
             <div className="p-2 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-1">
-              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all">
+              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all ${disabledClass}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
               </Link>
               <Link href="/settings" onClick={() => setShowMobileMenu(false)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Settings
               </Link>
               <button onClick={() => { setShowMobileMenu(false); handleSignOut() }} className="col-span-2 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> Sign Out
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> Log Out
               </button>
             </div>
           </div>

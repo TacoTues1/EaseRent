@@ -15,16 +15,12 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [birthday, setBirthday] = useState('')
   const [gender, setGender] = useState('')
-  
-  // OTP / Verification States
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [showOtpInput, setShowOtpInput] = useState(false)
   const [otp, setOtp] = useState('')
-  
-  // UI States
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  
   const router = useRouter()
 
   useEffect(() => {
@@ -38,6 +34,11 @@ export default function Register() {
   const handleRegister = async (e) => {
     e.preventDefault()
     setLoading(true)
+
+    if (!termsAccepted) {
+        showToast.error("You must accept the Terms & Conditions to continue.", { duration: 4000 });
+        setLoading(false); return;
+    }
     
     // Validate passwords match
     if (password !== confirmPassword) {
@@ -104,8 +105,8 @@ export default function Register() {
             first_name: firstName,
             middle_name: middleName || 'N/A',
             last_name: lastName,
-            birthday: birthday, // Save birthday to metadata
-            gender: gender,     // Save gender to metadata
+            birthday: birthday,
+            gender: gender
           },
         },
       })
@@ -243,43 +244,7 @@ export default function Register() {
     }
   }
 
-  const handleGoogleLogin = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/dashboard` }
-      })
-      if (error) throw error
-    } catch (error) {
-      showToast.error("Login error, Please Try again!", {
-    duration: 4000,
-    progress: true,
-    position: "top-right",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
-    }
-  }
-
-  const handleFacebookLogin = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'facebook',
-        options: { redirectTo: `${window.location.origin}/dashboard` }
-      })
-      if (error) throw error
-    } catch (error) {
-      showToast.error("Login error, Please Try again!", {
-    duration: 4000,
-    progress: true,
-    position: "top-right",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
-    }
-  }
+  
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-black">
@@ -551,6 +516,29 @@ export default function Register() {
                 </div>
               </div>
 
+              {/* NEW: Terms Checkbox */}
+                <div className="flex items-start">
+                  <div className="flex items-center h-5">
+                    <input
+                      id="terms"
+                      name="terms"
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      className="h-4 w-4 text-black border-gray-300 rounded focus:ring-black cursor-pointer"
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="terms" className="font-medium text-gray-700">
+                      I agree to the{' '}
+                      <Link href="/terms" target="_blank" className="font-bold text-black hover:underline">
+                        Terms & Conditions
+                      </Link>
+                      {' '}regarding multiple accounts and data privacy.
+                    </label>
+                  </div>
+                </div>
+
               <div>
                 <button
                   type="submit"
@@ -564,42 +552,6 @@ export default function Register() {
                     </svg>
                   ) : null}
                   {loading ? 'Creating account...' : 'Create account'}
-                </button>
-              </div>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500 font-medium">Or register with</span>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all cursor-pointer"
-                >
-                  <svg className="h-5 w-5 mr-2" aria-hidden="true" viewBox="0 0 24 24">
-                    <path d="M12.0003 20.45c4.656 0 8.526-3.237 9.942-7.65h-9.942v-4.32h14.736c.144.744.216 1.512.216 2.304 0 8.856-6.048 15.12-14.952 15.12-8.352 0-15.12-6.768-15.12-15.12s6.768-15.12 15.12-15.12c4.08 0 7.776 1.512 10.608 4.008l-3.24 3.24c-1.92-1.728-4.464-2.736-7.368-2.736-6.048 0-11.04 4.512-12.048 10.368h-.024l-3.936 3.048v.048c1.776 5.304 6.84 9.144 12.768 9.144z" fill="#4285F4" />
-                    <path d="M4.32 14.22c-.264-1.248-.408-2.544-.408-3.888s.144-2.64.408-3.888l-4.224-3.288c-.912 2.184-1.416 4.584-1.416 7.176s.504 4.992 1.416 7.176l4.224-3.288z" fill="#FBBC05" />
-                    <path d="M12 4.752c2.256 0 4.296.816 5.856 2.16l3.312-3.312c-2.544-2.376-5.856-3.84-9.168-3.84-5.928 0-10.992 3.84-12.768 9.144l4.224 3.288c1.008-5.856 6-10.368 12.048-10.368z" fill="#EA4335" />
-                    <path d="M12 19.608c-3.24 0-6.168-1.128-8.4-3.072l-4.224 3.288c2.184 3.24 5.928 5.304 10.128 5.304 2.592 0 5.04-.648 7.176-1.8l-2.52-4.152c-1.392.936-3.048 1.488-4.88 1.488z" fill="#34A853" />
-                  </svg>
-                  Sign up with Google
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleFacebookLogin}
-                  className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all cursor-pointer"
-                >
-                  <svg className="h-5 w-5 mr-2" aria-hidden="true" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" fill="#1877F2" />
-                  </svg>
-                  Sign up with Facebook
                 </button>
               </div>
             </form>

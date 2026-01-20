@@ -250,15 +250,17 @@ export default function EditProperty() {
   }
 
   async function handleDelete() {
-    setShowDeleteConfirm(false)
-    setLoading(true)
-    const { error } = await supabase
-      .from('properties')
-      .delete()
-      .eq('id', id)
+  setShowDeleteConfirm(false)
+  setLoading(true)
+  
+  // CHANGED: Instead of .delete(), we .update() the is_deleted flag
+  const { error } = await supabase
+    .from('properties')
+    .update({ is_deleted: true }) 
+    .eq('id', id)
 
-    if (error) {
-      showToast.error('Error deleting property: ' + error.message, {
+  if (error) {
+    showToast.error('Error deleting property: ' + error.message, {
     duration: 4000,
     progress: true,
     position: "top-center",
@@ -297,7 +299,6 @@ export default function EditProperty() {
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 md:p-8 font-sans">
-      <Toaster position="top-center" />
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
@@ -318,7 +319,7 @@ export default function EditProperty() {
         </div>
         
         <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6">
-          <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
+          <div className="flex-1 bg-white p-6 mFd:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
             
             {/* Title Section */}
             <div className="pb-6 border-b border-gray-50">

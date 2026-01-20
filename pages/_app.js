@@ -10,15 +10,11 @@ import { useRouter } from 'next/router'
 function MyApp({ Component, pageProps }) {
   const router = useRouter()
 
-  const hideNavbarPaths = ['/login', '/register', '/forgotPassword', '/updatePassword']
+  const hideNavbarPaths = ['/login', '/register', '/forgotPassword', '/updatePassword', '/getDirections']
   
   return (
     <>
       <Meta />
-      
-      {/* NOTE: nextjs-toast-notify does not require a global <Toaster /> component here.
-        You will trigger toasts directly in your pages (e.g., login.js) using the library's import.
-      */}
       
       {!hideNavbarPaths.includes(router.pathname) && <Navbar />}
       

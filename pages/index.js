@@ -309,12 +309,6 @@ export default function Home() {
     }))
   }
 
-  const openPropertyModal = (property) => {
-    setSelectedProperty(property)
-    setModalImageIndex(0)
-    setShowPropertyModal(true)
-  }
-
   const closePropertyModal = () => {
     setShowPropertyModal(false)
     setSelectedProperty(null)
@@ -583,7 +577,7 @@ export default function Home() {
                     <CarouselItem key={property.id} className={carouselItemClass}>
                         <div 
                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-1 ring-black border-black' : 'border-gray-100'}`}
-                          onClick={() => openPropertyModal(property)}
+                          onClick={() => router.push(`/properties/${property.id}`)}
                         >
                           <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                             <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
@@ -675,7 +669,7 @@ export default function Home() {
                                     <div className="p-1 h-full">
                                         <div 
                                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => openPropertyModal(item)}
+                                          onClick={() => router.push(`/properties/${property.id}`)}
                                         >
                                           <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                                             <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
@@ -768,7 +762,7 @@ export default function Home() {
                                     <div className="p-1 h-full">
                                         <div 
                                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => openPropertyModal(item)}
+                                          onClick={() => router.push(`/properties/${property.id}`)}
                                         >
                                           <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                                             <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
