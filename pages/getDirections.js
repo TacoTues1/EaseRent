@@ -1,5 +1,5 @@
 // pages/getDirections.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
@@ -12,6 +12,9 @@ export default function GetDirections() {
   const routeLines = useRef([]); 
   const isInitializing = useRef(false);
   const watchId = useRef(null);
+  
+  // Throttle ref to prevent API spamming during navigation
+  const lastRouteUpdate = useRef(0);
 
   // Data State
   const [fromAddress, setFromAddress] = useState('');
@@ -146,6 +149,101 @@ export default function GetDirections() {
     }
   };
 
+  // --- Route Drawing Helper ---
+  const drawRoutes = (routes, LInstance, mode) => {
+    if (!mapInstance.current || !routes || routes.length === 0) return;
+    routeLines.current.forEach(line => line.remove());
+    routeLines.current = [];
+
+    let mainColor = '#111827'; 
+    if (mode === 'bike') mainColor = '#7c3aed'; 
+    if (mode === 'foot') mainColor = '#059669'; 
+
+    routes.slice(1).forEach(route => {
+        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        const polyline = LInstance.polyline(coords, {
+            color: '#272828', weight: 5, opacity: 0.5, lineJoin: 'round'
+        }).addTo(mapInstance.current);
+        routeLines.current.push(polyline);
+    });
+
+    const bestRoute = routes[0];
+    const bestCoords = bestRoute.geometry.coordinates.map(c => [c[1], c[0]]);
+    const bestPolyline = LInstance.polyline(bestCoords, {
+        color: mainColor, weight: 7, opacity: 1.0, lineJoin: 'round'
+    }).addTo(mapInstance.current);
+    routeLines.current.push(bestPolyline);
+    
+    // Only fit bounds if we are NOT navigating (to allow user to pan around freely while driving)
+    if (!isNavigating) {
+        mapInstance.current.fitBounds(bestPolyline.getBounds(), { paddingTopLeft: [50, 50], paddingBottomRight: [50, 300] });
+    }
+  };
+
+  // --- Route Calculation ---
+  const fetchRouteData = async (profile, start, end) => {
+    try {
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/${profile}/${start.lng},${start.lat};${end.lng},${end.lat}?alternatives=true&overview=full&geometries=geojson`
+      );
+      const data = await response.json();
+      if (data.code === 'Ok' && data.routes.length > 0) return data.routes;
+      return [];
+    } catch (error) { return []; }
+  };
+
+  // Wrapped in useCallback to use in useEffect
+  const calculateAllRoutes = useCallback(async (start, end, L, preserveMode = false) => {
+    if (!start || !end) return;
+    
+    // Don't show "Calculating" toast if we are just updating the line live
+    if (!preserveMode) {
+        setIsRouting(true);
+        setStatusMsg('Calculating routes...');
+    }
+
+    const [drivingRoutes, bikeRoutes, footRoutes] = await Promise.all([
+      fetchRouteData('driving', start, end),
+      fetchRouteData('bike', start, end),
+      fetchRouteData('foot', start, end)
+    ]);
+
+    setRoutesData({ driving: drivingRoutes, bike: bikeRoutes, foot: footRoutes });
+    
+    if (!preserveMode) {
+        setIsRouting(false);
+        setStatusMsg('');
+    }
+
+    // Determine mode: if preserving, keep current. If new calculation, pick best available.
+    let modeToUse = selectedMode;
+    if (!preserveMode) {
+        modeToUse = drivingRoutes.length > 0 ? 'driving' : bikeRoutes.length > 0 ? 'bike' : 'foot';
+        setSelectedMode(modeToUse);
+    }
+    
+    // Draw based on the determined mode
+    if (modeToUse === 'driving' && drivingRoutes.length > 0) drawRoutes(drivingRoutes, L, 'driving');
+    else if (modeToUse === 'bike' && bikeRoutes.length > 0) drawRoutes(bikeRoutes, L, 'bike');
+    else if (modeToUse === 'foot' && footRoutes.length > 0) drawRoutes(footRoutes, L, 'foot');
+  }, [selectedMode, isNavigating]); // Depends on selectedMode so it knows what to preserve
+
+  // --- Real-time Route Updater ---
+  useEffect(() => {
+    // Only update if we are actively navigating, have locations, and the map is ready
+    if (isNavigating && userLocation && destLocation && mapInstance.current) {
+        const now = Date.now();
+        // Throttle updates to every 4 seconds to avoid API bans
+        if (now - lastRouteUpdate.current > 4000) {
+            lastRouteUpdate.current = now;
+            import('leaflet').then(L => {
+                // Pass true to preserveMode to keep current vehicle selection and silence status
+                calculateAllRoutes(userLocation, destLocation, L, true);
+            });
+        }
+    }
+  }, [userLocation, isNavigating, destLocation, calculateAllRoutes]);
+
   const handleAddressChange = (e) => {
     const value = e.target.value;
     setFromAddress(value);
@@ -175,8 +273,6 @@ export default function GetDirections() {
        import('leaflet').then((L) => {
           updateUserMarker(lat, lng, L);
           if (destLocation) {
-             const bounds = L.latLngBounds([lat, lng], [destLocation.lat, destLocation.lng]);
-             mapInstance.current.fitBounds(bounds, { padding: [50, 50] });
              calculateAllRoutes({ lat, lng }, destLocation, L);
           } else {
              mapInstance.current.setView([lat, lng], 15);
@@ -215,8 +311,6 @@ export default function GetDirections() {
           import('leaflet').then((L) => {
             updateUserMarker(lat, lng, L);
             if (destLocation) {
-              const bounds = L.latLngBounds([lat, lng], [destLocation.lat, destLocation.lng]);
-              mapInstance.current.fitBounds(bounds, { padding: [50, 50] });
               calculateAllRoutes({ lat, lng }, destLocation, L);
             } else {
                mapInstance.current.setView([lat, lng], 15);
@@ -265,6 +359,7 @@ export default function GetDirections() {
                             radius: 10, fillColor: "#2563eb", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
                         }).addTo(mapInstance.current);
                         userMarker.current = marker;
+                        // Keep user centered
                         mapInstance.current.setView([lat, lng]); 
                     });
                 }
@@ -273,67 +368,6 @@ export default function GetDirections() {
             { enableHighAccuracy: true, maximumAge: 0 }
         );
     }
-  };
-
-  // --- Route Calculation ---
-  const fetchRouteData = async (profile, start, end) => {
-    try {
-      const response = await fetch(
-        `https://router.project-osrm.org/route/v1/${profile}/${start.lng},${start.lat};${end.lng},${end.lat}?alternatives=true&overview=full&geometries=geojson`
-      );
-      const data = await response.json();
-      if (data.code === 'Ok' && data.routes.length > 0) return data.routes;
-      return [];
-    } catch (error) { return []; }
-  };
-
-  const calculateAllRoutes = async (start, end, L) => {
-    if (!start || !end) return;
-    setIsRouting(true);
-    setStatusMsg('Calculating routes...');
-
-    const [drivingRoutes, bikeRoutes, footRoutes] = await Promise.all([
-      fetchRouteData('driving', start, end),
-      fetchRouteData('bike', start, end),
-      fetchRouteData('foot', start, end)
-    ]);
-
-    setRoutesData({ driving: drivingRoutes, bike: bikeRoutes, foot: footRoutes });
-    setIsRouting(false);
-    setStatusMsg('');
-
-    const initialMode = drivingRoutes.length > 0 ? 'driving' : bikeRoutes.length > 0 ? 'bike' : 'foot';
-    setSelectedMode(initialMode);
-    
-    if (initialMode === 'driving' && drivingRoutes.length > 0) drawRoutes(drivingRoutes, L, 'driving');
-    else if (initialMode === 'bike' && bikeRoutes.length > 0) drawRoutes(bikeRoutes, L, 'bike');
-    else if (initialMode === 'foot' && footRoutes.length > 0) drawRoutes(footRoutes, L, 'foot');
-  };
-
-  const drawRoutes = (routes, LInstance, mode) => {
-    if (!mapInstance.current || !routes || routes.length === 0) return;
-    routeLines.current.forEach(line => line.remove());
-    routeLines.current = [];
-
-    let mainColor = '#111827'; 
-    if (mode === 'bike') mainColor = '#7c3aed'; 
-    if (mode === 'foot') mainColor = '#059669'; 
-
-    routes.slice(1).forEach(route => {
-        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-        const polyline = LInstance.polyline(coords, {
-            color: '#272828', weight: 5, opacity: 0.5, lineJoin: 'round'
-        }).addTo(mapInstance.current);
-        routeLines.current.push(polyline);
-    });
-
-    const bestRoute = routes[0];
-    const bestCoords = bestRoute.geometry.coordinates.map(c => [c[1], c[0]]);
-    const bestPolyline = LInstance.polyline(bestCoords, {
-        color: mainColor, weight: 7, opacity: 1.0, lineJoin: 'round'
-    }).addTo(mapInstance.current);
-    routeLines.current.push(bestPolyline);
-    mapInstance.current.fitBounds(bestPolyline.getBounds(), { paddingTopLeft: [50, 50], paddingBottomRight: [50, 300] });
   };
 
   const handleModeClick = (mode) => {
@@ -404,7 +438,7 @@ export default function GetDirections() {
 
               {/* ROUTE STATS & LIVE NAVIGATION */}
               {routesData.driving.length > 0 || routesData.bike.length > 0 || routesData.foot.length > 0 ? (
-                  /* --- UPDATED GRID LAYOUT (4 COLS) --- */
+                  /* --- GRID LAYOUT (4 COLS) --- */
                   <div className="grid grid-cols-4 gap-2 mt-2">
                       
                       {/* 1. Driving */}
