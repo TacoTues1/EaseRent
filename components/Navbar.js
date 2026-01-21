@@ -118,7 +118,7 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [navRef, notifRef]);
 
-  async function loadProfile(userId) {
+  async function loadProfile(userId, retries = 3) {
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
       if (data) 
@@ -133,7 +133,9 @@ export default function Navbar() {
             if (duplicates && duplicates.length > 0) {
                 setIsDuplicate(true)
             }
-      }
+      }else if (retries > 0) {
+      setTimeout(() => loadProfile(userId, retries - 1), 500)
+    }
       } 
       catch (err) { console.error(err) }
   }

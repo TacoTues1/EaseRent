@@ -37,7 +37,8 @@ export default function Dashboard() {
     return () => subscription.unsubscribe()
   }, [router])
 
- async function loadProfile(userId) {
+async function loadProfile(userId, retries = 3) { // Add retry counter
+  try {
     const { data } = await supabase
       .from('profiles')
       .select('*')
@@ -54,16 +55,27 @@ export default function Dashboard() {
           .select('id')
           .eq('phone', data.phone)
           .neq('id', userId) 
-          .eq('is_deleted', false) // <--- CRITICAL: Ignore deleted accounts
+          .eq('is_deleted', false)
         
         if (duplicates && duplicates.length > 0) {
             setIsDuplicate(true)
         }
       }
+      setLoading(false) // Only stop loading if we found data
+    } else if (retries > 0) {
+      // If no data found, wait 500ms and try again
+      console.log(`Profile not found, retrying... (${retries} left)`)
+      setTimeout(() => loadProfile(userId, retries - 1), 500)
+    } else {
+      // Out of retries, stop loading (this will likely result in an error state)
+      setLoading(false)
+      // Optional: Redirect to login or show specific error
     }
-    
+  } catch (error) {
+    console.error("Error fetching profile:", error)
     setLoading(false)
   }
+}
 
   const handleDeleteAccount = async () => {
     if(!confirm("Are you sure? This will permanently delete this duplicate account.")) return;
