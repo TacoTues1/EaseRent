@@ -121,9 +121,12 @@ export default function Navbar() {
   async function loadProfile(userId, retries = 3) {
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      if (data) 
+      
+      // Fix: Only check for phone if data exists
+      if (data) {
         setProfile(data)
-      if (data.phone) {
+        
+        if (data.phone) {
             const { data: duplicates } = await supabase
               .from('profiles')
               .select('id')
@@ -133,11 +136,13 @@ export default function Navbar() {
             if (duplicates && duplicates.length > 0) {
                 setIsDuplicate(true)
             }
-      }else if (retries > 0) {
-      setTimeout(() => loadProfile(userId, retries - 1), 500)
-    }
-      } 
-      catch (err) { console.error(err) }
+        }
+      } else if (retries > 0) {
+        // If no data found, retry
+        setTimeout(() => loadProfile(userId, retries - 1), 500)
+      }
+    } 
+    catch (err) { console.error(err) }
   }
 
   async function loadUnreadCount(userId) {
@@ -284,6 +289,10 @@ export default function Navbar() {
   }
 
   const isActive = (path) => router.pathname === path
+  
+  if (profile?.role === 'admin') {
+      return null
+  }
 
   // --- Public Navbar ---
   if (!session) {

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import LandlordDashboard from '../components/LandlordDashboard'
 import TenantDashboard from '../components/TenantDashboard'
+import AdminDashboard from '../components/AdminDashboard'
 
 export default function Dashboard() {
   const [session, setSession] = useState(null)
@@ -155,7 +156,10 @@ async function loadProfile(userId, retries = 3) { // Add retry counter
     )
   }
 
-  // Render the correct dashboard based on role
+  if (profile.role === 'admin') {
+    return <AdminDashboard session={session} profile={profile} />
+  }
+
   if (profile.role === 'landlord') {
     return <LandlordDashboard session={session} profile={profile} />
   }
