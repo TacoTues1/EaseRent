@@ -80,13 +80,40 @@ export default function PaymentsPage() {
     setUserRole(data?.role || 'tenant')
   }
 
+  // UPDATED: Added Realtime Subscriptions
   useEffect(() => {
     if (session && userRole) {
+      // Initial Load
       loadPayments()
       loadPaymentRequests()
       if (userRole === 'landlord') {
         loadProperties()
         loadApprovedApplications()
+      }
+
+      // Realtime Subscriptions
+      const channel = supabase
+        .channel('payments_page_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payment_requests' },
+          (payload) => {
+            // Reload requests when a new bill is sent or status updates
+            loadPaymentRequests()
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payments' },
+          (payload) => {
+            // Reload stats/history when a payment is fully confirmed/recorded
+            loadPayments()
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
       }
     }
   }, [session, userRole])
@@ -281,6 +308,11 @@ export default function PaymentsPage() {
       setBillReceiptPreview(null)
       setShowFormModal(false)
       loadPaymentRequests()
+      await sendBillNotification(tenantPhone, {
+        propertyName: property.title,
+        amount: totalAmount,
+        dueDate: formData.due_date
+        });
       showToast.success('Payment request sent', {
         duration: 4000,
         progress: true,

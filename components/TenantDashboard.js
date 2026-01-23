@@ -21,6 +21,9 @@ export default function TenantDashboard({ session, profile }) {
   // Tenant occupancy states
   const [tenantOccupancy, setTenantOccupancy] = useState(null)
   const [showEndRequestModal, setShowEndRequestModal] = useState(false)
+  
+  // NEW STATE FOR DATE
+  const [endRequestDate, setEndRequestDate] = useState('')
   const [endRequestReason, setEndRequestReason] = useState('')
   const [submittingEndRequest, setSubmittingEndRequest] = useState(false)
   
@@ -234,32 +237,63 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   async function requestEndOccupancy() {
-    if (!tenantOccupancy) return; setSubmittingEndRequest(true)
-    const { error } = await supabase.from('tenant_occupancies').update({ status: 'pending_end', end_requested_at: new Date().toISOString(), end_request_reason: endRequestReason.trim() || 'No reason', end_request_status: 'pending' }).eq('id', tenantOccupancy.id)
-    if (error) { 
-      showToast.error("Failed to submit request", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+    if (!tenantOccupancy) return; 
+    
+    if(!endRequestDate || !endRequestReason) {
+        showToast.error("Please fill in both Date and Reason");
+        return;
+    }
 
+    setSubmittingEndRequest(true)
+
+    // UPDATED: Now directly using the end_request_date column
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({ 
+          status: 'pending_end', 
+          end_requested_at: new Date().toISOString(), 
+          end_request_reason: endRequestReason.trim(),
+          end_request_date: endRequestDate, // Saving to valid column now
+          end_request_status: 'pending' 
+      })
+      .eq('id', tenantOccupancy.id)
+
+    if (error) { 
+      console.error('Error submitting end request:', error)
+      showToast.error(`Failed to submit: ${error.message}`, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       setSubmittingEndRequest(false); 
       return 
     }
-    await createNotification({ recipient: tenantOccupancy.landlord_id, actor: session.user.id, type: 'end_occupancy_request', message: `${profile.first_name} ${profile.last_name} requested to end occupancy at "${tenantOccupancy.property?.title}".`, link: '/dashboard' })
-     showToast.success("Request submitted", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+    
+    await createNotification({ 
+        recipient: tenantOccupancy.landlord_id, 
+        actor: session.user.id, 
+        type: 'end_occupancy_request', 
+        message: `${profile.first_name} ${profile.last_name} requested to end occupancy on ${endRequestDate}.`, 
+        link: '/dashboard' 
+    })
+    
+    showToast.success("Request submitted", {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
-    setShowEndRequestModal(false); setEndRequestReason(''); setSubmittingEndRequest(false); loadTenantOccupancy()
+    setShowEndRequestModal(false); 
+    setEndRequestReason(''); 
+    setEndRequestDate('');
+    setSubmittingEndRequest(false); 
+    loadTenantOccupancy()
   }
 
   const getPropertyImages = (property) => {
@@ -275,7 +309,7 @@ export default function TenantDashboard({ session, profile }) {
         <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
             <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
             
-            {/* Action Buttons (Original with Compare & Favorite) */}
+            {/* Action Buttons */}
             <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
                 <button onClick={(e) => toggleFavorite(e, property.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
                     <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
@@ -538,7 +572,27 @@ export default function TenantDashboard({ session, profile }) {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
               <h3 className="text-xl font-bold mb-4">Request to Leave</h3>
-              <textarea value={endRequestReason} onChange={(e) => setEndRequestReason(e.target.value)} placeholder="Reason..." className="w-full p-3 border rounded-xl mb-4" />
+              
+              <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Date when*</label>
+                  <input 
+                    type="date" 
+                    value={endRequestDate} 
+                    onChange={(e) => setEndRequestDate(e.target.value)} 
+                    className="w-full p-3 border rounded-xl"
+                  />
+              </div>
+
+              <div className="mb-4">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Reason*</label>
+                  <textarea 
+                    value={endRequestReason} 
+                    onChange={(e) => setEndRequestReason(e.target.value)} 
+                    placeholder="Enter your reason..." 
+                    className="w-full p-3 border rounded-xl" 
+                  />
+              </div>
+
               <div className="flex gap-2">
                   <button onClick={() => setShowEndRequestModal(false)} className="flex-1 py-2 bg-gray-100 rounded-xl cursor-pointer">Cancel</button>
                   <button onClick={requestEndOccupancy} disabled={submittingEndRequest} className="flex-1 py-2 bg-black text-white rounded-xl cursor-pointer">Submit</button>

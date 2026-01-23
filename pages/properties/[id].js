@@ -219,7 +219,10 @@ export default function PropertyDetail() {
           message: template.message
         })
       }
-
+      await sendNewApplicationNotification(landlordPhone, {
+      applicantName: user.first_name,
+      propertyName: property.title
+      });
       setMessage('Inquiry submitted successfully!')
       setApplicationMessage('')
     }

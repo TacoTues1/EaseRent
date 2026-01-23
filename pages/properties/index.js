@@ -1,10 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/router'
-import Link from 'next/link'
 import Footer from '../../components/Footer'
 import AuthModal from '../../components/AuthModal'
-import PropertyCard from '../../components/PropertyCard'
 
 export default function AllProperties() {
   const router = useRouter()

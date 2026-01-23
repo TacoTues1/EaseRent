@@ -167,6 +167,15 @@ export default function BookingsPage() {
           .eq('id', booking.time_slot_id)
       }
 
+      if (booking.tenant_profile?.phone) {
+       await sendBookingConfirmation(booking.tenant_profile.phone, {
+          propertyName: booking.property?.title || 'Property',
+          date: new Date(booking.booking_date).toLocaleDateString(),
+          time: new Date(booking.booking_date).toLocaleTimeString(),
+          id: booking.id
+       });
+      }
+
       // Send notification to tenant
       await createNotification({
         recipient: booking.tenant,
@@ -198,6 +207,9 @@ export default function BookingsPage() {
         }
 
         if (response.ok && result?.success) {
+          if (booking.tenant_profile?.phone && booking.tenant_profile?.phone_verified) { // <--- ADD CHECK
+   await sendBookingConfirmation(booking.tenant_profile.phone);
+}
           showToast.success("Booking approved! Email sent to tenant.", {
     duration: 4000,
     progress: true,

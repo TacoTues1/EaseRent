@@ -8,13 +8,20 @@ import Footer from './Footer'
 export default function LandlordDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false) // New state for background updates
+  const [refreshing, setRefreshing] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState({})
   
   // Modal States
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [acceptedApplications, setAcceptedApplications] = useState([])
+  
+  // NEW: Confirmation Modal State
+  const [confirmationModal, setConfirmationModal] = useState({ 
+    isOpen: false, 
+    type: null, // 'approve' or 'reject'
+    requestId: null 
+  })
   
   // Landlord data states
   const [occupancies, setOccupancies] = useState([])
@@ -51,8 +58,6 @@ export default function LandlordDashboard({ session, profile }) {
   }, [profile])
 
   async function loadProperties() {
-    // Only show the full loading spinner if we have NO data yet.
-    // If we already have data, we just set 'refreshing' so the UI doesn't shrink/disappear.
     if (properties.length === 0) {
       setLoading(true)
     } else {
@@ -132,19 +137,7 @@ export default function LandlordDashboard({ session, profile }) {
 
   async function assignTenant(application) {
     if (!application.tenant || !application.tenant_profile) { 
-    showToast.error("Invalid tenant", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
-
-      return }
-    const { error } = await supabase.from('tenant_occupancies').insert({ property_id: selectedProperty.id, tenant_id: application.tenant, landlord_id: session.user.id, application_id: application.id, status: 'active', start_date: new Date().toISOString() })
-    if (error) { console.error('Assign Error:', error); 
-      showToast.error('Failed to assign tenant', {
+      showToast.error("Invalid tenant", {
         duration: 4000,
         progress: true,
         position: "top-center",
@@ -152,7 +145,23 @@ export default function LandlordDashboard({ session, profile }) {
         icon: '',
         sound: true,
       });
-      return }
+      return 
+    }
+    const { error } = await supabase.from('tenant_occupancies').insert({ property_id: selectedProperty.id, tenant_id: application.tenant, landlord_id: session.user.id, application_id: application.id, status: 'active', start_date: new Date().toISOString() })
+    
+    if (error) { 
+      console.error('Assign Tenant Error:', error); 
+      showToast.error('Failed to assign tenant. Check console for details.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
+      return 
+    }
+    
     await supabase.from('properties').update({ status: 'occupied' }).eq('id', selectedProperty.id)
     await createNotification({ recipient: application.tenant, actor: session.user.id, type: 'occupancy_assigned', message: `You have been assigned to occupy "${selectedProperty.title}".`, link: '/maintenance' })
     showToast.success('Tenant assigned!', {
@@ -170,7 +179,7 @@ export default function LandlordDashboard({ session, profile }) {
     if (!confirm(`Cancel assignment for ${application.tenant_profile?.first_name}?`)) return
     const { error } = await supabase.from('applications').update({ status: 'rejected' }).eq('id', application.id)
     if (error) { 
-      showToast.error('Failed', {
+      showToast.error('Failed to cancel assignment', {
         duration: 4000,
         progress: true,
         position: "top-center",
@@ -178,7 +187,8 @@ export default function LandlordDashboard({ session, profile }) {
         icon: '',
         sound: true,
       });
-      return }
+      return 
+    }
     await createNotification({ recipient: application.tenant, actor: session.user.id, type: 'application_rejected', message: `The viewing for "${selectedProperty.title}" failed. Application cancelled.`, link: '/applications' })
     showToast.success('Cancelled', {
       duration: 4000,
@@ -193,9 +203,15 @@ export default function LandlordDashboard({ session, profile }) {
 
   async function kickOutTenant(occupancy) {
     if (!confirm(`Are you sure you want to end the contract for ${occupancy.tenant?.first_name}? This action cannot be undone.`)) return
-    const { error } = await supabase.from('tenant_occupancies').update({ status: 'ended', end_date: new Date().toISOString() }).eq('id', occupancy.id)
+    
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({ status: 'ended', end_date: new Date().toISOString() })
+      .eq('id', occupancy.id)
+
     if (error) { 
-      showToast.error('Failed to end contract. Check permissions.', {
+      console.error('Kick Out Error:', error)
+      showToast.error(`Failed: ${error.message || 'Check console'}`, {
         duration: 4000,
         progress: true,
         position: "top-center",
@@ -203,7 +219,9 @@ export default function LandlordDashboard({ session, profile }) {
         icon: '',
         sound: true,
       });
-      return }
+      return 
+    }
+
     await supabase.from('properties').update({ status: 'available' }).eq('id', occupancy.property_id)
     await createNotification({ recipient: occupancy.tenant_id, actor: session.user.id, type: 'occupancy_ended', message: `Your contract for "${occupancy.property?.title}" has been ended by the landlord.`, link: '/dashboard' })
     showToast.success('Contract ended successfully', {
@@ -217,11 +235,39 @@ export default function LandlordDashboard({ session, profile }) {
     loadProperties(); loadOccupancies()
   }
 
+  // --- CONFIRMATION HANDLERS ---
+
+  function openEndConfirmation(type, requestId) {
+    setConfirmationModal({ isOpen: true, type, requestId })
+  }
+
+  function handleConfirmEndAction() {
+    if (confirmationModal.type === 'approve') {
+      approveEndRequest(confirmationModal.requestId)
+    } else if (confirmationModal.type === 'reject') {
+      rejectEndRequest(confirmationModal.requestId)
+    }
+    setConfirmationModal({ isOpen: false, type: null, requestId: null })
+  }
+
+  // --- ACTION FUNCTIONS ---
+
   async function approveEndRequest(occupancyId) {
-    const occupancy = pendingEndRequests.find(o => o.id === occupancyId); if (!occupancy) return
-    const { error } = await supabase.from('tenant_occupancies').update({ status: 'ended', end_date: new Date().toISOString(), end_request_status: 'approved' }).eq('id', occupancyId)
+    const occupancy = pendingEndRequests.find(o => o.id === occupancyId); 
+    if (!occupancy) return
+
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({ 
+        status: 'ended', 
+        end_date: new Date().toISOString(), 
+        end_request_status: 'approved' 
+      })
+      .eq('id', occupancyId)
+
     if (error) { 
-      showToast.error('Failed to approve', {
+      console.error('Approve End Request Error:', error); 
+      showToast.error(`Failed to approve: ${error.message}`, {
         duration: 4000,
         progress: true,
         position: "top-center",
@@ -229,11 +275,15 @@ export default function LandlordDashboard({ session, profile }) {
         icon: '',
         sound: true,
       });
-      return }
+      return 
+    }
+
     await supabase.from('properties').update({ status: 'available' }).eq('id', occupancy.property_id)
     await supabase.from('applications').delete().eq('property_id', occupancy.property_id).eq('tenant', occupancy.tenant_id)
+    
     await createNotification({ recipient: occupancy.tenant_id, actor: session.user.id, type: 'end_request_approved', message: `End occupancy request for "${occupancy.property?.title}" approved.`, link: '/dashboard' })
-    showToast.success('Approved', {
+    
+    showToast.success('Approved successfully', {
       duration: 4000,
       progress: true,
       position: "top-center",
@@ -245,10 +295,23 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   async function rejectEndRequest(occupancyId) {
-    const occupancy = pendingEndRequests.find(o => o.id === occupancyId); if (!occupancy) return
-    const { error } = await supabase.from('tenant_occupancies').update({ status: 'active', end_request_status: 'rejected', end_requested_at: null, end_request_reason: null }).eq('id', occupancyId)
+    const occupancy = pendingEndRequests.find(o => o.id === occupancyId); 
+    if (!occupancy) return
+
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({ 
+        status: 'active', 
+        end_request_status: 'rejected', 
+        end_requested_at: null, 
+        end_request_reason: null,
+        end_request_date: null
+      })
+      .eq('id', occupancyId)
+
     if (error) { 
-      showToast.error('Failed to reject', {
+      console.error('Reject End Request Error:', error);
+      showToast.error(`Failed to reject: ${error.message}`, {
         duration: 4000,
         progress: true,
         position: "top-center",
@@ -256,9 +319,11 @@ export default function LandlordDashboard({ session, profile }) {
         icon: '',
         sound: true,
       });
-      return }
+      return 
+    }
+
     await createNotification({ recipient: occupancy.tenant_id, actor: session.user.id, type: 'end_request_rejected', message: `End occupancy request for "${occupancy.property?.title}" rejected.`, link: '/dashboard' })
-    showToast.success('Rejected', {
+    showToast.success('Request rejected', {
       duration: 4000,
       progress: true,
       position: "top-center",
@@ -277,7 +342,7 @@ export default function LandlordDashboard({ session, profile }) {
         <div className="flex flex-col lg:flex-row gap-8 mt-4">
             
             {/* LEFT PANEL: PROPERTIES (Main Content) */}
-            <div className="flex-1 min-h-[600px] lg:w-3/4"> {/* Added min-h to prevent shrink */}
+            <div className="flex-1 min-h-[600px] lg:w-3/4">
               <div className="mb-0">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                     <div className="mb-2 sm:mb-0 w-full sm:w-auto">
@@ -313,7 +378,7 @@ export default function LandlordDashboard({ session, profile }) {
                     <p className="text-gray-500 mb-8 max-w-sm mx-auto">You don't have any properties created.</p>
                   </div>
                 ) : (
-                  // LANDLORD SPECIFIC GRID - Updated to 2 columns on mobile (grid-cols-2) and 3 on large screens
+                  // LANDLORD SPECIFIC GRID
                   <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
                     {properties.map((item) => {
                         const property = item
@@ -358,13 +423,35 @@ export default function LandlordDashboard({ session, profile }) {
                               
                               <div className="flex items-center gap-2 sm:gap-3 text-gray-700 text-[10px] sm:text-xs bg-gray-50 p-2 sm:p-2.5 rounded-xl mb-3 sm:mb-4">
                                   <span className="flex items-center gap-1 font-bold">
-                                      <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                                      {property.bedrooms}
+<svg
+  className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500"
+  fill="none"
+  stroke="currentColor"
+  viewBox="0 0 24 24"
+>
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M3 7h18v10H3V7zm2 0v6h14V7M5 17v2m14-2v2"
+  />
+</svg>                                      {property.bedrooms}
                                   </span>
                                   <span className="w-px h-3 bg-gray-300"></span>
                                   <span className="flex items-center gap-1 font-bold">
-                                      <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>
-                                      {property.bathrooms}
+<svg
+  className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500"
+  fill="none"
+  stroke="currentColor"
+  viewBox="0 0 24 24"
+>
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M4 12h16M6 12V8a2 2 0 012-2h3M5 12l1 6a2 2 0 002 2h8a2 2 0 002-2l1-6M7 20v1m10-1v1"
+  />
+</svg>                                      {property.bathrooms}
                                   </span>
                                   <span className="w-px h-3 bg-gray-300"></span>
                                   <span className="flex items-center gap-1 font-bold">
@@ -430,11 +517,26 @@ export default function LandlordDashboard({ session, profile }) {
                         <div key={request.id} className="p-4 flex flex-col gap-3">
                            <div>
                               <p className="font-bold text-gray-900 text-sm mb-0.5">{request.property?.title}</p>
-                              <p className="text-xs text-gray-500">{request.tenant?.first_name} {request.tenant?.last_name}</p>
+                              <p className="text-xs text-gray-500 mb-2">{request.tenant?.first_name} {request.tenant?.last_name}</p>
+                              
+                              {/* Display Date */}
+                              {request.end_request_date && (
+                                <p className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block mb-1">
+                                  Requested Date: {new Date(request.end_request_date).toLocaleDateString()}
+                                </p>
+                              )}
+
+                              {/* Display Reason */}
+                              {request.end_request_reason && (
+                                <p className="text-xs text-gray-600 italic mt-1 bg-gray-50 p-2 rounded border border-gray-100">
+                                  "{request.end_request_reason}"
+                                </p>
+                              )}
                            </div>
                            <div className="flex gap-2">
-                              <button onClick={() => approveEndRequest(request.id)} className="flex-1 py-1.5 bg-black text-white text-xs font-bold rounded-lg hover:bg-gray-800 shadow-lg shadow-black/20">Approve</button>
-                              <button onClick={() => rejectEndRequest(request.id)} className="flex-1 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50">Reject</button>
+                              {/* UPDATED: Buttons now open confirmation modal */}
+                              <button onClick={() => openEndConfirmation('approve', request.id)} className="flex-1 py-1.5 bg-black text-white text-xs font-bold rounded-lg hover:bg-gray-800 shadow-lg shadow-black/20 cursor-pointer">Approve</button>
+                              <button onClick={() => openEndConfirmation('reject', request.id)} className="flex-1 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer">Reject</button>
                            </div>
                         </div>
                       ))}
@@ -511,6 +613,46 @@ export default function LandlordDashboard({ session, profile }) {
         </div>
 
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmationModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-200">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${confirmationModal.type === 'approve' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                {confirmationModal.type === 'approve' ? (
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                )}
+              </div>
+              
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                {confirmationModal.type === 'approve' ? 'Approve Move-Out?' : 'Reject Request?'}
+              </h3>
+              
+              <p className="text-sm text-gray-500 mb-6">
+                {confirmationModal.type === 'approve' 
+                  ? 'Are you sure you want to approve this request? The contract will be ended and the property will be marked as available.' 
+                  : 'Are you sure you want to reject this request? The tenant will remain in the property and the contract will continue.'}
+              </p>
+
+              <div className="flex gap-3">
+                 <button 
+                   onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
+                   className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
+                 >
+                   Cancel
+                 </button>
+                 <button 
+                   onClick={handleConfirmEndAction}
+                   className={`flex-1 px-4 py-2 text-white font-bold rounded-xl cursor-pointer shadow-lg ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
+                 >
+                   Confirm
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* Assign Modal */}
       {showAssignModal && selectedProperty && (

@@ -31,9 +31,28 @@ export default function PaymentHistoryPage() {
     setUserRole(data?.role || 'tenant')
   }
 
+  // UPDATED: Added Realtime Subscription
   useEffect(() => {
     if (session && userRole) {
       loadPayments()
+
+      // Subscribe to changes in the 'payments' table
+      const channel = supabase
+        .channel('payment_history_realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payments' },
+          () => {
+            // Re-fetch data whenever a change occurs
+            loadPayments()
+          }
+        )
+        .subscribe()
+
+      // Cleanup subscription on unmount
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
   }, [session, userRole])
 
