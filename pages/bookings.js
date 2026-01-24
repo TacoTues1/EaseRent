@@ -530,7 +530,7 @@ export default function BookingsPage() {
     })
 
     showToast.success("Viewing scheduled successfully!", { duration: 4000, transition: "bounceIn" })
-    setSubmittingEndRequest(false)
+    // setSubmittingEndRequest(false)
     setSubmittingBooking(false)
     closeBookingModal()
     loadBookings()

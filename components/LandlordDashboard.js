@@ -55,6 +55,7 @@ export default function LandlordDashboard({ session, profile }) {
       loadPendingEndRequests()
       loadDashboardTasks()
     }
+    fetch('/api/manual-reminders').catch(err => console.error("Reminder check failed", err));
   }, [profile])
 
   async function loadProperties() {
