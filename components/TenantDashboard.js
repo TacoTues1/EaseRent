@@ -48,6 +48,19 @@ export default function TenantDashboard({ session, profile }) {
 
   const filterAmenities = ['Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly']
 
+  function getNextBillDate(startDate) {
+    if (!startDate) return 'N/A'
+    const start = new Date(startDate)
+    const today = new Date()
+    
+    let nextDate = new Date(start)
+    // Add 31 days until the date is in the future
+    while (nextDate <= today) {
+      nextDate.setDate(nextDate.getDate() + 31)
+    }
+    return nextDate.toLocaleDateString()
+  }
+
   useEffect(() => {
     const allProperties = [...properties, ...guestFavorites, ...topRated]
     if (allProperties.length === 0) return
@@ -184,14 +197,45 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   async function loadFeaturedSections() {
-    const { data: allProps } = await supabase.from('properties').select('*').eq('status', 'available')
-    const { data: stats } = await supabase.from('property_stats').select('*')
+    // 1. Fetch properties (Available only, or remove .eq for all)
+    const { data: allProps } = await supabase
+      .from('properties')
+      .select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)')
+      .eq('is_deleted', false)
+
+    // 2. Fetch stats
+    const { data: stats } = await supabase
+      .from('property_stats')
+      .select('*')
+
     if (allProps && stats) {
+      // Create a map for easy lookup: statsMap[propertyId] = { ... }
       const statsMap = {}
-      stats.forEach(s => { statsMap[s.property_id] = { favorite_count: s.favorite_count || 0, avg_rating: s.avg_rating || 0, review_count: s.review_count || 0 } })
-      const favorites = allProps.filter(p => statsMap[p.id]?.favorite_count >= 1).sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0)).slice(0, maxDisplayItems)
+      stats.forEach(s => { 
+        statsMap[s.property_id] = { 
+          favorite_count: s.favorite_count || 0, 
+          avg_rating: s.avg_rating || 0, 
+          review_count: s.review_count || 0 
+        } 
+      })
+
+      // Update State for Stats
+      setPropertyStats(statsMap)
+
+      // 3. Guest Favorites (Most Favorited)
+      const favorites = allProps
+        .filter(p => (statsMap[p.id]?.favorite_count || 0) >= 1)
+        .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
+        .slice(0, maxDisplayItems)
+      
       setGuestFavorites(favorites)
-      const rated = allProps.filter(p => statsMap[p.id]?.review_count > 0).sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0)).slice(0, maxDisplayItems)
+
+      // 4. Top Rated (Highest Average Rating with at least 1 review)
+      const rated = allProps
+        .filter(p => (statsMap[p.id]?.review_count || 0) > 0) // Must have reviews
+        .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
+        .slice(0, maxDisplayItems)
+      
       setTopRated(rated)
     }
   }
@@ -271,6 +315,17 @@ export default function TenantDashboard({ session, profile }) {
       setSubmittingEndRequest(false); 
       return 
     }
+
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        type: 'move_out',
+        recordId: tenantOccupancy.property.id, // Pass Property ID
+        actorId: session.user.id,
+        extraData: { reason: endRequestReason }
+      })
+    })
     
     await createNotification({ 
         recipient: tenantOccupancy.landlord_id, 
@@ -335,7 +390,7 @@ export default function TenantDashboard({ session, profile }) {
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
                 <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Tenants Favorite</span></span>)}
             </div>
             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
                 <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
@@ -398,6 +453,18 @@ export default function TenantDashboard({ session, profile }) {
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         {tenantOccupancy.property?.address}, {tenantOccupancy.property?.city}
                       </p>
+                      <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">Date Started:</span>
+                        <span className="text-[10px] font-bold text-black">
+                        {tenantOccupancy.start_date}
+                        </span>
+                      </p>
+                      <div className="text-xs text-gray-500 truncate flex items-center gap-1">
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">Next Bill:</span>
+                        <span className="text-[10px] font-bold text-black">
+                           {getNextBillDate(tenantOccupancy.start_date)}
+                        </span>
+                     </div>
                    </div>
                    <div className="flex-shrink-0">
                      {tenantOccupancy.status === 'pending_end' ? (
@@ -468,7 +535,7 @@ export default function TenantDashboard({ session, profile }) {
             )}
         </div>
 
-        {/* Guest Favorites Section - Carousel */}
+        {/* Tenants Favorites Section - Carousel */}
         {guestFavorites.length > 0 && (
             <div className="mb-2 mt-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
@@ -510,15 +577,15 @@ export default function TenantDashboard({ session, profile }) {
 
         {/* Top Rated Section - Carousel */}
         {topRated.length > 0 && (
-            <div className="mb-10">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
+            <div className="mb-2 mt-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
                     <p className="text-sm text-gray-500">Highest rated by tenants</p>
                 </div>
                 </div>
                 <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-                    <CarouselContent className="-ml-1">
+                    <CarouselContent className="-ml-2">
                         {topRated.slice(0, maxDisplayItems).map((item) => {
                              const images = getPropertyImages(item)
                              const currentIndex = currentImageIndex[item.id] || 0
@@ -527,7 +594,7 @@ export default function TenantDashboard({ session, profile }) {
                              const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
                              
                              return (
-                                <CarouselItem key={item.id} className="pl-2 basis-1/2 md:basis-1/4 lg:basis-[14.28%]">
+                                <CarouselItem key={item.id} className={carouselItemClass}>
                                     <div className="p-1 h-full">
                                         <PropertyCard 
                                             property={item} 

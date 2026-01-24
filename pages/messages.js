@@ -256,19 +256,64 @@ export default function Messages() {
   }
 
   async function loadAllUsers() {
-    const { data: users, error } = await supabase
-      .from('profiles')
-      .select('id, first_name, middle_name, last_name, role, phone')
-      .neq('id', session.user.id)
-      .order('first_name')
+    if (!profile || !session) return
 
-    if (error) {
-      console.error('Error loading users:', error)
-      return
+    try {
+      if (profile.role === 'landlord') {
+        // RULE 1: Landlords can chat to many tenants
+        // We fetch all users who have the role 'tenant'
+        const { data: tenants, error } = await supabase
+          .from('profiles')
+          .select('id, first_name, middle_name, last_name, role, phone')
+          .eq('role', 'tenant') // Filter for tenants only
+          .neq('id', session.user.id)
+          .order('first_name')
+
+        if (error) throw error
+        setAllUsers(tenants || [])
+        setFilteredUsers(tenants || [])
+
+      } else if (profile.role === 'tenant') {
+        // RULE 2: Tenants can chat ONLY with the landlord of properties they rent
+        
+        // Step A: Find active occupancies for this tenant
+        const { data: occupancies, error: occError } = await supabase
+          .from('tenant_occupancies')
+          .select(`
+            status,
+            property:properties!inner (
+              landlord
+            )
+          `)
+          .eq('tenant_id', session.user.id)
+          .eq('status', 'active') // Only current active rentals
+
+        if (occError) throw occError
+
+        // Step B: Extract unique Landlord IDs
+        const landlordIds = [...new Set(occupancies?.map(o => o.property?.landlord).filter(Boolean))]
+
+        if (landlordIds.length > 0) {
+          // Step C: Fetch profile details for those specific landlords
+          const { data: landlords, error: profileError } = await supabase
+            .from('profiles')
+            .select('id, first_name, middle_name, last_name, role, phone')
+            .in('id', landlordIds)
+
+          if (profileError) throw profileError
+          
+          setAllUsers(landlords || [])
+          setFilteredUsers(landlords || [])
+        } else {
+          // No active landlords found
+          setAllUsers([])
+          setFilteredUsers([])
+        }
+      }
+    } catch (error) {
+      console.error('Error loading available contacts:', error)
+      showToast.error('Could not load contacts list')
     }
-    
-    setAllUsers(users || [])
-    setFilteredUsers(users || [])
   }
 
   async function loadUnreadCounts() {

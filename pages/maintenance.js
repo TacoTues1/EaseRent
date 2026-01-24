@@ -15,15 +15,15 @@ export default function MaintenancePage() {
   const [showModal, setShowModal] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [responseText, setResponseText] = useState('')
-  
-  // Filter & Search State
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [requestToCancel, setRequestToCancel] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchId, setSearchId] = useState('')
-  
-  // File Upload State (supports multiple files)
   const [proofFiles, setProofFiles] = useState([])
   const [uploading, setUploading] = useState(false)
-
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [requestToSchedule, setRequestToSchedule] = useState(null)
+  const [scheduleDate, setScheduleDate] = useState('')
   const [formData, setFormData] = useState({
     property_id: '',
     title: '',
@@ -142,6 +142,15 @@ export default function MaintenancePage() {
       .eq('id', requestId)
 
     if (!error) {
+      fetch('/api/notify', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    type: 'maintenance_status',
+    recordId: requestId,
+    actorId: session.user.id
+  })
+})
       showToast.success(`Status updated to ${newStatus.replace('_', ' ')}`, {
         duration: 4000,
         progress: true,
@@ -315,8 +324,16 @@ export default function MaintenancePage() {
         }).select('*, properties(title, landlord)')
     
         if (error) throw error
-    
         if (insertData && insertData[0]) {
+          fetch('/api/notify', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    type: 'maintenance_new',
+    recordId: insertData[0].id,
+    actorId: session.user.id
+  })
+})
           const property = insertData[0].properties
           if (property && property.landlord) {
             const template = NotificationTemplates.newMaintenanceRequest(
@@ -368,6 +385,58 @@ export default function MaintenancePage() {
     const matchesSearch = searchId === '' || req.id.toLowerCase().includes(searchId.toLowerCase())
     return matchesStatus && matchesSearch
   })
+
+  function promptCancel(request) {
+    setRequestToCancel(request)
+    setShowCancelModal(true)
+  }
+
+  async function confirmCancel() {
+    if (!requestToCancel) return
+
+    // Reuse your existing status update function
+    await updateRequestStatus(requestToCancel.id, 'cancelled')
+
+    setShowCancelModal(false)
+    setRequestToCancel(null)
+  }
+  function openStartWorkModal(request) {
+    setRequestToSchedule(request)
+    setScheduleDate('') // Reset date
+    setShowScheduleModal(true)
+  }
+
+  async function confirmStartWork() {
+    if (!requestToSchedule || !scheduleDate) return
+
+    const { error } = await supabase
+      .from('maintenance_requests')
+      .update({ 
+        status: 'in_progress',
+        scheduled_date: new Date(scheduleDate).toISOString()
+      })
+      .eq('id', requestToSchedule.id)
+
+    if (!error) {
+      showToast.success("Work started & date set!", { duration: 4000, transition: "bounceIn" });
+      
+      // Notify Tenant
+      const formattedDate = new Date(scheduleDate).toLocaleString();
+      await createNotification({
+        recipient: requestToSchedule.tenant,
+        actor: session.user.id,
+        type: 'maintenance',
+        message: `Work on "${requestToSchedule.title}" is scheduled to start on ${formattedDate}.`,
+        link: '/maintenance'
+      })
+
+      loadRequests()
+      setShowScheduleModal(false)
+      setRequestToSchedule(null)
+    } else {
+      showToast.error("Failed to update request");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans text-black">
@@ -636,6 +705,8 @@ export default function MaintenancePage() {
                     </span>
                 </div>
 
+                
+
                 <div className="p-6">
                   <div className="flex flex-col md:flex-row gap-6">
                     {/* Main Content */}
@@ -660,10 +731,28 @@ export default function MaintenancePage() {
                             {req.priority} Priority
                          </span>
                       </div>
-                      
+                      {req.scheduled_date && (
+  <div className="mt-2 mb-3 inline-flex items-center gap-2 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
+    <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+    <span className="text-xs font-bold text-orange-800">
+      Work starts: {new Date(req.scheduled_date).toLocaleString()}
+    </span>
+  </div>
+)}
                       <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 text-sm text-gray-700 leading-relaxed mb-4">
                         {req.description}
                       </div>
+                     {profile?.role === 'tenant' && !['completed', 'closed', 'cancelled'].includes(req.status) && !req.scheduled_date && (
+                    <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                      <button 
+                        onClick={() => promptCancel(req)}
+                        className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                      >
+                        Cancel Request
+                      </button>
+                    </div>
+                  )}
+                      
 
                       {/* Landlord Actions */}
                       {profile?.role === 'landlord' && (
@@ -673,8 +762,12 @@ export default function MaintenancePage() {
                                     {req.status === 'pending' && (
                                         <>
                                             <button onClick={() => updateRequestStatus(req.id, 'scheduled')} className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-100">Mark Scheduled</button>
-                                            <button onClick={() => updateRequestStatus(req.id, 'in_progress')} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100">Start Working</button>
-                                        </>
+<button 
+  onClick={() => openStartWorkModal(req)} 
+  className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100"
+>
+  Start Working
+</button>                                        </>
                                     )}
                                     {req.status === 'scheduled' && (
                                         <button onClick={() => updateRequestStatus(req.id, 'in_progress')} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100">Start Working</button>
@@ -685,6 +778,14 @@ export default function MaintenancePage() {
                                     {(req.status === 'completed' || req.status === 'resolved') && (
                                         <button onClick={() => updateRequestStatus(req.id, 'closed')} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200">Archive/Close</button>
                                     )}
+                                    {!['completed', 'closed', 'cancelled'].includes(req.status) && (
+  <button 
+    onClick={() => promptCancel(req)} 
+    className="px-4 py-2 bg-red-50 text-red-700 text-xs font-bold rounded-lg hover:bg-red-100"
+  >
+    Cancel/Reject
+  </button>
+)}
                                     
                                     <button 
                                         onClick={() => setSelectedRequest(selectedRequest === req.id ? null : req.id)}
@@ -743,6 +844,77 @@ export default function MaintenancePage() {
                     )}
                   </div>
 
+                  {/* --- CANCEL WARNING MODAL --- */}
+      {showCancelModal && requestToCancel && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-200">
+            
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel Maintenance Request?</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Are you sure you want to cancel the request: <br/>
+              <span className="font-semibold text-gray-900">"{requestToCancel.title}"</span>?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                No, Keep it
+              </button>
+              <button
+                onClick={confirmCancel}
+                className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-100 cursor-pointer"
+              >
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- START WORK DATE MODAL --- */}
+      {showScheduleModal && requestToSchedule && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Set Start Date</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              When will the maintenance work begin for <span className="font-semibold">"{requestToSchedule.title}"</span>?
+            </p>
+
+            <div className="mb-6">
+              <label className="block text-xs font-bold uppercase text-gray-400 mb-1.5">Select Date & Time</label>
+              <input 
+                type="datetime-local"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-black"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStartWork}
+                disabled={!scheduleDate}
+                className="flex-1 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm & Notify
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
                   {/* Reply Section */}
                   {profile?.role === 'landlord' && selectedRequest === req.id && (
                     <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 animate-in fade-in slide-in-from-top-2">
@@ -772,4 +944,6 @@ export default function MaintenancePage() {
       </div>
     </div>
   )
+
+  
 }

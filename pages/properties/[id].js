@@ -107,14 +107,17 @@ export default function PropertyDetail() {
       .from('reviews')
       .select(`
         *,
-        tenant:profiles(first_name, last_name)
+        tenant:profiles!tenant_id(first_name, last_name) 
       `)
       .eq('property_id', id)
       .order('created_at', { ascending: false })
     
+    if (error) {
+      console.error("Error loading reviews:", error)
+    }
+    
     if (data) setReviews(data)
   }
-
   // Helper to extract coordinates from Google Maps links
   const extractCoordinates = (link) => {
     if (!link) return null;
@@ -219,10 +222,23 @@ export default function PropertyDetail() {
           message: template.message
         })
       }
-      await sendNewApplicationNotification(landlordPhone, {
-      applicantName: user.first_name,
-      propertyName: property.title
-      });
+      if (landlordProfile?.phone) {
+        try {
+            // Construct the message here since we are calling a generic SMS API
+            const smsMessage = `EaseRent Alert: New application received from ${profile?.first_name || 'A Tenant'} for "${property.title}". Log in to review.`
+            
+            await fetch('/api/send-sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    phone: landlordProfile.phone, 
+                    message: smsMessage 
+                })
+            })
+        } catch (smsError) {
+            console.error("Failed to send SMS:", smsError)
+        }
+      }
       setMessage('Inquiry submitted successfully!')
       setApplicationMessage('')
     }

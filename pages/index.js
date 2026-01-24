@@ -669,7 +669,7 @@ export default function Home() {
                                     <div className="p-1 h-full">
                                         <div 
                                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => router.push(`/properties/${property.id}`)}
+                                          onClick={() => router.push(`/properties/${item.id}`)}
                                         >
                                           <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                                             <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
@@ -762,7 +762,7 @@ export default function Home() {
                                     <div className="p-1 h-full">
                                         <div 
                                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => router.push(`/properties/${property.id}`)}
+                                          onClick={() => router.push(`/properties/${item.id}`)}
                                         >
                                           <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                                             <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />

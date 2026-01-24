@@ -26,7 +26,6 @@ export default function EditProperty() {
     owner_phone: '',
     owner_email: '',
     price: '',
-    // New Cost Fields
     utilities_cost: '',
     internet_cost: '',
     association_dues: '',
@@ -41,7 +40,7 @@ export default function EditProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating',
+    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating Shower',
     'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
     'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
   ]
