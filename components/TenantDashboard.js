@@ -222,7 +222,7 @@ export default function TenantDashboard({ session, profile }) {
       // Update State for Stats
       setPropertyStats(statsMap)
 
-      // 3. Guest Favorites (Most Favorited)
+      // 3. Tenants Favorites (Most Favorited)
       const favorites = allProps
         .filter(p => (statsMap[p.id]?.favorite_count || 0) >= 1)
         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))

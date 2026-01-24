@@ -226,47 +226,91 @@ export default function Home() {
   }
 
   async function loadFeaturedSections() {
-    try {
-      const { data: allProps } = await supabase
-        .from('properties')
-        .select('*')
-        .eq('status', 'available')
+    // 1. Fetch properties (Available only, or remove .eq for all)
+    const { data: allProps } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('is_deleted', false)
 
-      const { data: stats, error: statsError } = await supabase
-        .from('property_stats')
-        .select('*')
+    // 2. Fetch stats
+    const { data: stats } = await supabase
+      .from('property_stats')
+      .select('*')
 
-      if (statsError) {
-        return
-      }
+    if (allProps && stats) {
+      // Create a map for easy lookup: statsMap[propertyId] = { ... }
+      const statsMap = {}
+      stats.forEach(s => { 
+        statsMap[s.property_id] = { 
+          favorite_count: s.favorite_count || 0, 
+          avg_rating: s.avg_rating || 0, 
+          review_count: s.review_count || 0 
+        } 
+      })
 
-      if (allProps && stats) {
-        const statsMap = {}
-        stats.forEach(s => { 
-          statsMap[s.property_id] = {
-            favorite_count: s.favorite_count || 0,
-            avg_rating: s.avg_rating || 0,
-            review_count: s.review_count || 0
-          }
-        })
-        setPropertyStats(statsMap)
+      // Update State for Stats
+      setPropertyStats(statsMap)
 
-        const favorites = allProps
-          .filter(p => statsMap[p.id]?.favorite_count >= 1)
-          .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
-          .slice(0, 8)
-        setGuestFavorites(favorites)
+      // 3. Guest Favorites (Most Favorited)
+      const favorites = allProps
+        .filter(p => (statsMap[p.id]?.favorite_count || 0) >= 1)
+        .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
+        .slice(0, maxDisplayItems)
+      
+      setGuestFavorites(favorites)
 
-        const rated = allProps
-          .filter(p => statsMap[p.id]?.review_count > 0)
-          .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
-          .slice(0, 8)
-        setTopRated(rated)
-      }
-    } catch (err) {
-      console.log(err)
+      // 4. Top Rated (Highest Average Rating with at least 1 review)
+      const rated = allProps
+        .filter(p => (statsMap[p.id]?.review_count || 0) > 0) // Must have reviews
+        .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
+        .slice(0, maxDisplayItems)
+      
+      setTopRated(rated)
     }
   }
+
+    // async function loadFeaturedSections() {
+    //   try {
+    //     const { data: allProps } = await supabase
+    //       .from('properties')
+    //       .select('*')
+    //       .eq('status', 'available')
+
+    //     const { data: stats, error: statsError } = await supabase
+    //       .from('property_stats')
+    //       .select('*')
+
+    //     if (statsError) {
+    //       return
+    //     }
+
+    //     if (allProps && stats) {
+    //       const statsMap = {}
+    //       stats.forEach(s => { 
+    //         statsMap[s.property_id] = {
+    //           favorite_count: s.favorite_count || 0,
+    //           avg_rating: s.avg_rating || 0,
+    //           review_count: s.review_count || 0
+    //         }
+    //       })
+    //       setPropertyStats(statsMap)
+
+    //       const favorites = allProps
+    //         .filter(p => statsMap[p.id]?.favorite_count >= 1)
+    //         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
+    //         .slice(0, 8)
+    //       setGuestFavorites(favorites)
+
+    //       const rated = allProps
+    //         .filter(p => statsMap[p.id]?.review_count > 0)
+    //         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
+    //         .slice(0, 8)
+    //       setTopRated(rated)
+    //     }
+    //   } catch (err) {
+    //     console.log(err)
+    //   }
+    // }
 
   const handleSearch = () => {
     const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
@@ -741,15 +785,15 @@ export default function Home() {
 
         {/* Top Rated Section - Carousel */}
         {topRated.length > 0 && (
-            <div className="mb-10">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
+            <div className="mb-2 mt-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
                     <p className="text-sm text-gray-500">Highest rated by tenants</p>
                 </div>
                 </div>
                 <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-                    <CarouselContent className="-ml-1">
+                    <CarouselContent className="-ml-2">
                         {topRated.slice(0, maxDisplayItems).map((item) => {
                              const images = getPropertyImages(item)
                              const currentIndex = currentImageIndex[item.id] || 0
@@ -758,7 +802,7 @@ export default function Home() {
                              const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
                              
                              return (
-                                <CarouselItem key={item.id} className="pl-2 basis-1/2 md:basis-1/4 lg:basis-[14.28%]">
+                                <CarouselItem key={item.id} className={carouselItemClass}>
                                     <div className="p-1 h-full">
                                         <div 
                                           className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
