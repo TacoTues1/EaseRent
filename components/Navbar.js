@@ -302,7 +302,7 @@ export default function Navbar() {
                 {/*Logo*/}
                 <div className="absolute left-10 top-0 h-16 flex items-center pointer-events-auto z-50">
              <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
-                <img src="/home.png" alt="EaseRent" className="w-13 h-13 object-contain" />
+                <img src="/home.png" alt="EaseRent" className="w-11 h-11 object-contain" />
                 {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
              </Link>
           </div>
