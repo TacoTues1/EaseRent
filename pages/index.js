@@ -444,7 +444,7 @@ export default function Home() {
         {/* Search and Filter Bar */}
         <div className="sticky top-3 z-40 py-2">
           <div className="flex justify-center mb-1">
-            <div className="w-full bg-white rounded-2xl shadow-lg border border-gray-100 relative z-30 max-w-3xl p-2">
+            <div className="w-full bg-white rounded-2xl border border-gray-100 relative z-30 max-w-lg p-2">
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
                 {/* Search Input */}
                 <div className="relative flex-1">
@@ -466,24 +466,18 @@ export default function Home() {
                 {/* Search Button */}
                 <button
                   onClick={handleSearch}
-                  disabled={!canSearch}
-                  className={`rounded-xl font-bold flex items-center gap-2 px-5 py-2.5 text-sm ${
-                    canSearch 
-                      ? 'bg-black text-white hover:bg-gray-800 cursor-pointer'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
+                  // disabled={!canSearch}
+                  className={"rounded-xl font-bold flex items-center gap-2 px-6 py-3 text-sm bg-black text-white hover:bg-gray-800 cursor-pointer"}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  Search
                 </button>
 
                 {/* Filter & Sort Controls */}
                 <div className="flex gap-2">
-                  {/* Price Filter Button */}
                   <div className="relative" ref={priceRef}>
-                    <button 
+                    {/* <button 
                       onClick={() => setShowPriceDropdown(!showPriceDropdown)}
                       className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
                         priceRange.min || priceRange.max
@@ -496,9 +490,9 @@ export default function Home() {
                     {(priceRange.min || priceRange.max) && (
                       <span className="bg-white text-black text-[10px] w-4 h-4 flex items-center justify-center rounded-full">✓</span>
                     )}
-                  </button>
+                  </button> */}
 
-                  {showPriceDropdown && (
+                  {/* {showPriceDropdown && (
                     <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
                       <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                       <div className="flex justify-between items-center mb-2">
@@ -519,12 +513,12 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  )} */}
+                  </div>
 
-                {/* Filter Button */}
-                <div className="relative" ref={filterRef}>
-                  <button 
+                 
+                  <div className="relative" ref={filterRef}>
+                  {/* <button 
                     onClick={() => setShowFilterDropdown(!showFilterDropdown)}
                     className={`flex items-center gap-1.5 rounded-xl font-bold border whitespace-nowrap cursor-pointer px-3 py-2.5 text-xs ${
                       showFilterDropdown || selectedAmenities.length > 0
@@ -539,9 +533,9 @@ export default function Home() {
                         {selectedAmenities.length}
                       </span>
                     )}
-                  </button>
+                  </button> */}
 
-                  {/* Filter Dropdown Content */}
+                  
                   {showFilterDropdown && (
                     <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
                       <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
@@ -583,7 +577,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3">
             <div className="mb-2 sm:mb-5 w-full sm:w-auto">
               <h2 className="text-2xl font-black text-black uppercase">
-                All Properties
+                Most common Properties
               </h2>
               <p className="text-sm text-gray-500">List of Properties</p>
             </div>

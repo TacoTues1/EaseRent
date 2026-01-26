@@ -220,3 +220,66 @@ nav .nav-link {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+.property-loader {
+  width: 85px;
+  height: 25px;
+
+  --c: #000;
+  --g1: conic-gradient(from 90deg at left 3px top 3px, #0000 90deg, var(--c) 0);
+  --g2: conic-gradient(from -90deg at bottom 3px right 3px, #0000 90deg, var(--c) 0);
+
+  background:
+    var(--g1),
+    var(--g1),
+    var(--g1),
+    var(--g2),
+    var(--g2),
+    var(--g2);
+
+  background-repeat: no-repeat;
+  background-position: left, center, right, left, center, right;
+
+  animation: property-loader 1s infinite linear;
+}
+
+@keyframes property-loader {
+  0% {
+    background-size:
+      25px 100%,
+      25px 100%,
+      25px 100%,
+      25px 0%,
+      25px 0%,
+      25px 0%;
+  }
+
+  33% {
+    background-size:
+      25px 50%,
+      25px 100%,
+      25px 100%,
+      25px 50%,
+      25px 0%,
+      25px 0%;
+  }
+
+  66% {
+    background-size:
+      25px 100%,
+      25px 50%,
+      25px 100%,
+      25px 100%,
+      25px 50%,
+      25px 0%;
+  }
+
+  100% {
+    background-size:
+      25px 100%,
+      25px 100%,
+      25px 50%,
+      25px 100%,
+      25px 100%,
+      25px 50%;
+  }
+}

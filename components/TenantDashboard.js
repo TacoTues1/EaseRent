@@ -4,7 +4,6 @@ import { createNotification } from '../lib/notifications'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import Footer from './Footer'
-import { Card, CardContent } from './ui/card'
 import {
   Carousel,
   CarouselContent,
@@ -17,33 +16,23 @@ export default function TenantDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentImageIndex, setCurrentImageIndex] = useState({})
-  
-  // Tenant occupancy states
   const [tenantOccupancy, setTenantOccupancy] = useState(null)
   const [showEndRequestModal, setShowEndRequestModal] = useState(false)
-  
-  // NEW STATE FOR DATE
   const [endRequestDate, setEndRequestDate] = useState('')
   const [endRequestReason, setEndRequestReason] = useState('')
   const [submittingEndRequest, setSubmittingEndRequest] = useState(false)
-  
-  // Review Modal States
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewTarget, setReviewTarget] = useState(null)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
-  
-  // --- Comparison Feature State ---
   const [comparisonList, setComparisonList] = useState([])
-  
-  // --- Favorites & Property Stats ---
   const [favorites, setFavorites] = useState([])
   const [propertyStats, setPropertyStats] = useState({})
   const [guestFavorites, setGuestFavorites] = useState([])
   const [topRated, setTopRated] = useState([])
   
-  const maxDisplayItems = 16 
+  const maxDisplayItems = 8 
   const router = useRouter()
 
   const filterAmenities = ['Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly']
@@ -164,17 +153,17 @@ export default function TenantDashboard({ session, profile }) {
 
   const handleSeeMore = () => { router.push('/properties') }
   
-  const handleSearch = () => {
-    const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
-    if (!hasFilters) return
-    const params = new URLSearchParams()
-    if (searchQuery.trim()) params.set('search', searchQuery.trim())
-    if (priceRange.min) params.set('minPrice', priceRange.min)
-    if (priceRange.max) params.set('maxPrice', priceRange.max)
-    if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','))
-    if (sortBy !== 'newest') params.set('sort', sortBy)
-    router.push(`/properties${params.toString() ? '?' + params.toString() : ''}`)
-  }
+  // const handleSearch = () => {
+  //   const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
+  //   if (!hasFilters) return
+  //   const params = new URLSearchParams()
+  //   if (searchQuery.trim()) params.set('search', searchQuery.trim())
+  //   if (priceRange.min) params.set('minPrice', priceRange.min)
+  //   if (priceRange.max) params.set('maxPrice', priceRange.max)
+  //   if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','))
+  //   if (sortBy !== 'newest') params.set('sort', sortBy)
+  //   router.push(`/properties${params.toString() ? '?' + params.toString() : ''}`)
+  // }
 
   async function loadTenantOccupancy() {
     const { data } = await supabase.from('tenant_occupancies').select(`*, property:properties(id, title, address, city, images), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`).eq('tenant_id', session.user.id).in('status', ['active', 'pending_end']).maybeSingle()

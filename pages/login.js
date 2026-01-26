@@ -4,12 +4,15 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { showToast } from 'nextjs-toast-notify'
 import Footer from '../components/Footer'
+import { createClient } from '@supabase/supabase-js'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const [rememberMe, setRememberMe] = useState(false) 
+  
 
   useEffect(() => {
     // Check if user is already logged in
@@ -34,12 +37,12 @@ export default function Login() {
         duration: 4000,
         progress: true,
         position: "top-center",
-        transition: "popUp",  
+        transition: "popUp",    
         sound: true,
       });
       router.push('/dashboard')
     } catch (error) {
-      showToast.error("Login Failed, Please Try again!", {
+      showToast.error("Wrong Password or Email!", {
     duration: 4000,
     progress: true,
     position: "top-center",
@@ -154,6 +157,8 @@ export default function Login() {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
+                  checked={rememberMe}                                // 1. Bind value
+                  onChange={(e) => setRememberMe(e.target.checked)}   // 2. Update state on click
                   className="h-4 w-4 text-black focus:ring-black border-gray-300 rounded cursor-pointer"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700 font-medium cursor-pointer">

@@ -780,21 +780,25 @@ export default function BookingsPage() {
                           )}
 
                           {/* Case 3: Pending/Approved - "Reschedule" (with 12h rule) */}
-                          {['pending', 'pending_approval', 'approved'].includes(statusLower) && (
+                          {['pending', 'pending_approval', 'approved', 'accepted', ''].includes(statusLower) && (
                             canModifyBooking(bookingDate) ? (
                               <>
+                                {['pending', 'pending_approval'].includes(statusLower) && (
+        <button
+          onClick={() => openBookingModal(booking)}
+          className="flex-1 md:flex-none px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          Reschedule
+        </button>
+      )}
+       {['pending', 'pending_approval'].includes(statusLower) && (
                                 <button
-                                  onClick={() => openBookingModal(booking)}
-                                  className="flex-1 md:flex-none px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-blue-700 transition-colors shadow-sm"
-                                >
-                                  Reschedule
-                                </button>
-                                <button
-  onClick={() => promptCancelBooking(booking)} 
-  className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-red-50 transition-colors shadow-sm"
->
-  Cancel
-</button>
+                                    onClick={() => promptCancelBooking(booking)} 
+                                    className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-red-50 transition-colors shadow-sm"
+                                  >
+                                    Cancel
+                                  </button>
+                                  )}
                               </>
                             ) : (
                               <span className="text-[10px] text-red-500 font-medium bg-red-50 px-2 py-1 rounded border border-red-100">
@@ -940,6 +944,7 @@ export default function BookingsPage() {
                 >
                   {submittingBooking ? 'Sending Request...' : 'Request Viewing'}
                 </button>
+              <span className="ml-2 inline-block text-sm">Note: You can't cancel the booking once approved.</span>
               </div>
             </form>
           </div>

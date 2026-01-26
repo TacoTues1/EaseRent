@@ -298,29 +298,38 @@ export default function Navbar() {
   if (!session) {
     return (
       <>
-        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
-          <nav className="max-w-4xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">    
+                {/*Logo*/}
+                <div className="absolute left-10 top-0 h-16 flex items-center pointer-events-auto z-50">
+             <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
+                <img src="/home.png" alt="EaseRent" className="w-13 h-13 object-contain" />
+                {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
+             </Link>
+          </div>
+
+          {/*Login and Register*/}  
+          <div className="absolute right-6 top-0 h-16 hidden sm:flex items-center gap-3 pointer-events-auto z-50">
+             <button onClick={() => router.push('/login')} className="px-4 py-2 text-md font-semibold bg-gray-100 hover:text-black hover:bg-black/50 rounded-lg transition-all cursor-pointer">Login</button>
+             <button onClick={() => router.push('/register')} className="px-6 py-4 text-md font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2">Register</button>
+          </div>
+
+          <nav className="max-w-lg mx-auto pointer-events-auto transition-all duration-300">
             <div className="px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
-                <div className="flex items-center">
-                  <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
-                    <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
-                    <span className="hidden sm:inline">EaseRent</span>
-                  </Link>
-                </div>
-                
+
+                <div className="flex-1"></div>
+                {/* --- CENTER: Text (Absolute Positioned) --- */}
+                {/* Mobile Center Text */}
                 <div className="absolute left-1/2 transform -translate-x-1/2 sm:hidden pointer-events-none">
                   <span className="text-lg font-bold text-black">EaseRent</span>
                 </div>
                 
-                <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block">
-                  <span className="text-lg font-bold text-gray-800 tracking-tight">Welcome to EaseRent</span>
-                </div>
-
-                <div className="hidden sm:flex items-center gap-2">
-                  <button onClick={() => router.push('/login')} className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-black hover:bg-gray-100 rounded-lg transition-all cursor-pointer sm:px-4 sm:py-2 sm:text-sm">Login</button>
-                  <button onClick={() => router.push('/register')} className="px-3 py-1.5 text-xs font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2 sm:text-sm">Register</button>
-                </div>
+                {/* Desktop Center Welcome Text */}
+               <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
+  <span className="text-5xl lg:text-3xl font-bold text-gray-800 tracking-tight">
+    Welcome to EaseRent
+  </span>
+</div>
 
                 <div className="sm:hidden flex items-center">
                   <button onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)} className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto">
@@ -352,7 +361,7 @@ export default function Navbar() {
   return (
     <>
       <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
-        <nav className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-2xl pointer-events-auto transition-all duration-300">
+        <nav className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-full pointer-events-auto transition-all duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               
@@ -365,25 +374,25 @@ export default function Navbar() {
                 <div className="hidden md:flex relative gap-1">
                   <div className="absolute bottom-0 h-0.5 bg-black rounded-full" style={{ left: `${underlineStyle.left}px`, width: `${underlineStyle.width}px`, opacity: underlineStyle.width ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
                   
-                  <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'}`}>Home</Link>
+                  <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'}`}>Home</Link>
                   
                   {profile?.role === 'landlord' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Tenants Inquiries</Link>
-                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Tenants Bookings</Link>
-                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Tenants Maintenance</Link>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Inquiries</Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Bookings</Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Maintenance</Link>
                     </>
                   )}
 
                   {profile?.role === 'tenant' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>My Inquiries</Link>
-                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>My Bookings</Link>
-                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Maintenance</Link>
+                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Inquiries</Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Bookings</Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Maintenance</Link>
                     </>
                   )}
 
-                  <Link href="/messages" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/messages') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-50'} ${disabledClass}`}>Messages</Link>
+                  <Link href="/messages" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/messages') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Messages</Link>
                 </div>
               </div>
 
