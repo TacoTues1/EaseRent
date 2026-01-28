@@ -339,11 +339,128 @@ export default function LandlordDashboard({ session, profile }) {
     <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-8 relative z-10 flex-1 w-full">
         
-        {/* LANDLORD SPLIT VIEW LAYOUT */}
-        <div className="flex flex-col lg:flex-row gap-8 mt-4">
+        {/* NEW LAYOUT: STACKED (Tasks on Top, Properties Below) */}
+        <div className="flex flex-col gap-10 mt-4">
             
-            {/* LEFT PANEL: PROPERTIES (Main Content) */}
-            <div className="flex-1 min-h-[600px] lg:w-3/4">
+            {/* SECTION 1: DASHBOARD OVERVIEW (Tasks) */}
+            <div className="w-full">
+               <h3 className="text-xl font-black text-gray-900 mb-4 px-1 uppercase tracking-tight">Dashboard Action Center</h3>
+               
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+                  {/* 1. Pending Move-Out Requests */}
+                  <div className="bg-white rounded-3xl shadow-sm border border-orange-100 overflow-hidden h-full flex flex-col">
+                    <div className="px-5 py-4 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between">
+                       <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                          Move-Out Requests
+                       </h4>
+                       {pendingEndRequests.length > 0 && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{pendingEndRequests.length}</span>}
+                    </div>
+                    {pendingEndRequests.length === 0 ? (
+                      <div className="p-8 text-center flex-1 flex items-center justify-center">
+                          <p className="text-sm text-gray-400 italic">No pending requests</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
+                        {pendingEndRequests.map(request => (
+                          <div key={request.id} className="p-4 flex flex-col gap-3">
+                             <div>
+                                <p className="font-bold text-gray-900 text-sm mb-0.5">{request.property?.title}</p>
+                                <p className="text-xs text-gray-500 mb-2">{request.tenant?.first_name} {request.tenant?.last_name}</p>
+                                
+                                {request.end_request_date && (
+                                  <p className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block mb-1">
+                                    Requested Date: {new Date(request.end_request_date).toLocaleDateString()}
+                                  </p>
+                                )}
+                                {request.end_request_reason && (
+                                  <p className="text-xs text-gray-600 italic mt-1 bg-gray-50 p-2 rounded border border-gray-100">
+                                    "{request.end_request_reason}"
+                                  </p>
+                                )}
+                             </div>
+                             <div className="flex gap-2">
+                                <button onClick={() => openEndConfirmation('approve', request.id)} className="flex-1 py-1.5 bg-black text-white text-xs font-bold rounded-lg hover:bg-gray-800 shadow-lg shadow-black/20 cursor-pointer">Approve</button>
+                                <button onClick={() => openEndConfirmation('reject', request.id)} className="flex-1 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer">Reject</button>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Pending Maintenance */}
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
+                     <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                       <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          Pending Maintenance
+                       </h4>
+                       {dashboardTasks.maintenance.length > 0 && <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{dashboardTasks.maintenance.length}</span>}
+                     </div>
+                     <div className="divide-y divide-gray-100 flex-1 flex flex-col">
+                        {dashboardTasks.maintenance.length === 0 ? (
+                          <div className="p-8 text-center flex-1 flex items-center justify-center">
+                              <p className="text-sm text-gray-400 italic">All caught up!</p>
+                          </div>
+                        ) : (
+                          <div className="flex-1">
+                            {dashboardTasks.maintenance.map(task => (
+                             <div key={task.id} className="p-4 hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => router.push('/maintenance')}>
+                                <div className="flex justify-between items-start mb-1">
+                                   <p className="text-sm font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{task.title}</p>
+                                   <span className="text-[9px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">{task.status}</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-2 truncate">{task.property_title}</p>
+                                <p className="text-[10px] text-gray-400">{new Date(task.created_at).toLocaleDateString()}</p>
+                             </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="p-3 text-center border-t border-gray-50 bg-gray-50/50 mt-auto">
+                           <button onClick={() => router.push('/maintenance')} className="text-xs font-bold text-gray-600 hover:text-black cursor-pointer">View All Requests</button>
+                        </div>
+                     </div>
+                  </div>
+
+                   {/* 3. Pending Payments */}
+                   <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
+                     <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                       <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          Pending Payments
+                       </h4>
+                       {dashboardTasks.payments.length > 0 && <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{dashboardTasks.payments.length}</span>}
+                     </div>
+                     <div className="divide-y divide-gray-100 flex-1 flex flex-col">
+                        {dashboardTasks.payments.length === 0 ? (
+                          <div className="p-8 text-center flex-1 flex items-center justify-center">
+                              <p className="text-sm text-gray-400 italic">No pending bills</p>
+                          </div>
+                        ) : (
+                          <div className="flex-1">
+                            {dashboardTasks.payments.map(pay => (
+                             <div key={pay.id} className="p-4 hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => router.push('/payments')}>
+                                <div className="flex justify-between items-center mb-1">
+                                   <p className="text-sm font-bold text-gray-900 group-hover:text-green-600 transition-colors">₱{pay.amount?.toLocaleString()}</p>
+                                   <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">{pay.status}</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-1 truncate">{pay.property_title}</p>
+                                <p className="text-[10px] text-red-500 font-medium">Due: {new Date(pay.due_date).toLocaleDateString()}</p>
+                             </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="p-3 text-center border-t border-gray-50 bg-gray-50/50 mt-auto">
+                           <button onClick={() => router.push('/payments')} className="text-xs font-bold text-gray-600 hover:text-black">View All Payments</button>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+            {/* SECTION 2: PROPERTIES (Full Width) */}
+            <div className="w-full">
               <div className="mb-0">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                     <div className="mb-2 sm:mb-0 w-full sm:w-auto">
@@ -365,7 +482,7 @@ export default function LandlordDashboard({ session, profile }) {
                 </div>
 
                 {loading ? (
-                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                      {[1,2,3,4].map(i => (
                        <div key={i} className="bg-white rounded-3xl h-[300px] animate-pulse border border-gray-100"></div>
                      ))}
@@ -379,8 +496,8 @@ export default function LandlordDashboard({ session, profile }) {
                     <p className="text-gray-500 mb-8 max-w-sm mx-auto">You don't have any properties created.</p>
                   </div>
                 ) : (
-                  // LANDLORD SPECIFIC GRID
-                  <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
+                  // LANDLORD SPECIFIC GRID - Full width allows for 4 cols on XL screens
+                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-6">
                     {properties.map((item) => {
                         const property = item
                         const images = getPropertyImages(property)
@@ -424,36 +541,24 @@ export default function LandlordDashboard({ session, profile }) {
                               
                               <div className="flex items-center gap-2 sm:gap-3 text-gray-700 text-[10px] sm:text-xs bg-gray-50 p-2 sm:p-2.5 rounded-xl mb-3 sm:mb-4">
                                   <span className="flex items-center gap-1 font-bold">
-<svg
-  className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500"
-  fill="none"
-  stroke="currentColor"
-  viewBox="0 0 24 24"
->
-  <path
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth={2}
-    d="M3 7h18v10H3V7zm2 0v6h14V7M5 17v2m14-2v2"
-  />
-</svg>                                      {property.bedrooms}
+                                      <svg 
+                                        className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
+                                        fill="currentColor" 
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                                      </svg>{property.bedrooms}
                                   </span>
                                   <span className="w-px h-3 bg-gray-300"></span>
                                   <span className="flex items-center gap-1 font-bold">
-<svg
-  className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500"
-  fill="none"
-  stroke="currentColor"
-  viewBox="0 0 24 24"
->
-  <path
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth={2}
-    d="M4 12h16M6 12V8a2 2 0 012-2h3M5 12l1 6a2 2 0 002 2h8a2 2 0 002-2l1-6M7 20v1m10-1v1"
-  />
-</svg>                                      {property.bathrooms}
-                                  </span>
+                                        <svg
+                                          className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                          viewBox="0 0 24 24"
+                                          fill="currentColor"
+                                        >
+                                          <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                                        </svg>{property.bathrooms}
+                                   </span>
                                   <span className="w-px h-3 bg-gray-300"></span>
                                   <span className="flex items-center gap-1 font-bold">
                                       <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
@@ -464,8 +569,8 @@ export default function LandlordDashboard({ session, profile }) {
                               <div className="mt-auto">
                                   <div className="flex items-center justify-between mb-2 sm:mb-3">
                                      <p className="text-base sm:text-lg font-black text-black">₱{Number(property.price).toLocaleString()}</p>
-                                     <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline" title="Preview">
-                                        View Public Page
+                                     <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
+                                        View Details
                                       </button>
                                   </div>
                                   
@@ -495,122 +600,6 @@ export default function LandlordDashboard({ session, profile }) {
               </div>
             </div>
 
-            {/* RIGHT PANEL: TASKS (Sidebar) */}
-            <div className="lg:w-1/4 space-y-6 lg:min-w-[320px]">
-              <div className="sticky top-6 space-y-6">
-                
-                {/* 1. Pending Move-Out Requests */}
-                <div className="bg-white rounded-3xl shadow-sm border border-orange-100 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-orange-100 bg-orange-50/50 flex items-center justify-between">
-                     <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-orange-500"></span>
-                        Move-Out Requests
-                     </h4>
-                     {pendingEndRequests.length > 0 && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{pendingEndRequests.length}</span>}
-                  </div>
-                  {pendingEndRequests.length === 0 ? (
-                    <div className="p-8 text-center">
-                        <p className="text-sm text-gray-400 italic">No pending requests</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {pendingEndRequests.map(request => (
-                        <div key={request.id} className="p-4 flex flex-col gap-3">
-                           <div>
-                              <p className="font-bold text-gray-900 text-sm mb-0.5">{request.property?.title}</p>
-                              <p className="text-xs text-gray-500 mb-2">{request.tenant?.first_name} {request.tenant?.last_name}</p>
-                              
-                              {/* Display Date */}
-                              {request.end_request_date && (
-                                <p className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block mb-1">
-                                  Requested Date: {new Date(request.end_request_date).toLocaleDateString()}
-                                </p>
-                              )}
-
-                              {/* Display Reason */}
-                              {request.end_request_reason && (
-                                <p className="text-xs text-gray-600 italic mt-1 bg-gray-50 p-2 rounded border border-gray-100">
-                                  "{request.end_request_reason}"
-                                </p>
-                              )}
-                           </div>
-                           <div className="flex gap-2">
-                              {/* UPDATED: Buttons now open confirmation modal */}
-                              <button onClick={() => openEndConfirmation('approve', request.id)} className="flex-1 py-1.5 bg-black text-white text-xs font-bold rounded-lg hover:bg-gray-800 shadow-lg shadow-black/20 cursor-pointer">Approve</button>
-                              <button onClick={() => openEndConfirmation('reject', request.id)} className="flex-1 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer">Reject</button>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Pending Maintenance */}
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-                   <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                     <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                        Pending Maintenance
-                     </h4>
-                     {dashboardTasks.maintenance.length > 0 && <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{dashboardTasks.maintenance.length}</span>}
-                   </div>
-                   <div className="divide-y divide-gray-100">
-                      {dashboardTasks.maintenance.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <p className="text-sm text-gray-400 italic">All caught up!</p>
-                        </div>
-                      ) : (
-                        dashboardTasks.maintenance.map(task => (
-                           <div key={task.id} className="p-4 hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => router.push('/maintenance')}>
-                              <div className="flex justify-between items-start mb-1">
-                                 <p className="text-sm font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{task.title}</p>
-                                 <span className="text-[9px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">{task.status}</span>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-2 truncate">{task.property_title}</p>
-                              <p className="text-[10px] text-gray-400">{new Date(task.created_at).toLocaleDateString()}</p>
-                           </div>
-                        ))
-                      )}
-                      <div className="p-3 text-center border-t border-gray-50 bg-gray-50/50">
-                         <button onClick={() => router.push('/maintenance')} className="text-xs font-bold text-gray-600 hover:text-black">View All Requests</button>
-                      </div>
-                   </div>
-                </div>
-
-                 {/* 3. Pending Payments */}
-                 <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-                   <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                     <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                        Pending Payments
-                     </h4>
-                     {dashboardTasks.payments.length > 0 && <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{dashboardTasks.payments.length}</span>}
-                   </div>
-                   <div className="divide-y divide-gray-100">
-                      {dashboardTasks.payments.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <p className="text-sm text-gray-400 italic">No pending bills</p>
-                        </div>
-                      ) : (
-                        dashboardTasks.payments.map(pay => (
-                           <div key={pay.id} className="p-4 hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => router.push('/payments')}>
-                              <div className="flex justify-between items-center mb-1">
-                                 <p className="text-sm font-bold text-gray-900 group-hover:text-green-600 transition-colors">₱{pay.amount?.toLocaleString()}</p>
-                                 <span className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">{pay.status}</span>
-                              </div>
-                              <p className="text-xs text-gray-500 mb-1 truncate">{pay.property_title}</p>
-                              <p className="text-[10px] text-red-500 font-medium">Due: {new Date(pay.due_date).toLocaleDateString()}</p>
-                           </div>
-                        ))
-                      )}
-                      <div className="p-3 text-center border-t border-gray-50 bg-gray-50/50">
-                         <button onClick={() => router.push('/payments')} className="text-xs font-bold text-gray-600 hover:text-black">View All Payments</button>
-                      </div>
-                   </div>
-                </div>
-
-              </div>
-            </div>
         </div>
 
       </div>

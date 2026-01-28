@@ -391,7 +391,7 @@ export default function Settings() {
                     required
                     value={birthday}
                     onChange={(e) => setBirthday(e.target.value)}
-                    className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all"
+                    className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all cursor-pointer"
                   />
                 </div>
                 <div className="w-1/2">
@@ -405,7 +405,7 @@ export default function Settings() {
                       required
                       value={gender}
                       onChange={(e) => setGender(e.target.value)}
-                      className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all bg-white"
+                      className="appearance-none relative block w-full px-4 py-3 border-2 border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 font-medium transition-all bg-white cursor-pointer"
                     >
                       <option value="" disabled>Select Gender</option>
                       <option value="Male">Male</option>
