@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { showToast } from 'nextjs-toast-notify'
-import Footer from '../components/Footer'
-import { createClient } from '@supabase/supabase-js'
+// import Footer from '../components/Footer'
+// import { createClient } from '@supabase/supabase-js'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -124,7 +124,7 @@ export default function Login() {
                 src="/logo_login.png" 
                 alt="Company Logo" 
                 // UPDATED: Removed 'max-w-xl' so it can fill the entire half of the screen
-                className="mx-auto lg:mx-0 w-full h-auto object-contain mb-6 lg:mb-0 transition-all duration-300" 
+                className="mx-auto lg:mx-0 w-full h-auto object-contain mb-6   lg:mb-0 transition-all duration-300" 
               /> 
           </div>
         </div>
@@ -250,29 +250,29 @@ export default function Login() {
                   type="button"
                   onClick={handleGoogleLogin}
                   className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all cursor-pointer"
-                >
-                  <svg
-  className="h-5 w-5 mr-2"
-  viewBox="0 0 48 48"
-  aria-hidden="true"
->
-  <path
-    fill="#EA4335"
-    d="M24 9.5c3.15 0 5.95 1.1 8.15 2.9l6.05-6.05C34.25 2.55 29.45 0 24 0 14.65 0 6.6 5.35 2.7 13.1l7.05 5.45C11.5 13.1 17.25 9.5 24 9.5z"
-  />
-  <path
-    fill="#4285F4"
-    d="M46.1 24.5c0-1.6-.15-3.15-.4-4.65H24v9h12.45c-.55 2.95-2.2 5.45-4.7 7.15l7.2 5.55c4.2-3.9 7.15-9.65 7.15-17.05z"
-  />
-  <path
-    fill="#FBBC05"
-    d="M9.75 28.55c-.5-1.5-.8-3.1-.8-4.75s.3-3.25.8-4.75l-7.05-5.45C.95 17.15 0 20.45 0 23.8s.95 6.65 2.7 9.7l7.05-4.95z"
-  />
-  <path
-    fill="#34A853"
-    d="M24 48c5.45 0 10.25-1.8 13.65-4.9l-7.2-5.55c-2 1.35-4.55 2.15-6.45 2.15-6.75 0-12.5-4.55-14.25-10.65l-7.05 4.95C6.6 42.65 14.65 48 24 48z"
-  />
-</svg>
+                          >
+                                  <svg
+                        className="h-5 w-5 mr-2"
+                        viewBox="0 0 48 48"
+                        aria-hidden="true"
+                      >
+                        <path
+                          fill="#EA4335"
+                          d="M24 9.5c3.15 0 5.95 1.1 8.15 2.9l6.05-6.05C34.25 2.55 29.45 0 24 0 14.65 0 6.6 5.35 2.7 13.1l7.05 5.45C11.5 13.1 17.25 9.5 24 9.5z"
+                        />
+                        <path
+                          fill="#4285F4"
+                          d="M46.1 24.5c0-1.6-.15-3.15-.4-4.65H24v9h12.45c-.55 2.95-2.2 5.45-4.7 7.15l7.2 5.55c4.2-3.9 7.15-9.65 7.15-17.05z"
+                        />
+                       <path
+                          fill="#FBBC05"
+                          d="M9.75 28.55c-.5-1.5-.8-3.1-.8-4.75s.3-3.25.8-4.75l-7.05-5.45C.95 17.15 0 20.45 0 23.8s.95 6.65 2.7 9.7l7.05-4.95z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M24 48c5.45 0 10.25-1.8 13.65-4.9l-7.2-5.55c-2 1.35-4.55 2.15-6.45 2.15-6.75 0-12.5-4.55-14.25-10.65l-7.05 4.95C6.6 42.65 14.65 48 24 48z"
+                        />
+                      </svg>
                   Continue with Google
                 </button>
 

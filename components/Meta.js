@@ -3,7 +3,7 @@ import Head from 'next/head'
 export default function Meta() {
   return (
     <Head>
-      <title>EaseRent - Smart Rental Management</title>
+      <title>EaseRent - House Rental Management</title>
       <meta name="description" content="Modern rental management platform for landlords and tenants" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" type="image/svg+xml" href="/home.png" />

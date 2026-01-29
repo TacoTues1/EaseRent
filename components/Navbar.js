@@ -119,31 +119,64 @@ export default function Navbar() {
   }, [navRef, notifRef]);
 
   async function loadProfile(userId, retries = 3) {
-    try {
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+  try {
+    // 1. Try to fetch the profile
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+    
+    if (data) {
+      setProfile(data)
       
-      // Fix: Only check for phone if data exists
-      if (data) {
-        setProfile(data)
-        
-        if (data.phone) {
-            const { data: duplicates } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('phone', data.phone)
-              .neq('id', userId)
-            
-            if (duplicates && duplicates.length > 0) {
-                setIsDuplicate(true)
-            }
+      // Check for duplicate phone numbers (your existing logic)
+      if (data.phone) {
+          const { data: duplicates } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('phone', data.phone)
+            .neq('id', userId)
+          
+          if (duplicates && duplicates.length > 0) {
+              setIsDuplicate(true)
+          }
+      }
+    } else {
+      // 2. PROFILE NOT FOUND (New User from Google?) -> Create it now!
+      
+      // Get the user's Google metadata
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        // Extract names from Google data
+        const metadata = user.user_metadata || {}
+        const fullName = metadata.full_name || metadata.name || ''
+        const googleFirstName = metadata.given_name || fullName.split(' ')[0] || 'User'
+        const googleLastName = metadata.family_name || fullName.split(' ').slice(1).join(' ') || ''
+
+        // Insert the new profile
+        const { error: insertError } = await supabase.from('profiles').insert({
+          id: user.id,
+          email: user.email,
+          first_name: googleFirstName,
+          last_name: googleLastName,
+          middle_name: 'N/A',
+          role: 'tenant', // Default role for Google signups
+          birthday: new Date().toISOString().split('T')[0], // Default today
+          gender: 'Prefer not to say' // Default gender
+        })
+
+        if (!insertError) {
+          // Profile created! Load it immediately to update the UI
+          loadProfile(userId, 0)
+        } else {
+          console.error("Error creating Google profile:", insertError)
         }
       } else if (retries > 0) {
-        // If no data found, retry
+        // If user isn't loaded yet, retry a few times
         setTimeout(() => loadProfile(userId, retries - 1), 500)
       }
-    } 
-    catch (err) { console.error(err) }
-  }
+    }
+  } 
+  catch (err) { console.error("loadProfile error:", err) }
+}
 
   async function loadUnreadCount(userId) {
     try {
@@ -290,9 +323,9 @@ export default function Navbar() {
 
   const isActive = (path) => router.pathname === path
   
-  if (profile?.role === 'admin') {
-      return null
-  }
+  // if (profile?.role === 'admin') {
+  //     return null
+  // }
 
   // --- Public Navbar ---
   if (!session) {
@@ -546,7 +579,7 @@ export default function Navbar() {
                           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Account Settings
                         </Link>
                         <Link href="/contact" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
-                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg> Contacts
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg> Emergency Contacts
                         </Link>
                         <button onClick={() => { setShowDropdown(false); handleSignOut() }} className="flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-xl w-full text-left transition-colors mt-1 cursor-pointer">
                           <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg> Log Out
