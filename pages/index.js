@@ -34,8 +34,8 @@ export default function Home() {
   const [selectedAmenities, setSelectedAmenities] = useState([])
   const [priceRange, setPriceRange] = useState({ min: '', max: '' })
   const [sortBy, setSortBy] = useState('newest')
-  const [isExpanded, setIsExpanded] = useState(false) 
-  
+  const [isExpanded, setIsExpanded] = useState(false)
+
   // --- Filter Dropdown State ---
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [showPriceDropdown, setShowPriceDropdown] = useState(false)
@@ -44,11 +44,11 @@ export default function Home() {
 
   // --- Comparison Feature State ---
   const [comparisonList, setComparisonList] = useState([])
-  
+
   // --- Display limit for property sections ---
   // Increased to 16 to ensure enough items for the 7-item wide carousel scrolling
   const maxDisplayItems = 16
-  
+
   // --- Featured Sections State ---
   const [guestFavorites, setGuestFavorites] = useState([])
   const [topRated, setTopRated] = useState([])
@@ -67,7 +67,7 @@ export default function Home() {
   useEffect(() => {
     const allProperties = [...properties, ...guestFavorites, ...topRated]
     if (allProperties.length === 0) return
-    
+
     const interval = setInterval(() => {
       setCurrentImageIndex(prev => {
         const newIndex = { ...prev }
@@ -80,7 +80,7 @@ export default function Home() {
         return newIndex
       })
     }, 3000) // Change image every 3 seconds
-    
+
     return () => clearInterval(interval)
   }, [properties, guestFavorites, topRated])
 
@@ -135,7 +135,7 @@ export default function Home() {
 
   useEffect(() => {
     loadFeaturedProperties(false)
-  }, []) 
+  }, [])
 
   useEffect(() => {
     if (chatMessagesRef.current && chatHistory.length > 0) {
@@ -163,18 +163,18 @@ export default function Home() {
   // Toggle favorite - requires login
   async function toggleFavorite(e, propertyId) {
     e.stopPropagation()
-    
+
     // If not logged in, show auth modal
     if (!session) {
       showToast.warning("Please Login First", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
-  }
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
+    }
   }
 
   const toggleAmenity = (amenity) => {
@@ -194,7 +194,7 @@ export default function Home() {
         *,
         landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)
       `)
-    
+
     if (searchQuery) {
       query = query.or(`title.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%`)
     }
@@ -216,10 +216,10 @@ export default function Home() {
     if (selectedAmenities.length > 0) {
       query = query.contains('amenities', selectedAmenities)
     }
-    
+
     // We fetch a bit more than 8 to allow for the "See More" functionality if needed,
     // but the carousel handles the slicing.
-    
+
     const { data, error } = await query
     setProperties(data || [])
     setLoading(false)
@@ -240,12 +240,12 @@ export default function Home() {
     if (allProps && stats) {
       // Create a map for easy lookup: statsMap[propertyId] = { ... }
       const statsMap = {}
-      stats.forEach(s => { 
-        statsMap[s.property_id] = { 
-          favorite_count: s.favorite_count || 0, 
-          avg_rating: s.avg_rating || 0, 
-          review_count: s.review_count || 0 
-        } 
+      stats.forEach(s => {
+        statsMap[s.property_id] = {
+          favorite_count: s.favorite_count || 0,
+          avg_rating: s.avg_rating || 0,
+          review_count: s.review_count || 0
+        }
       })
 
       // Update State for Stats
@@ -256,7 +256,7 @@ export default function Home() {
         .filter(p => (statsMap[p.id]?.favorite_count || 0) >= 1)
         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
         .slice(0, maxDisplayItems)
-      
+
       setGuestFavorites(favorites)
 
       // 4. Top Rated (Highest Average Rating with at least 1 review)
@@ -264,68 +264,68 @@ export default function Home() {
         .filter(p => (statsMap[p.id]?.review_count || 0) > 0) // Must have reviews
         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
         .slice(0, maxDisplayItems)
-      
+
       setTopRated(rated)
     }
   }
 
-    // async function loadFeaturedSections() {
-    //   try {
-    //     const { data: allProps } = await supabase
-    //       .from('properties')
-    //       .select('*')
-    //       .eq('status', 'available')
+  // async function loadFeaturedSections() {
+  //   try {
+  //     const { data: allProps } = await supabase
+  //       .from('properties')
+  //       .select('*')
+  //       .eq('status', 'available')
 
-    //     const { data: stats, error: statsError } = await supabase
-    //       .from('property_stats')
-    //       .select('*')
+  //     const { data: stats, error: statsError } = await supabase
+  //       .from('property_stats')
+  //       .select('*')
 
-    //     if (statsError) {
-    //       return
-    //     }
+  //     if (statsError) {
+  //       return
+  //     }
 
-    //     if (allProps && stats) {
-    //       const statsMap = {}
-    //       stats.forEach(s => { 
-    //         statsMap[s.property_id] = {
-    //           favorite_count: s.favorite_count || 0,
-    //           avg_rating: s.avg_rating || 0,
-    //           review_count: s.review_count || 0
-    //         }
-    //       })
-    //       setPropertyStats(statsMap)
+  //     if (allProps && stats) {
+  //       const statsMap = {}
+  //       stats.forEach(s => { 
+  //         statsMap[s.property_id] = {
+  //           favorite_count: s.favorite_count || 0,
+  //           avg_rating: s.avg_rating || 0,
+  //           review_count: s.review_count || 0
+  //         }
+  //       })
+  //       setPropertyStats(statsMap)
 
-    //       const favorites = allProps
-    //         .filter(p => statsMap[p.id]?.favorite_count >= 1)
-    //         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
-    //         .slice(0, 8)
-    //       setGuestFavorites(favorites)
+  //       const favorites = allProps
+  //         .filter(p => statsMap[p.id]?.favorite_count >= 1)
+  //         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
+  //         .slice(0, 8)
+  //       setGuestFavorites(favorites)
 
-    //       const rated = allProps
-    //         .filter(p => statsMap[p.id]?.review_count > 0)
-    //         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
-    //         .slice(0, 8)
-    //       setTopRated(rated)
-    //     }
-    //   } catch (err) {
-    //     console.log(err)
-    //   }
-    // }
+  //       const rated = allProps
+  //         .filter(p => statsMap[p.id]?.review_count > 0)
+  //         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
+  //         .slice(0, 8)
+  //       setTopRated(rated)
+  //     }
+  //   } catch (err) {
+  //     console.log(err)
+  //   }
+  // }
 
   const handleSearch = () => {
     const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
     if (!hasFilters) return
-    
+
     const params = new URLSearchParams()
     if (searchQuery.trim()) params.set('search', searchQuery.trim())
     if (priceRange.min) params.set('minPrice', priceRange.min)
     if (priceRange.max) params.set('maxPrice', priceRange.max)
     if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','))
     if (sortBy !== 'newest') params.set('sort', sortBy)
-    
+
     router.push(`/properties${params.toString() ? '?' + params.toString() : ''}`)
   }
-  
+
   const canSearch = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
 
   const handleSeeMore = () => {
@@ -389,7 +389,7 @@ export default function Home() {
   }
 
   const toggleComparison = (e, property) => {
-    e.stopPropagation() 
+    e.stopPropagation()
     setComparisonList(prev => {
       const isSelected = prev.some(p => p.id === property.id)
       if (isSelected) {
@@ -435,12 +435,12 @@ export default function Home() {
   const carouselItemClass = "pl-2 basis-1/2 md:basis-1/4 lg:basis-[16.66%]"
 
   return (
-    <div className="min-h-screen bg-[#F2F3F4] font-sans text-black flex flex-col scroll-smooth">  
+    <div className="min-h-screen bg-[#F2F3F4] font-sans text-black flex flex-col scroll-smooth">
 
       <div className="max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-1">
-        
+
         {/* Search and Filter Bar */}
-        <div className="sticky top-3 z-40 py-2">
+        <div className="md:sticky md:top-3 z-40 py-2">
           <div className="flex justify-center mb-1">
             <div className="w-full bg-white rounded-2xl border border-gray-100 relative z-30 max-w-lg p-2">
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center">
@@ -451,9 +451,9 @@ export default function Home() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <input 
-                    type="text" 
-                    placeholder="Search properties..." 
+                  <input
+                    type="text"
+                    placeholder="Search properties..."
                     className="w-full bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-black font-medium pl-10 pr-4 py-2.5 text-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -463,35 +463,35 @@ export default function Home() {
 
                 {/* Search Button */}
                 <button
-  onClick={handleSearch}
-  className="
+                  onClick={handleSearch}
+                  className="
     rounded-xl font-bold flex items-center gap-2 px-3 py-2 text-sm bg-black text-white hover:bg-gray-800 cursor-pointer justify-center
   "
->
-  <svg
-    className="w-4 h-4 sm:w-4.5 sm:h-4.5 lg:w-5 lg:h-5"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-    />
-  </svg>
+                >
+                  <svg
+                    className="w-4 h-4 sm:w-4.5 sm:h-4.5 lg:w-5 lg:h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
 
-  {/* Hide text on very small screens */}
-  <span className="hidden sm:inline"></span>
-</button>
+                  {/* Hide text on very small screens */}
+                  <span className="hidden sm:inline"></span>
+                </button>
 
                 {/* Filter & Sort Controls */}
                 <div className="flex gap-2">
                   <div className="relative" ref={priceRef}>
                   </div>
                   <div className="relative" ref={filterRef}>
-                  {/* {showFilterDropdown && (
+                    {/* {showFilterDropdown && (
                     <div className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:absolute sm:inset-x-auto sm:top-full sm:right-0 mt-0 sm:mt-2 w-full sm:w-56 bg-white border-t sm:border border-gray-200 rounded-t-2xl sm:rounded-xl shadow-2xl p-4 sm:p-3 z-[100]">
                       <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-3 sm:hidden"></div>
                       <div className="mb-3">
@@ -519,11 +519,11 @@ export default function Home() {
                       </div>
                     </div>
                   )} */}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
         </div>
 
         {/* All Properties Section - Fixed height container to prevent layout shift */}
@@ -536,17 +536,17 @@ export default function Home() {
               </h2>
               <p className="text-sm text-gray-500">List of Properties</p>
             </div>
-            
+
             {properties.length > 0 && (
               <span onClick={handleSeeMore} className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1">
-                    See More Properties<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </span>
+                See More Properties<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </span>
             )}
           </div>
-          
+
           {loading ? (
             <div className="h-[350px] flex items-center justify-center w-full">
-               <span className="text-gray-500 text-sm font-medium">Loading properties...</span>
+              <span className="text-gray-500 text-sm font-medium">Loading properties...</span>
             </div>
           ) : properties.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl h-[350px] flex flex-col items-center justify-center">
@@ -556,318 +556,318 @@ export default function Home() {
           ) : (
             /* Updated to use Carousel instead of Grid for TenantDashboard parity */
             <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-                <CarouselContent className="-ml-1">
+              <CarouselContent className="-ml-1">
                 {properties.slice(0, maxDisplayItems).map((property, idx) => {
-                  
+
                   const images = getPropertyImages(property)
                   const currentIndex = currentImageIndex[property.id] || 0
                   const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
                   const isFavorite = favorites.includes(property.id)
                   // For Guest Favorite badge logic in this component, we use the propertyStats derived from DB
                   const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
-                  
+
                   return (
                     <CarouselItem key={property.id} className={carouselItemClass}>
-                        <div 
-                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-1 ring-black border-black' : 'border-gray-100'}`}
-                          onClick={() => router.push(`/properties/${property.id}`)}
-                        >
-                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                            <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
-                            
-                            {/* Action Buttons (Restored Design) */}
-                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={(e) => toggleFavorite(e, property.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
-                                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-                                </button>
-                                <label className="flex items-center cursor-pointer">
-                                    <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
-                                    <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
-                                        {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
-                                    </div>
-                                </label>
-                            </div>
-                            
-                            {/* Image Indicators */}
-                            {images.length > 1 && (
-                                <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
-                                {images.map((_, idx) => (
-                                    <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
-                                ))}
-                                </div>
-                            )}
+                      <div
+                        className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-1 ring-black border-black' : 'border-gray-100'}`}
+                        onClick={() => router.push(`/properties/${property.id}`)}
+                      >
+                        <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                          <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
 
-                            {/* Gradient & Labels */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                                <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
-                            </div>
-                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
-                                <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
-                                <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
-                            </div>
+                          {/* Action Buttons (Restored Design) */}
+                          <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={(e) => toggleFavorite(e, property.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
+                              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                            </button>
+                            <label className="flex items-center cursor-pointer">
+                              <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
+                              <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                                {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                              </div>
+                            </label>
                           </div>
-                          
-                          {/* Card Body */}
-                          <div className="p-1.5 sm:p-2">
-                              <div className="mb-0.5 sm:mb-1">
-                                  <div className="flex justify-between items-start">
-                                      <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
-                                      {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
-                                  </div>
-                                  <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
-                                      <span className="truncate">{property.city}, Philippines</span>
-                                  </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
-                                    <svg 
-                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
-                                      fill="currentColor" 
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                                    </svg>{property.bedrooms}</span>
-                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
-                                    <svg
-                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                                      viewBox="0 0 24 24"
-                                      fill="currentColor"
-                                  >
-                                      <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                                  </svg>{property.bathrooms}</span>
-                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{property.area_sqft} sqm</span>
-                              </div>
+
+                          {/* Image Indicators */}
+                          {images.length > 1 && (
+                            <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
+                              {images.map((_, idx) => (
+                                <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Gradient & Labels */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                          <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
+                            <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                            {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                          </div>
+                          <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                            <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                            <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
                           </div>
                         </div>
+
+                        {/* Card Body */}
+                        <div className="p-1.5 sm:p-2">
+                          <div className="mb-0.5 sm:mb-1">
+                            <div className="flex justify-between items-start">
+                              <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                              {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
+                            </div>
+                            <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                              <span className="truncate">{property.city}, Philippines</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                              <svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                              </svg>{property.bedrooms}</span>
+                            <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                              <svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                              >
+                                <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                              </svg>{property.bathrooms}</span>
+                            <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{property.area_sqft} sqm</span>
+                          </div>
+                        </div>
+                      </div>
                     </CarouselItem>
                   )
                 })}
-                </CarouselContent>
-                <CarouselPrevious />
-                <CarouselNext />
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
             </Carousel>
           )}
         </div>
 
         {/* Guest Favorites Section - Carousel */}
         {guestFavorites.length > 0 && (
-            <div className="mb-2 mt-8">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Tenants Favorites</h2>
-                    <p className="text-sm text-gray-500">Most loved by our community</p>
-                </div>
-                </div>
-                <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-                    <CarouselContent className="-ml-2">
-                        {guestFavorites.slice(0, maxDisplayItems).map((item) => {
-                             const images = getPropertyImages(item)
-                             const currentIndex = currentImageIndex[item.id] || 0
-                             const isSelectedForCompare = comparisonList.some(p => p.id === item.id)
-                             const isFavorite = favorites.includes(item.id)
-                             const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
-                             
-                             return (
-                                <CarouselItem key={item.id} className={carouselItemClass}>
-                                    <div className="p-1 h-full">
-                                        <div 
-                                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => router.push(`/properties/${item.id}`)}
-                                        >
-                                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                                            <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
-                                            
-                                            {/* Action Buttons */}
-                                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
-                                                <button onClick={(e) => toggleFavorite(e, item.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
-                                                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-                                                </button>
-                                                <label className="flex items-center cursor-pointer">
-                                                    <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, item)} />
-                                                    <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
-                                                        {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
-                                                    </div>
-                                                </label>
-                                            </div>
-                                            
-                                            {/* Image Indicators */}
-                                            {images.length > 1 && (
-                                                <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
-                                                {images.map((_, idx) => (
-                                                    <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
-                                                ))}
-                                                </div>
-                                            )}
-
-                                            {/* Gradient & Labels */}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                                                <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                                                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
-                                            </div>
-                                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
-                                                <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
-                                                <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Card Body */}
-                                          <div className="p-1.5 sm:p-2">
-                                              <div className="mb-0.5 sm:mb-1">
-                                                  <div className="flex justify-between items-start">
-                                                      <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{item.title}</h3>
-                                                      {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
-                                                  </div>
-                                                  <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
-                                                      <span className="truncate">{item.city}, Philippines</span>
-                                                  </div>
-                                              </div>
-                                              <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg 
-                                                       className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
-                                                       fill="currentColor" 
-                                                       viewBox="0 0 24 24"
-                                                     >
-                                                       <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                                                     </svg>{item.bedrooms}</span>
-                                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
-                                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                                                      viewBox="0 0 24 24"
-                                                      fill="currentColor"
-                                                  >
-                                                      <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                                                  </svg>{item.bathrooms}</span>
-                                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
-                                              </div>
-                                          </div>
-                                        </div>
-                                    </div>
-                                </CarouselItem>
-                             )
-                        })}
-                    </CarouselContent>
-                    <CarouselPrevious />
-                    <CarouselNext />
-                </Carousel>
+          <div className="mb-2 mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Tenants Favorites</h2>
+                <p className="text-sm text-gray-500">Most loved by our community</p>
+              </div>
             </div>
+            <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
+              <CarouselContent className="-ml-2">
+                {guestFavorites.slice(0, maxDisplayItems).map((item) => {
+                  const images = getPropertyImages(item)
+                  const currentIndex = currentImageIndex[item.id] || 0
+                  const isSelectedForCompare = comparisonList.some(p => p.id === item.id)
+                  const isFavorite = favorites.includes(item.id)
+                  const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
+
+                  return (
+                    <CarouselItem key={item.id} className={carouselItemClass}>
+                      <div className="p-1 h-full">
+                        <div
+                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
+                          onClick={() => router.push(`/properties/${item.id}`)}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                            <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
+
+                            {/* Action Buttons */}
+                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={(e) => toggleFavorite(e, item.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                              </button>
+                              <label className="flex items-center cursor-pointer">
+                                <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, item)} />
+                                <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                                  {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                                </div>
+                              </label>
+                            </div>
+
+                            {/* Image Indicators */}
+                            {images.length > 1 && (
+                              <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
+                                {images.map((_, idx) => (
+                                  <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Gradient & Labels */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
+                              <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                            </div>
+                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                              <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
+                              <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
+                            </div>
+                          </div>
+
+                          {/* Card Body */}
+                          <div className="p-1.5 sm:p-2">
+                            <div className="mb-0.5 sm:mb-1">
+                              <div className="flex justify-between items-start">
+                                <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{item.title}</h3>
+                                {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
+                              </div>
+                              <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                                <span className="truncate">{item.city}, Philippines</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                              </svg>{item.bedrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                              >
+                                <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                              </svg>{item.bathrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CarouselItem>
+                  )
+                })}
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
+            </Carousel>
+          </div>
         )}
 
         {/* Top Rated Section - Carousel */}
         {topRated.length > 0 && (
-            <div className="mb-2 mt-8">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
-                    <p className="text-sm text-gray-500">Highest rated by tenants</p>
-                </div>
-                </div>
-                <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-                    <CarouselContent className="-ml-2">
-                        {topRated.slice(0, maxDisplayItems).map((item) => {
-                             const images = getPropertyImages(item)
-                             const currentIndex = currentImageIndex[item.id] || 0
-                             const isSelectedForCompare = comparisonList.some(p => p.id === item.id)
-                             const isFavorite = favorites.includes(item.id)
-                             const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
-                             
-                             return (
-                                <CarouselItem key={item.id} className={carouselItemClass}>
-                                    <div className="p-1 h-full">
-                                        <div 
-                                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
-                                          onClick={() => router.push(`/properties/${item.id}`)}
-                                        >
-                                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                                            <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
-                                            
-                                            {/* Action Buttons */}
-                                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
-                                                <button onClick={(e) => toggleFavorite(e, item.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
-                                                    <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-                                                </button>
-                                                <label className="flex items-center cursor-pointer">
-                                                    <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, item)} />
-                                                    <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
-                                                        {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
-                                                    </div>
-                                                </label>
-                                            </div>
-                                            
-                                            {/* Image Indicators */}
-                                            {images.length > 1 && (
-                                                <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
-                                                {images.map((_, idx) => (
-                                                    <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
-                                                ))}
-                                                </div>
-                                            )}
-
-                                            {/* Gradient & Labels */}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                                                <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                                                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
-                                            </div>
-                                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
-                                                <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
-                                                <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Card Body */}
-                                          <div className="p-1.5 sm:p-2">
-                                              <div className="mb-0.5 sm:mb-1">
-                                                  <div className="flex justify-between items-start">
-                                                      <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{item.title}</h3>
-                                                      {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
-                                                  </div>
-                                                  <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
-                                                      <span className="truncate">{item.city}, Philippines</span>
-                                                  </div>
-                                              </div>
-                                              <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg 
-                                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
-                                                      fill="currentColor" 
-                                                      viewBox="0 0 24 24"
-                                                    >
-                                                      <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                                                    </svg>{item.bedrooms}</span>
-                                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
-                                                        className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                                                        viewBox="0 0 24 24"
-                                                        fill="currentColor"
-                                                    >
-                                                        <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                                                    </svg>{item.bathrooms}</span>
-                                                  <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
-                                              </div>
-                                          </div>
-                                        </div>
-                                    </div>
-                                </CarouselItem>
-                             )
-                        })}
-                    </CarouselContent>
-                    <CarouselPrevious />
-                    <CarouselNext />
-                </Carousel>
+          <div className="mb-2 mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Top Rated</h2>
+                <p className="text-sm text-gray-500">Highest rated by tenants</p>
+              </div>
             </div>
+            <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
+              <CarouselContent className="-ml-2">
+                {topRated.slice(0, maxDisplayItems).map((item) => {
+                  const images = getPropertyImages(item)
+                  const currentIndex = currentImageIndex[item.id] || 0
+                  const isSelectedForCompare = comparisonList.some(p => p.id === item.id)
+                  const isFavorite = favorites.includes(item.id)
+                  const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
+
+                  return (
+                    <CarouselItem key={item.id} className={carouselItemClass}>
+                      <div className="p-1 h-full">
+                        <div
+                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full ${isSelectedForCompare ? 'ring-2 ring-black border-black' : 'border-gray-100'}`}
+                          onClick={() => router.push(`/properties/${item.id}`)}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                            <img src={images[currentIndex]} alt={item.title} className="w-full h-full object-cover" />
+
+                            {/* Action Buttons */}
+                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={(e) => toggleFavorite(e, item.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                              </button>
+                              <label className="flex items-center cursor-pointer">
+                                <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, item)} />
+                                <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                                  {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                                </div>
+                              </label>
+                            </div>
+
+                            {/* Image Indicators */}
+                            {images.length > 1 && (
+                              <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
+                                {images.map((_, idx) => (
+                                  <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Gradient & Labels */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
+                              <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                            </div>
+                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                              <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
+                              <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
+                            </div>
+                          </div>
+
+                          {/* Card Body */}
+                          <div className="p-1.5 sm:p-2">
+                            <div className="mb-0.5 sm:mb-1">
+                              <div className="flex justify-between items-start">
+                                <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{item.title}</h3>
+                                {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
+                              </div>
+                              <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                                <span className="truncate">{item.city}, Philippines</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                              </svg>{item.bedrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                              >
+                                <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                              </svg>{item.bathrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CarouselItem>
+                  )
+                })}
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
+            </Carousel>
+          </div>
         )}
       </div>
-      
+
       {/* Floating Compare Button */}
       {comparisonList.length > 0 && (
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 animate-bounce-in">
-          <button 
+          <button
             onClick={handleCompareClick}
             className="bg-black text-white px-8 py-4 rounded-full shadow-2xl hover:scale-105 transition-transform flex items-center gap-3 border-2 border-white/20 cursor-pointer"
           >
@@ -879,7 +879,7 @@ export default function Home() {
             </span>
             <span className="font-bold text-sm uppercase tracking-wider">Compare Selected</span>
             {comparisonList.length < 2 && (
-               <span className="text-xs text-gray-400 font-normal normal-case">(Select at least 2)</span>
+              <span className="text-xs text-gray-400 font-normal normal-case">(Select at least 2)</span>
             )}
           </button>
         </div>
@@ -889,7 +889,7 @@ export default function Home() {
       {showPermitModal && selectedPermit && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
-            <div 
+            <div
               className="fixed inset-0 bg-black/80 backdrop-blur-sm"
               onClick={() => setShowPermitModal(false)}
             ></div>
@@ -910,8 +910,8 @@ export default function Home() {
               </div>
 
               <div className="p-8 bg-gray-100 flex items-center justify-center min-h-[60vh]">
-                <img 
-                  src={selectedPermit.image} 
+                <img
+                  src={selectedPermit.image}
                   alt={selectedPermit.title}
                   className="max-w-full h-auto object-contain max-h-[70vh] shadow-xl border-4 border-white transform hover:scale-105 transition-transform duration-300"
                 />
@@ -920,20 +920,20 @@ export default function Home() {
           </div>
         </div>
       )}
-       <div className="h-24"></div>
-      
-      <AuthModal 
-        isOpen={showAuthModal} 
-        onClose={() => setShowAuthModal(false)} 
+      <div className="h-24"></div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
         initialMode={authMode}
       />
-      
+
       {/* Property Details Modal */}
       {showPropertyModal && selectedProperty && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4">
             {/* Background overlay */}
-            <div 
+            <div
               className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
               onClick={closePropertyModal}
             ></div>
@@ -958,19 +958,19 @@ export default function Home() {
                       const images = getPropertyImages(selectedProperty)
                       return (
                         <>
-                          <div 
+                          <div
                             className="relative w-full h-full cursor-crosshair"
                             onMouseMove={handleMouseMove}
                             onMouseEnter={handleMouseEnter}
                             onMouseLeave={handleMouseLeave}
                           >
-                            <img 
-                              src={images[modalImageIndex]} 
+                            <img
+                              src={images[modalImageIndex]}
                               alt={selectedProperty.title}
                               className="w-full h-full object-cover"
                             />
                           </div>
-                          
+
                           {/* Image navigation arrows */}
                           {images.length > 1 && (
                             <>
@@ -992,7 +992,7 @@ export default function Home() {
                               </button>
                             </>
                           )}
-                          
+
                           {/* Image indicators */}
                           {images.length > 1 && (
                             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/50 rounded-full backdrop-blur-sm">
@@ -1000,9 +1000,8 @@ export default function Home() {
                                 <button
                                   key={idx}
                                   onClick={() => setModalImageIndex(idx)}
-                                  className={`h-2 rounded-full transition-all cursor-pointer ${
-                                    idx === modalImageIndex ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white/80'
-                                  }`}
+                                  className={`h-2 rounded-full transition-all cursor-pointer ${idx === modalImageIndex ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white/80'
+                                    }`}
                                 />
                               ))}
                             </div>
