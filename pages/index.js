@@ -546,7 +546,7 @@ export default function Home() {
           
           {loading ? (
             <div className="h-[350px] flex items-center justify-center w-full">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div>
+               <span className="text-gray-500 text-sm font-medium">Loading properties...</span>
             </div>
           ) : properties.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-xl h-[350px] flex flex-col items-center justify-center">

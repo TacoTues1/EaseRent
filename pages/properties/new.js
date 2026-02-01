@@ -10,6 +10,9 @@ export default function NewProperty() {
   const [message, setMessage] = useState(null)
   const [imageUrls, setImageUrls] = useState([''])
   const [uploadingImages, setUploadingImages] = useState({})
+  
+  // New state for terms upload
+  const [uploadingTerms, setUploadingTerms] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -23,7 +26,6 @@ export default function NewProperty() {
     owner_phone: '',
     owner_email: '',
     price: '',
-    // New Cost Fields
     utilities_cost: '',
     internet_cost: '',
     association_dues: '',
@@ -32,7 +34,7 @@ export default function NewProperty() {
     area_sqft: '',
     available: true,
     status: 'available',
-    terms_conditions: '',
+    terms_conditions: '', // Will store URL or empty string
     amenities: []
   })
 
@@ -66,7 +68,6 @@ export default function NewProperty() {
     
     setSession(result.data.session)
     
-    // Check if user is a landlord
     const { data: profileData } = await supabase
       .from('profiles') 
       .select('role')
@@ -109,13 +110,11 @@ export default function NewProperty() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setMessage('Please upload an image file')
       return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setMessage('Image size must be less than 5MB')
       return
@@ -123,11 +122,9 @@ export default function NewProperty() {
 
     setUploadingImages(prev => ({ ...prev, [index]: true }))
     try {
-      // Create unique filename
       const fileExt = file.name.split('.').pop()
       const fileName = `${session.user.id}/${Date.now()}.${fileExt}`
       
-      // Upload to Supabase Storage
       const { data, error } = await supabase.storage
         .from('property-images')
         .upload(fileName, file)
@@ -139,12 +136,10 @@ export default function NewProperty() {
         throw error
       }
 
-      // Get public URL
       const { data: publicUrlData } = supabase.storage
         .from('property-images')
         .getPublicUrl(fileName)
 
-      // Update the URL in the array
       const newUrls = [...imageUrls]
       newUrls[index] = publicUrlData.publicUrl
       setImageUrls(newUrls)
@@ -159,6 +154,52 @@ export default function NewProperty() {
     }
   }
 
+  async function handleTermsUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.type !== 'application/pdf') {
+      setMessage('Please upload a PDF file')
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      setMessage('PDF size must be less than 10MB')
+      return
+    }
+
+    setUploadingTerms(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${session.user.id}/terms-${Date.now()}.${fileExt}`
+      
+      const { data, error } = await supabase.storage
+        .from('property-documents') // Needs a bucket named 'property-documents'
+        .upload(fileName, file)
+
+      if (error) {
+        if (error.message.includes('Bucket not found') || error.message.includes('bucket')) {
+          throw new Error('Storage bucket not set up. Please create "property-documents" bucket in Supabase Dashboard.')
+        }
+        throw error
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('property-documents')
+        .getPublicUrl(fileName)
+
+      setFormData(prev => ({ ...prev, terms_conditions: publicUrlData.publicUrl }))
+      
+      setMessage('Terms PDF uploaded successfully!')
+      setTimeout(() => setMessage(null), 3000)
+    } catch (error) {
+      console.error('Upload error:', error)
+      setMessage(error.message || 'Error uploading PDF')
+    } finally {
+      setUploadingTerms(false)
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!session) {
@@ -166,12 +207,10 @@ export default function NewProperty() {
       return
     }
 
-    // Filter out empty URLs
     const validImageUrls = imageUrls.filter(url => url.trim() !== '')
 
     setLoading(true)
 
-    // Helper to ensure numeric fields are sent as numbers or 0 (not empty strings)
     const sanitizeNumber = (val) => (val === '' || val === null ? 0 : val)
 
     const payload = {
@@ -215,7 +254,6 @@ export default function NewProperty() {
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
-        {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Add Property</h1>
@@ -235,7 +273,6 @@ export default function NewProperty() {
         </div>
         
         <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6">
-          {/* Main Info Card */}
           <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
             
             {/* Title Section */}
@@ -252,7 +289,7 @@ export default function NewProperty() {
               />
             </div>
 
-            {/* Location Section */}
+            {/* Location Section (Same as edit) */}
             <div>
               <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
                 <span className="w-1.5 h-4 bg-black rounded-full"></span> Location
@@ -446,19 +483,45 @@ export default function NewProperty() {
                     onChange={handleChange}
                   />
                </div>
+               
+                {/* NEW PDF UPLOAD SECTION */}
                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Terms & Conditions</label>
-                    <a href="/terms" target="_blank" className="text-xs font-medium text-black cursor-pointer border-b border-gray-300 pb-0.5">Template</a>
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Terms & Conditions (PDF)</label>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex flex-col justify-center h-[132px]">
+                    
+                    {formData.terms_conditions && formData.terms_conditions.startsWith('http') ? (
+                       <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 mb-2">
+                          <a href={formData.terms_conditions} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 font-medium hover:underline">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            View Uploaded PDF
+                          </a>
+                          <button 
+                            type="button" 
+                            onClick={() => setFormData(prev => ({ ...prev, terms_conditions: '' }))}
+                            className="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-wider"
+                          >
+                            Remove
+                          </button>
+                       </div>
+                    ) : (
+                       <p className="text-xs text-gray-400 text-center mb-3">
+                         No custom terms uploaded. The default system terms will be used.
+                       </p>
+                    )}
+
+                    <div className="relative">
+                       <input
+                         type="file"
+                         accept="application/pdf"
+                         onChange={handleTermsUpload}
+                         disabled={uploadingTerms}
+                         className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
+                       />
+                       {uploadingTerms && (
+                         <div className="absolute right-0 top-1/2 -translate-y-1/2 text-xs text-black font-bold bg-white px-2">Uploading...</div>
+                       )}
+                    </div>
                   </div>
-                  <textarea
-                    name="terms_conditions"
-                    rows="5"
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black outline-none resize-none"
-                    placeholder="Lease terms, deposit details..."
-                    value={formData.terms_conditions}
-                    onChange={handleChange}
-                  />
                </div>
             </div>
           </div>

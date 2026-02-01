@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
-import { createNotification, NotificationTemplates } from '../../lib/notifications'
+import { createNotification } from '../../lib/notifications'
 import AuthModal from '../../components/AuthModal'
-import toast from 'react-hot-toast'
+import { showToast } from 'nextjs-toast-notify' // Changed to match your bookings.js
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -13,18 +13,20 @@ export default function PropertyDetail() {
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [applicationMessage, setApplicationMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
-  const [termsAccepted, setTermsAccepted] = useState(false)
   const [landlordProfile, setLandlordProfile] = useState(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [hasActiveOccupancy, setHasActiveOccupancy] = useState(false)
   const [occupiedPropertyTitle, setOccupiedPropertyTitle] = useState('')
   const [showAllAmenities, setShowAllAmenities] = useState(false)
-  const [reviews, setReviews] = useState([]) 
-
+  const [reviews, setReviews] = useState([])
+  const [timeSlots, setTimeSlots] = useState([])
+  const [showBookingOptions, setShowBookingOptions] = useState(false)
+  const [selectedSlotId, setSelectedSlotId] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [bookingNote, setBookingNote] = useState('') 
+  const [showTermsModal, setShowTermsModal] = useState(false)
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -69,6 +71,25 @@ export default function PropertyDetail() {
         loadReviews() 
     }
   }, [id])
+
+  // Load slots when property (and landlord) is available
+  useEffect(() => {
+    if (property?.landlord) {
+        loadTimeSlots(property.landlord)
+    }
+  }, [property])
+
+  async function loadTimeSlots(landlordId) {
+    const { data } = await supabase
+      .from('available_time_slots')
+      .select('*')
+      .eq('landlord_id', landlordId)
+      .eq('is_booked', false)
+      .gte('start_time', new Date().toISOString())
+      .order('start_time', { ascending: true })
+    
+    if (data) setTimeSlots(data)
+  }
 
   async function loadProperty() {
     setLoading(true)
@@ -118,7 +139,16 @@ export default function PropertyDetail() {
     
     if (data) setReviews(data)
   }
-  // Helper to extract coordinates from Google Maps links
+
+  const getMapEmbedUrl = () => {
+    const coords = extractCoordinates(property?.location_link)
+    if (coords) {
+      return `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=17&output=embed`
+    }
+    const address = `${property?.address || ''}, ${property?.city || ''} ${property?.zip || ''}`
+    return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=17&output=embed`
+  }
+
   const extractCoordinates = (link) => {
     if (!link) return null;
     const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
@@ -132,30 +162,14 @@ export default function PropertyDetail() {
     return null;
   };
 
-  const getMapEmbedUrl = () => {
-    const coords = extractCoordinates(property?.location_link)
-    if (coords) {
-      return `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=17&output=embed`
-    }
-    const address = `${property?.address || ''}, ${property?.city || ''} ${property?.zip || ''}`
-    return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=17&output=embed`
-  }
-
-  // --- NEW: Handle internal navigation to getDirections page ---
   const handleInternalDirections = (e) => {
     e.preventDefault();
-    
-    // 1. Try to get explicit coordinates from the link
     const coords = extractCoordinates(property?.location_link);
-    
-    // 2. Build address string
     const fullAddr = `${property.address}, ${property.city}`;  
-    // 3. Navigate
     router.push({
       pathname: '/getDirections',
       query: { 
         to: fullAddr,
-        // Pass coordinates if found, otherwise undefined (getDirections will Geocode the address)
         lat: coords ? coords.lat : undefined,
         lng: coords ? coords.lng : undefined,
         auto: 'true'
@@ -163,70 +177,124 @@ export default function PropertyDetail() {
     });
   };
 
-  async function handleApply(e) {
-    e.preventDefault()
+  // Open the booking form and hide the main button
+  const handleOpenBooking = () => {
     if (!session) {
-      setShowAuthModal(true)
+      showToast.info("You Need to Login First", {
+    duration: 1000,
+    progress: true,
+    position: "top-center",
+    transition: "bounceIn",
+    icon: '',
+    sound: true,
+      })
+      router.push(`/login?redirect=${router.asPath}`)
       return
+    }
+    setShowBookingOptions(true)
+  }
+
+  // Cancel/Close the form
+  const handleCancelBooking = () => {
+    setShowBookingOptions(false)
+    setSelectedSlotId('')
+    setBookingNote('')
+    setTermsAccepted(false)
+  }
+
+  // Triggered when confirming the booking
+  async function handleConfirmBooking(e) {
+    e.preventDefault()
+    
+    if (!selectedSlotId) {
+        showToast.error("Please select a viewing time.", { duration: 4000, transition: "bounceIn" })
+        return
     }
 
     setSubmitting(true)
     
+    // 1. Check Active Occupancy
     const { data: activeOccupancy } = await supabase
       .from('tenant_occupancies')
-      .select('id, status')
+      .select('id')
       .eq('property_id', id)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
       .maybeSingle()
 
     if (activeOccupancy) {
-      setMessage('You are currently occupying this property or have a pending end request. You cannot apply again until your occupancy ends.')
+      showToast.error('You are currently occupying this property. You cannot book a viewing.', { duration: 4000, transition: "bounceIn" })
       setSubmitting(false)
       return
     }
 
-    const { data: pendingApp } = await supabase
-      .from('applications')
-      .select('id, status')
-      .eq('property_id', id)
+    // 2. Check Existing Booking Limit (Strict 1 Active Booking)
+    const { data: globalActive } = await supabase
+      .from('bookings')
+      .select('id')
       .eq('tenant', session.user.id)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'pending_approval', 'approved', 'accepted'])
       .maybeSingle()
 
-    if (pendingApp) {
-      setMessage('You already have a pending inquiry for this property. Please wait for the landlord to review it.')
+    if (globalActive) {
+      showToast.error('You already have an active viewing request. Please cancel it before booking another.', { duration: 4000, transition: "bounceIn" })
       setSubmitting(false)
       return
     }
 
-    const { error } = await supabase.from('applications').insert({
+    // 3. Get Selected Slot Data
+    const slot = timeSlots.find(s => s.id === selectedSlotId)
+    if (!slot) {
+        showToast.error('Selected time slot is invalid.', { duration: 4000, transition: "bounceIn" })
+        setSubmitting(false)
+        return
+    }
+
+    // 4. Create Booking
+    const { data: newBooking, error } = await supabase.from('bookings').insert({
       property_id: id,
       tenant: session.user.id,
-      message: applicationMessage,
-      status: 'pending'
-    })
+      landlord: property.landlord,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      booking_date: slot.start_time,
+      time_slot_id: slot.id,
+      status: 'pending',
+      notes: bookingNote || 'No message provided' 
+    }).select().single()
 
     if (error) {
-      setMessage('Error submitting inquiry: ' + error.message)
+      showToast.error('Error submitting booking: ' + error.message, { duration: 4000, transition: "bounceIn" })
     } else {
+      // 5. Update Slot to Booked
+      await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', slot.id)
+
+      // 6. Notify Landlord
       if (property.landlord) {
-        const template = NotificationTemplates.newApplication(
-          property.title,
-          profile?.first_name ? `${profile.first_name} ${profile.last_name}` : 'A tenant'
-        )
         await createNotification({
           recipient: property.landlord,
           actor: session.user.id,
-          type: template.type,
-          message: template.message
+          type: 'new_booking',
+          message: `${profile?.first_name || 'A tenant'} requested a viewing for ${property.title}.`,
+          link: '/bookings'
+        })
+        
+        // Notify API
+        fetch('/api/notify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              type: 'booking_new',
+              recordId: newBooking.id,
+              actorId: session.user.id
+            })
         })
       }
+
+      // 7. SMS Notification
       if (landlordProfile?.phone) {
         try {
-            // Construct the message here since we are calling a generic SMS API
-            const smsMessage = `EaseRent Alert: New application received from ${profile?.first_name || 'A Tenant'} for "${property.title}". Log in to review.`
-            
+            const smsMessage = `EaseRent Alert: New viewing request from ${profile?.first_name || 'A Tenant'} for "${property.title}". Log in to review.`
             await fetch('/api/send-sms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -239,8 +307,10 @@ export default function PropertyDetail() {
             console.error("Failed to send SMS:", smsError)
         }
       }
-      setMessage('Inquiry submitted successfully!')
-      setApplicationMessage('')
+
+      showToast.success('Viewing request sent successfully!', { duration: 4000, transition: "bounceIn" })
+      handleCancelBooking() // Reset form
+      router.push('/bookings')
     }
     setSubmitting(false)
   }
@@ -256,6 +326,9 @@ export default function PropertyDetail() {
   const isLandlord = profile?.role === 'landlord'
 
   const fullAddress = `${property.address}, ${property.city} ${property.zip || ''}`
+  const termsLink = property.terms_conditions && property.terms_conditions.startsWith('http') 
+    ? property.terms_conditions 
+    : '/terms';
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 font-sans">
@@ -314,12 +387,24 @@ export default function PropertyDetail() {
              <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                 <div className="flex items-center gap-8 md:gap-12 border-b border-gray-100 pb-6 mb-6 overflow-x-auto">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg></div>
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg 
+  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
+  fill="currentColor" 
+  viewBox="0 0 24 24"
+>
+  <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+</svg></div>
                         <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bedrooms}</p><p className="text-xs text-gray-500 font-medium">Bedrooms</p></div>
                     </div>
                     <div className="w-px h-8 bg-gray-100"></div>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg></div>
+                        <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg
+  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+  viewBox="0 0 24 24"
+  fill="currentColor"
+>
+  <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+</svg></div>
                         <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bathrooms}</p><p className="text-xs text-gray-500 font-medium">Bathrooms</p></div>
                     </div>
                     <div className="w-px h-8 bg-gray-100"></div>
@@ -360,7 +445,6 @@ export default function PropertyDetail() {
 
             {/* Mini Map / Location Card */}
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                {/* Google Maps Embed - Accurate Location */}
                 <div className="w-full h-80 bg-gray-50 rounded-lg mb-4 overflow-hidden relative border border-gray-200">
                    <iframe 
                       width="100%" 
@@ -378,7 +462,6 @@ export default function PropertyDetail() {
                 <div className="flex items-center gap-2 mt-3">
                    <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg></div>
                    
-                   {/* UPDATED: Get Directions Button navigates to internal page */}
                    <button 
                      onClick={handleInternalDirections}
                      className="text-xs text-gray-600 hover:text-black font-bold uppercase tracking-wider transition-colors cursor-pointer border-b border-transparent hover:border-black"
@@ -388,7 +471,7 @@ export default function PropertyDetail() {
                 </div>
             </div>
              
-             {/* Main Action Card */}
+             {/* Booking Action Card (Updated with Message Field) */}
              <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                 <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-50">
                     <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-sm">
@@ -399,13 +482,14 @@ export default function PropertyDetail() {
                        <p className="text-xs text-gray-500">Posted By</p>
                     </div>
                 </div>
+                
                 {isOwner ? (
                   <div className="flex flex-col gap-3">
                     <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100">You own this property.</div>
                     <button onClick={() => router.push(`/properties/edit/${property.id}`)} className="w-full py-2.5 px-4 bg-black text-white text-sm font-bold rounded-lg cursor-pointer hover:bg-gray-900 transition-colors">Edit Property</button>
                   </div>
                 ) : isLandlord ? (
-                   <div className="p-3 bg-gray-50 text-gray-600 text-xs rounded-lg border border-gray-200">Landlords cannot submit Inquiries.</div>
+                   <div className="p-3 bg-gray-50 text-gray-600 text-xs rounded-lg border border-gray-200">Landlords cannot book viewings.</div>
                 ) : (
                   <>
                      {hasActiveOccupancy ? (
@@ -415,24 +499,118 @@ export default function PropertyDetail() {
                           <button onClick={() => router.push('/dashboard')} className="text-xs font-bold text-yellow-800 underline cursor-pointer">Dashboard</button>
                        </div>
                      ) : property.status !== 'available' ? (
-                        <div className="p-3 bg-gray-50 text-gray-500 text-xs font-medium rounded-lg border border-gray-200 text-center">Not accepting Inquiries.</div>
+                        <div className="p-3 bg-gray-50 text-gray-500 text-xs font-medium rounded-lg border border-gray-200 text-center">Not available for booking.</div>
                      ) : (
-                        <div className="flex flex-col gap-3">
-                           <div>
-                              <label className="block text-xs font-bold text-gray-700 mb-1.5">Message to Owner</label>
-                              <textarea className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:bg-white focus:border-black outline-none resize-none h-24" value={applicationMessage} onChange={e => setApplicationMessage(e.target.value)} placeholder="I'm interested..." />
-                           </div>
-                           <div>
-                             <label className="flex items-start gap-2 cursor-pointer group">
-                                <div className="relative flex items-center pt-0.5">
-                                  <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="peer h-3.5 w-3.5 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all" />
-                                  <svg className="absolute w-2 h-2 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
-                                </div>
-                                <span className="text-[10px] text-gray-500 leading-snug">I agree to <Link href={`/terms?propertyId=${property.id}`} target="_blank" className="text-black font-bold underline">Terms & Conditions</Link>.</span>
-                             </label>
-                           </div>
-                           {message && (<div className={`p-2 rounded text-[10px] font-medium ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{message}</div>)}
-                           <button onClick={handleApply} disabled={submitting || !termsAccepted} className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold shadow-sm transition-all ${termsAccepted ? 'bg-black text-white cursor-pointer hover:shadow-md' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{submitting ? 'Sending...' : 'Submit Inquiry'}</button>
+                        <div className="flex flex-col gap-4">
+                           {/* Book Now Button (Shown only when options are hidden) */}
+                           {!showBookingOptions && (
+                               <button 
+                                 onClick={handleOpenBooking} 
+                                 className="w-full py-3.5 bg-black text-white text-sm font-bold rounded-xl shadow-lg shadow-gray-200 hover:bg-gray-900 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                               >
+                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                   Book Now
+                               </button>
+                           )}
+
+                           {/* Dropdown & Form Section (Replaces Button) */}
+                           {showBookingOptions && (
+                               <div className="flex flex-col gap-4 animate-in slide-in-from-top-4 fade-in duration-500 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                   
+                                   <div className="flex justify-between items-center mb-1">
+                                       <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Select Schedule</label>
+                                       <button 
+                                         onClick={handleCancelBooking} 
+                                         className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-black hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
+                                         title="Cancel"
+                                       >
+                                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                       </button>
+                                   </div>
+
+                                   {/* Date/Time Selection */}
+                                   <div>
+                                      {timeSlots.length > 0 ? (
+                                        <div className="relative">
+                                            <select 
+                                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black outline-none appearance-none cursor-pointer shadow-sm"
+                                                value={selectedSlotId}
+                                                onChange={(e) => setSelectedSlotId(e.target.value)}
+                                            >
+                                                <option value="" disabled>-- Choose a date & time --</option>
+                                                {timeSlots.map(slot => {
+                                                    const start = new Date(slot.start_time)
+                                                    return (
+                                                        <option key={slot.id} value={slot.id}>
+                                                            {start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} • {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(slot.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                                        </option>
+                                                    )
+                                                })}
+                                            </select>
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                            </div>
+                                        </div>
+                                      ) : (
+                                          <div className="text-xs text-red-500 bg-white p-2 rounded border border-red-100 text-center">
+                                              No available viewing slots found.
+                                          </div>
+                                      )}
+                                   </div>
+
+                                   {/* Message Field (Restored) */}
+                                   <div>
+                                       <label className="block text-xs font-bold text-gray-700 mb-1.5">Message (Optional)</label>
+                                       <textarea 
+                                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none resize-none h-20 shadow-sm"
+                                          value={bookingNote}
+                                          onChange={(e) => setBookingNote(e.target.value)}
+                                          placeholder="Any specific questions or requests?"
+                                       />
+                                   </div>
+                                   
+                                   {/* Agreement Checkbox */}
+                                   <label className="flex items-start gap-3 cursor-pointer group bg-white p-2.5 rounded-lg border border-gray-200">
+                                      <div className="relative flex items-center pt-0.5">
+                                        <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-gray-300 checked:bg-black checked:border-black transition-all bg-white" />
+                                        <svg className="absolute w-2.5 h-2.5 pointer-events-none hidden peer-checked:block text-white left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                      </div>
+                                      <span className="text-[10px] text-gray-500 leading-snug">I agree to the 
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault()
+      // If it's a PDF URL, open modal. Otherwise (default), open new tab.
+      if (termsLink.startsWith('http')) {
+         setShowTermsModal(true)
+      } else {
+         window.open(termsLink, '_blank')
+      }
+    }}
+    className="text-black font-bold underline hover:text-gray-700 ml-1 bg-transparent border-0 p-0 cursor-pointer inline"
+  >
+    Terms & Conditions
+  </button>.
+</span>
+                                   </label>
+                                   
+                                   {/* Confirm Button */}
+                                   <button 
+                                     onClick={handleConfirmBooking} 
+                                     disabled={submitting || !termsAccepted || !selectedSlotId} 
+                                     className={`w-full py-3 px-4 rounded-xl text-sm font-bold shadow-sm transition-all ${termsAccepted && selectedSlotId ? 'bg-black text-white cursor-pointer hover:bg-gray-900 hover:shadow-md' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                   >
+                                       {submitting ? 'Confirming...' : 'Confirm Booking'}
+                                   </button>
+                               </div>
+                           )}
+
+                           {/* Info Text */}
+                           {!showBookingOptions && (
+                             <p className="text-[10px] text-gray-400 text-center">
+                               Click to view available dates and schedule a viewing.
+                             </p>
+                           )}
                         </div>
                      )}
                   </>
@@ -509,6 +687,31 @@ export default function PropertyDetail() {
           </div>
         </div>
       </div>
+      
+{showTermsModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowTermsModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b bg-white">
+              <button 
+                onClick={() => setShowTermsModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
+              >
+                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {/* PDF Viewer (Iframe) */}
+            <div className="flex-1 bg-gray-50 relative">
+               <iframe 
+                 src={termsLink} 
+                 className="w-full h-full" 
+                 title="Terms PDF"
+               />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* --------------------------- */}
 
       <AuthModal 
         isOpen={showAuthModal} 

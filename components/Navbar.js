@@ -20,7 +20,7 @@ export default function Navbar() {
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
   const [isDuplicate, setIsDuplicate] = useState(false)
   const disabledClass = isDuplicate ? "opacity-40 pointer-events-none grayscale" : ""
-  
+
   const navRef = useRef(null)
   const notifRef = useRef(null) // Ref for notification dropdown
 
@@ -46,12 +46,54 @@ export default function Navbar() {
     }
   }, [])
 
+  // ============================================
+  // AUTO-CHECK: Process Scheduled Reminders Queue
+  // Runs when ANY user is active, throttled to once per 10 minutes
+  // ============================================
+  useEffect(() => {
+    if (!session) return
+
+    const THROTTLE_KEY = 'lastReminderQueueCheck'
+    const THROTTLE_MS = 10 * 60 * 1000 // 10 minutes (more frequent for better UX)
+
+    const runReminderCheck = async () => {
+      try {
+        const lastCheck = localStorage.getItem(THROTTLE_KEY)
+        const now = Date.now()
+
+        // Skip if checked within the throttle period
+        if (lastCheck && (now - parseInt(lastCheck)) < THROTTLE_MS) {
+          return
+        }
+
+        // Update timestamp first to prevent parallel calls
+        localStorage.setItem(THROTTLE_KEY, now.toString())
+
+        // Call the scheduled reminders API (runs in background)
+        const response = await fetch('/api/process-scheduled-reminders', { method: 'POST' })
+        const result = await response.json()
+
+        if (result.success && result.results?.processed > 0) {
+          console.log('✅ Scheduled reminders processed:', result.results)
+        }
+      } catch (err) {
+        console.error('Reminder queue check failed:', err)
+      }
+    }
+
+    // Run check after a short delay (don't block page load)
+    const timeout = setTimeout(runReminderCheck, 2000)
+
+    return () => clearTimeout(timeout)
+  }, [session])
+
+
   // Real-time subscription
   useEffect(() => {
     if (!session) return
 
     const userId = session.user.id
-    
+
     const channel = supabase
       .channel('navbar-notifications')
       .on(
@@ -66,7 +108,7 @@ export default function Navbar() {
           loadUnreadCount(userId)
           // If dropdown is open, refresh the list to show new item
           if (showNotifDropdown) {
-             loadRecentNotifications(userId)
+            loadRecentNotifications(userId)
           }
         }
       )
@@ -90,10 +132,10 @@ export default function Navbar() {
             width: linkRect.width
           })
         } else {
-            setUnderlineStyle({ left: 0, width: 0, opacity: 0 })
+          setUnderlineStyle({ left: 0, width: 0, opacity: 0 })
         }
       }
-      
+
       setTimeout(updateUnderline, 150)
       window.addEventListener('resize', updateUnderline)
       return () => window.removeEventListener('resize', updateUnderline)
@@ -119,64 +161,64 @@ export default function Navbar() {
   }, [navRef, notifRef]);
 
   async function loadProfile(userId, retries = 3) {
-  try {
-    // 1. Try to fetch the profile
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-    
-    if (data) {
-      setProfile(data)
-      
-      // Check for duplicate phone numbers (your existing logic)
-      if (data.phone) {
+    try {
+      // 1. Try to fetch the profile
+      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+
+      if (data) {
+        setProfile(data)
+
+        // Check for duplicate phone numbers (your existing logic)
+        if (data.phone) {
           const { data: duplicates } = await supabase
             .from('profiles')
             .select('id')
             .eq('phone', data.phone)
             .neq('id', userId)
-          
+
           if (duplicates && duplicates.length > 0) {
-              setIsDuplicate(true)
+            setIsDuplicate(true)
           }
-      }
-    } else {
-      // 2. PROFILE NOT FOUND (New User from Google?) -> Create it now!
-      
-      // Get the user's Google metadata
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        // Extract names from Google data
-        const metadata = user.user_metadata || {}
-        const fullName = metadata.full_name || metadata.name || ''
-        const googleFirstName = metadata.given_name || fullName.split(' ')[0] || 'User'
-        const googleLastName = metadata.family_name || fullName.split(' ').slice(1).join(' ') || ''
-
-        // Insert the new profile
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: user.id,
-          email: user.email,
-          first_name: googleFirstName,
-          last_name: googleLastName,
-          middle_name: 'N/A',
-          role: 'tenant', // Default role for Google signups
-          birthday: new Date().toISOString().split('T')[0], // Default today
-          gender: 'Prefer not to say' // Default gender
-        })
-
-        if (!insertError) {
-          // Profile created! Load it immediately to update the UI
-          loadProfile(userId, 0)
-        } else {
-          console.error("Error creating Google profile:", insertError)
         }
-      } else if (retries > 0) {
-        // If user isn't loaded yet, retry a few times
-        setTimeout(() => loadProfile(userId, retries - 1), 500)
+      } else {
+        // 2. PROFILE NOT FOUND (New User from Google?) -> Create it now!
+
+        // Get the user's Google metadata
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (user) {
+          // Extract names from Google data
+          const metadata = user.user_metadata || {}
+          const fullName = metadata.full_name || metadata.name || ''
+          const googleFirstName = metadata.given_name || fullName.split(' ')[0] || 'User'
+          const googleLastName = metadata.family_name || fullName.split(' ').slice(1).join(' ') || ''
+
+          // Insert the new profile
+          const { error: insertError } = await supabase.from('profiles').insert({
+            id: user.id,
+            email: user.email,
+            first_name: googleFirstName,
+            last_name: googleLastName,
+            middle_name: 'N/A',
+            role: 'tenant', // Default role for Google signups
+            birthday: new Date().toISOString().split('T')[0], // Default today
+            gender: 'Prefer not to say' // Default gender
+          })
+
+          if (!insertError) {
+            // Profile created! Load it immediately to update the UI
+            loadProfile(userId, 0)
+          } else {
+            console.error("Error creating Google profile:", insertError)
+          }
+        } else if (retries > 0) {
+          // If user isn't loaded yet, retry a few times
+          setTimeout(() => loadProfile(userId, retries - 1), 500)
+        }
       }
     }
-  } 
-  catch (err) { console.error("loadProfile error:", err) }
-}
+    catch (err) { console.error("loadProfile error:", err) }
+  }
 
   async function loadUnreadCount(userId) {
     try {
@@ -198,7 +240,7 @@ export default function Navbar() {
         .eq('recipient', userId)
         .order('created_at', { ascending: false })
         .limit(6) // Limit to 6 for the dropdown
-      
+
       if (data) setNotifications(data)
     } catch (err) {
       console.error('Error loading notifications:', err)
@@ -259,25 +301,25 @@ export default function Navbar() {
     setNotifications(prev => prev.filter(n => n.id !== notifId))
     loadUnreadCount(session.user.id)
     showToast.success("Notification deleted", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+      duration: 4000,
+      progress: true,
+      position: "top-center",
+      transition: "bounceIn",
+      icon: '',
+      sound: true,
+    });
 
   }
 
- async function handleSignOut() {
+  async function handleSignOut() {
     try {
       // 1. Sign out from Supabase
       await supabase.auth.signOut({ scope: 'global' })
-      
+
       // 2. Clear local state
       setSession(null)
       setProfile(null)
-      
+
       // 3. FORCE CLEAR LOCAL STORAGE
       // Supabase v2 uses keys like "sb-<project-id>-auth-token"
       // We manually clear anything starting with "sb-" or "supabase" to be safe
@@ -287,7 +329,7 @@ export default function Navbar() {
             localStorage.removeItem(key)
           }
           if (key === 'supabase.auth.token') {
-             localStorage.removeItem(key)
+            localStorage.removeItem(key)
           }
         })
       }
@@ -307,7 +349,7 @@ export default function Navbar() {
       // Force clear session even if signOut fails
       setSession(null)
       setProfile(null)
-      
+
       // Apply the same manual cleanup in the catch block
       if (typeof window !== 'undefined') {
         Object.keys(localStorage).forEach((key) => {
@@ -316,13 +358,13 @@ export default function Navbar() {
           }
         })
       }
-      
+
       router.push('/')
     }
   }
 
   const isActive = (path) => router.pathname === path
-  
+
   // if (profile?.role === 'admin') {
   //     return null
   // }
@@ -331,19 +373,19 @@ export default function Navbar() {
   if (!session) {
     return (
       <>
-        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">    
-                {/*Logo*/}
-                <div className="absolute left-10 top-0 h-16 flex items-center pointer-events-auto z-50">
-             <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
-                <img src="/home.png" alt="EaseRent" className="w-11 h-11 object-contain" />
-                {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
-             </Link>
+        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+          {/*Logo*/}
+          <div className="absolute left-10 top-0 h-16 flex items-center pointer-events-auto z-50">
+            <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
+              <img src="/home.png" alt="EaseRent" className="w-11 h-11 object-contain" />
+              {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
+            </Link>
           </div>
 
-          {/*Login and Register*/}  
+          {/*Login and Register*/}
           <div className="absolute right-6 top-0 h-16 hidden sm:flex items-center gap-3 pointer-events-auto z-50">
-             <button onClick={() => router.push('/login')} className="px-4 py-2 text-md font-semibold bg-gray-100 hover:text-black hover:bg-black/50 rounded-lg transition-all cursor-pointer">Login</button>
-             <button onClick={() => router.push('/register')} className="px-6 py-4 text-md font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2">Register</button>
+            <button onClick={() => router.push('/login')} className="px-4 py-2 text-md font-semibold bg-gray-100 hover:text-black hover:bg-black/50 rounded-lg transition-all cursor-pointer">Login</button>
+            <button onClick={() => router.push('/register')} className="px-6 py-4 text-md font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2">Register</button>
           </div>
 
           <nav className="max-w-lg mx-auto pointer-events-auto transition-all duration-300">
@@ -356,13 +398,13 @@ export default function Navbar() {
                 <div className="absolute left-1/2 transform -translate-x-1/2 sm:hidden pointer-events-none">
                   <span className="text-lg font-bold text-black">EaseRent</span>
                 </div>
-                
+
                 {/* Desktop Center Welcome Text */}
-               <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
-  <span className="text-5xl lg:text-3xl font-bold text-gray-800 tracking-tight">
-    Welcome to EaseRent
-  </span>
-</div>
+                <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
+                  <span className="text-5xl lg:text-3xl font-bold text-gray-800 tracking-tight">
+                    Welcome to EaseRent
+                  </span>
+                </div>
 
                 <div className="sm:hidden flex items-center">
                   <button onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)} className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto">
@@ -374,7 +416,7 @@ export default function Navbar() {
               </div>
             </div>
           </nav>
-          
+
           {showPublicMobileMenu && (
             <div className="sm:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
               <div className="p-4 grid grid-cols-1 gap-2">
@@ -397,7 +439,7 @@ export default function Navbar() {
         <nav className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-full pointer-events-auto transition-all duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
-              
+
               <div className="flex items-center gap-6 lg:gap-10">
                 <Link href="/dashboard" className="flex items-center gap-2 font-bold text-black hover:opacity-80 transition-opacity">
                   <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
@@ -406,12 +448,12 @@ export default function Navbar() {
 
                 <div className="hidden md:flex relative gap-1">
                   <div className="absolute bottom-0 h-0.5 bg-black rounded-full" style={{ left: `${underlineStyle.left}px`, width: `${underlineStyle.width}px`, opacity: underlineStyle.width ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-                  
+
                   <Link href="/dashboard" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/dashboard') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'}`}>Home</Link>
-                  
+
                   {profile?.role === 'landlord' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Inquiries</Link>
+                      {/* <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Inquiries</Link> */}
                       <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Bookings</Link>
                       <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Maintenance</Link>
                     </>
@@ -419,7 +461,7 @@ export default function Navbar() {
 
                   {profile?.role === 'tenant' && (
                     <>
-                      <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Inquiries</Link>
+                      {/* <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Inquiries</Link> */}
                       <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Bookings</Link>
                       <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Maintenance</Link>
                     </>
@@ -434,21 +476,20 @@ export default function Navbar() {
               </div>
 
               <div className="flex items-center gap-3">
-                
+
                 {/* --- DESKTOP NOTIFICATIONS (FACEBOOK STYLE) --- */}
                 <div className={`relative hidden md:block ${disabledClass}`} ref={notifRef}>
-                  <button 
+                  <button
                     onClick={toggleNotifications}
-                    className={`relative p-2 rounded-full transition-all cursor-pointer ${
-                      showNotifDropdown || isActive('/notifications')
-                        ? 'bg-black text-white shadow-md' 
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-black'
-                    }`}
+                    className={`relative p-2 rounded-full transition-all cursor-pointer ${showNotifDropdown || isActive('/notifications')
+                      ? 'bg-black text-white shadow-md'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-black'
+                      }`}
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
-                    
+
                     {unreadCount > 0 && (
                       <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center border-2 border-white shadow-sm">
                         {unreadCount > 9 ? '9+' : unreadCount}
@@ -463,7 +504,7 @@ export default function Navbar() {
                         <h3 className="font-bold text-black text-sm">Notifications</h3>
                         <Link href="/notifications" onClick={() => setShowNotifDropdown(false)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">View All</Link>
                       </div>
-                      
+
                       <div className="max-h-[80vh] overflow-y-auto">
                         {notifications.length === 0 ? (
                           <div className="p-8 text-center">
@@ -471,7 +512,7 @@ export default function Navbar() {
                           </div>
                         ) : (
                           notifications.map((notif) => (
-                            <div 
+                            <div
                               key={notif.id}
                               onClick={() => handleNotificationClick(notif)}
                               className={`group px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${!notif.read ? 'bg-blue-50/30' : ''}`}
@@ -512,8 +553,8 @@ export default function Navbar() {
                           ))
                         )}
                       </div>
-                      
-                      <Link 
+
+                      <Link
                         href="/notifications"
                         onClick={() => setShowNotifDropdown(false)}
                         className="block py-2.5 text-center text-xs font-semibold text-gray-500 hover:bg-gray-50 border-t border-gray-100"
@@ -597,18 +638,18 @@ export default function Navbar() {
         {showMobileMenu && (
           <div className="md:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
             <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-               <div>
-                  <div className="font-bold text-gray-900 text-sm">{profile?.first_name} {profile?.last_name}</div>
-                  <div className="text-xs text-gray-500 truncate max-w-[180px]">{session?.user?.email}</div>
-               </div>
-               <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
-                  {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
-               </span>
+              <div>
+                <div className="font-bold text-gray-900 text-sm">{profile?.first_name} {profile?.last_name}</div>
+                <div className="text-xs text-gray-500 truncate max-w-[180px]">{session?.user?.email}</div>
+              </div>
+              <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
+                {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
+              </span>
             </div>
 
             <div className="p-2 grid grid-cols-2 gap-1">
               <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Home</Link>
-              
+
               {profile?.role === 'landlord' && (
                 <>
                   <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/allProperties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>All Properties</Link>
@@ -627,7 +668,7 @@ export default function Navbar() {
               )}
 
               <Link href="/messages" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/messages') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Messages</Link>
-              
+
               <Link href="/notifications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/notifications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
                 Notifications
                 {unreadCount > 0 && <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isActive('/notifications') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>{unreadCount}</span>}
@@ -648,7 +689,7 @@ export default function Navbar() {
           </div>
         )}
       </div>
-      
+
       <div className="h-24"></div>
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} initialMode={authMode} />
     </>

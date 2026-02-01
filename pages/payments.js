@@ -19,8 +19,6 @@ export default function PaymentsPage() {
   const [userRole, setUserRole] = useState(null)
   const [confirmPaymentId, setConfirmPaymentId] = useState(null)
   const [cancelBillId, setCancelBillId] = useState(null)
-  
-  // New states for QR and proof uploads
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [proofFile, setProofFile] = useState(null)
   const [proofPreview, setProofPreview] = useState(null)
@@ -33,8 +31,7 @@ export default function PaymentsPage() {
   const [showBillReceiptModal, setShowBillReceiptModal] = useState(false)
   const [selectedBillReceipt, setSelectedBillReceipt] = useState(null)
   const [paypalProcessing, setPaypalProcessing] = useState(false)
-  
-  // Edit bill states
+  const [activeTab, setActiveTab] = useState('rent')
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingBill, setEditingBill] = useState(null)
   const [editFormData, setEditFormData] = useState({
@@ -45,17 +42,22 @@ export default function PaymentsPage() {
     bills_description: '',
     due_date: ''
   })
-
   const [formData, setFormData] = useState({
     property_id: '',
     application_id: '',
     tenant: '',
-    amount: '',
+    amount: '', // Rent Amount
     water_bill: '',
     electrical_bill: '',
+    wifi_bill: '', // Added
     other_bills: '',
     bills_description: '',
-    due_date: '',
+    due_date: '', // General/Rent due date
+    electrical_due_date: '',
+    water_due_date: '',
+    wifi_due_date: '',
+    other_due_date: '',
+
     method: 'bank_transfer'
   })
 
@@ -70,13 +72,22 @@ export default function PaymentsPage() {
     })
   }, [])
 
+  function getRentDateRange(dueDateString) {
+    if (!dueDateString) return '-';
+    const due = new Date(dueDateString);
+    const start = new Date(due);
+    start.setDate(due.getDate() - 30); // Calculate 30 days prior
+
+    return `${start.toLocaleDateString()} - ${due.toLocaleDateString()}`;
+  }
+
   async function loadUserRole(userId) {
     const { data } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', userId)
       .maybeSingle()
-    
+
     setUserRole(data?.role || 'tenant')
   }
 
@@ -118,32 +129,37 @@ export default function PaymentsPage() {
     }
   }, [session, userRole])
 
-  async function loadApprovedApplications() {
-    // Get landlord's properties first
-    const { data: myProperties } = await supabase
-      .from('properties')
-      .select('id')
-      .eq('landlord', session.user.id)
+  const [selectedTenantId, setSelectedTenantId] = useState('') // Matches occupancy ID or list ID
 
-    if (myProperties && myProperties.length > 0) {
-      const propertyIds = myProperties.map(p => p.id)
-      
-      // Get approved applications for those properties
-      const { data } = await supabase
-        .from('applications')
-        .select(`
-          id,
-          property_id,
-          tenant,
-          property:properties(title),
-          tenant_profile:profiles(first_name, middle_name, last_name)
-        `)
-        .in('property_id', propertyIds)
-        .eq('status', 'accepted')
-        .order('submitted_at', { ascending: false })
-      
-      setApprovedApplications(data || [])
+  async function loadApprovedApplications() {
+    // UPDATED: Fetch from tenant_occupancies to get ALL active tenants (including manual ones)
+    const { data, error } = await supabase
+      .from('tenant_occupancies')
+      .select(`
+        *,
+        property:properties(title, price),
+        tenant_profile:profiles!tenant_occupancies_tenant_id_fkey(first_name, middle_name, last_name)
+      `)
+      .eq('landlord_id', session.user.id)
+      .eq('status', 'active')
+
+    if (error) {
+      console.error('Error loading tenants:', error)
+      return
     }
+
+    // Map to a consistent structure
+    const mapped = (data || []).map(occ => ({
+      id: occ.id, // Occupancy ID (Unique for UI list)
+      application_id: occ.application_id, // Actual Application ID (Nullable)
+      property_id: occ.property_id,
+      tenant: occ.tenant_id,
+      property: occ.property,
+      tenant_profile: occ.tenant_profile,
+      price: occ.rent_amount || occ.property?.price // Prefer occupancy rent, fallback to property price
+    }))
+
+    setApprovedApplications(mapped)
   }
 
   async function loadPayments() {
@@ -192,65 +208,68 @@ export default function PaymentsPage() {
       .from('properties')
       .select('id, title')
       .eq('landlord', session.user.id)
-    
+
     setProperties(data || [])
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    
-    // Validate required uploads
-    if (!billReceiptFile) {
-      showToast.warning("Please upload the bill receipt/screenshot", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
 
+    // Validate receipt
+    if (!billReceiptFile) {
+      showToast.warning("Please upload the bill receipt/screenshot", { duration: 4000, transition: "bounceIn" });
       return
     }
-    
-    // Calculate total amount
-    const rent = parseFloat(formData.amount) || 0
-    const water = parseFloat(formData.water_bill) || 0
-    const electrical = parseFloat(formData.electrical_bill) || 0
-    const other = parseFloat(formData.other_bills) || 0
-    const total = rent + water + electrical + other
-    
+
+    // Determine values based on Active Tab
+    let rent = 0, water = 0, electrical = 0, wifi = 0, other = 0;
+    let finalDueDate = null;
+    let billTypeLabel = '';
+
+    // We set the specific amount and the specific due date based on the tab
+    // We also set the general 'due_date' for sorting/display compatibility
+    if (activeTab === 'rent') {
+      rent = parseFloat(formData.amount) || 0;
+      finalDueDate = formData.due_date;
+      billTypeLabel = 'Rent';
+    } else if (activeTab === 'electric') {
+      electrical = parseFloat(formData.electrical_bill) || 0;
+      finalDueDate = formData.electrical_due_date;
+      billTypeLabel = 'Electricity Bill';
+    } else if (activeTab === 'water') {
+      water = parseFloat(formData.water_bill) || 0;
+      finalDueDate = formData.water_due_date;
+      billTypeLabel = 'Water Bill';
+    } else if (activeTab === 'wifi') {
+      wifi = parseFloat(formData.wifi_bill) || 0;
+      finalDueDate = formData.wifi_due_date;
+      billTypeLabel = 'Internet/Wifi Bill';
+    } else if (activeTab === 'other') {
+      other = parseFloat(formData.other_bills) || 0;
+      finalDueDate = formData.other_due_date;
+      billTypeLabel = 'Other Bill';
+    }
+
+    const total = rent + water + electrical + wifi + other;
+
     try {
-      // Upload QR code if provided
+      // ... (Keep existing QR code upload logic here) ...
       let qrCodeUrl = null
       if (qrCodeFile) {
+        // ... existing QR logic ...
         const qrFileName = `qr_${Date.now()}_${qrCodeFile.name}`
-        const { data: qrUpload, error: qrError } = await supabase.storage
-          .from('payment-files')
-          .upload(qrFileName, qrCodeFile)
-        
-        if (qrError) throw qrError
-        
-        const { data: qrPublic } = supabase.storage
-          .from('payment-files')
-          .getPublicUrl(qrFileName)
+        await supabase.storage.from('payment-files').upload(qrFileName, qrCodeFile)
+        const { data: qrPublic } = supabase.storage.from('payment-files').getPublicUrl(qrFileName)
         qrCodeUrl = qrPublic.publicUrl
       }
-      
-      // Upload bill receipt (required)
+
+      // ... (Keep existing Receipt upload logic here) ...
       const receiptFileName = `receipt_${Date.now()}_${billReceiptFile.name}`
-      const { data: receiptUpload, error: receiptError } = await supabase.storage
-        .from('payment-files')
-        .upload(receiptFileName, billReceiptFile)
-      
-      if (receiptError) throw receiptError
-      
-      const { data: receiptPublic } = supabase.storage
-        .from('payment-files')
-        .getPublicUrl(receiptFileName)
+      await supabase.storage.from('payment-files').upload(receiptFileName, billReceiptFile)
+      const { data: receiptPublic } = supabase.storage.from('payment-files').getPublicUrl(receiptFileName)
       const billReceiptUrl = receiptPublic.publicUrl
-      
-      // Create payment request
+
+      // Insert Logic
       const { data: paymentRequest, error } = await supabase
         .from('payment_requests')
         .insert({
@@ -258,12 +277,23 @@ export default function PaymentsPage() {
           application_id: formData.application_id || null,
           tenant: formData.tenant,
           landlord: session.user.id,
+
+          // Amounts
           rent_amount: rent,
           water_bill: water,
           electrical_bill: electrical,
+          wifi_bill: wifi, // Make sure this column exists in your DB
           other_bills: other,
-          bills_description: formData.bills_description || null,
-          due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
+
+          bills_description: formData.bills_description || `No Message`,
+
+          // Specific Due Dates
+          due_date: finalDueDate ? new Date(finalDueDate).toISOString() : null, // Main sort column
+          electrical_due_date: formData.electrical_due_date ? new Date(formData.electrical_due_date).toISOString() : null,
+          water_due_date: formData.water_due_date ? new Date(formData.water_due_date).toISOString() : null,
+          wifi_due_date: formData.wifi_due_date ? new Date(formData.wifi_due_date).toISOString() : null,
+          other_due_date: formData.other_due_date ? new Date(formData.other_due_date).toISOString() : null,
+
           status: 'pending',
           qr_code_url: qrCodeUrl,
           bill_receipt_url: billReceiptUrl
@@ -273,64 +303,48 @@ export default function PaymentsPage() {
 
       if (error) throw error
 
-      // Send notification to tenant
-      const { data: property } = await supabase
-        .from('properties')
-        .select('title')
-        .eq('id', formData.property_id)
-        .maybeSingle()
+      // Notification Logic
+      const { data: property } = await supabase.from('properties').select('title').eq('id', formData.property_id).maybeSingle()
 
       await supabase.from('notifications').insert({
         recipient: formData.tenant,
         actor: session.user.id,
         type: 'payment_request',
-        message: `New payment request for ${property?.title || 'property'}: ₱${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+        message: `New ${billTypeLabel} request for ${property?.title || 'property'}: ₱${total.toLocaleString()}`,
         link: '/payments',
         data: { payment_request_id: paymentRequest.id }
       })
 
-      // Reset form
-      setFormData({ 
-        property_id: '', 
-        application_id: '',
-        tenant: '',
-        amount: '', 
-        water_bill: '',
-        electrical_bill: '',
-        other_bills: '',
+      // Send SMS and Email notification
+      fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'payment_bill',
+          recordId: paymentRequest.id,
+          actorId: session.user.id
+        })
+      }).catch(err => console.error("Notify API Error:", err))
+
+
+      // Reset Form
+      setFormData({
+        property_id: '', application_id: '', tenant: '',
+        amount: '', water_bill: '', electrical_bill: '', wifi_bill: '', other_bills: '',
         bills_description: '',
-        due_date: '',
+        due_date: '', electrical_due_date: '', water_due_date: '', wifi_due_date: '', other_due_date: '',
         method: 'bank_transfer'
       })
-      setQrCodeFile(null)
-      setQrCodePreview(null)
-      setBillReceiptFile(null)
-      setBillReceiptPreview(null)
-      setShowFormModal(false)
-      loadPaymentRequests()
-      await sendBillNotification(tenantPhone, {
-        propertyName: property.title,
-        amount: totalAmount,
-        dueDate: formData.due_date
-        });
-      showToast.success('Payment request sent', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
+      setQrCodeFile(null); setQrCodePreview(null);
+      setBillReceiptFile(null); setBillReceiptPreview(null);
+      setShowFormModal(false);
+      loadPaymentRequests();
+
+      showToast.success(`${billTypeLabel} request sent!`, { duration: 4000, transition: "bounceIn" });
+
     } catch (error) {
       console.error('Error creating payment request:', error)
-      showToast.error('Failed to send payment request', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
+      showToast.error('Failed to send request', { duration: 4000, transition: "bounceIn" });
     }
   }
 
@@ -341,7 +355,7 @@ export default function PaymentsPage() {
 
   async function submitPayment() {
     if (!selectedBill) return
-    
+
     // Validate QR payment requirements
     if (paymentMethod === 'qr_code') {
       if (!referenceNumber.trim() && !proofFile) {
@@ -356,27 +370,27 @@ export default function PaymentsPage() {
         return
       }
     }
-    
+
     setUploadingProof(true)
-    
+
     try {
       let proofUrl = null
-      
+
       // Upload proof if provided (for QR payments)
       if (proofFile) {
         const proofFileName = `proof_${Date.now()}_${proofFile.name}`
         const { data: proofUpload, error: proofError } = await supabase.storage
           .from('payment-files')
           .upload(proofFileName, proofFile)
-        
+
         if (proofError) throw proofError
-        
+
         const { data: proofPublic } = supabase.storage
           .from('payment-files')
           .getPublicUrl(proofFileName)
         proofUrl = proofPublic.publicUrl
       }
-      
+
       // Update payment request status to pending_confirmation
       const { error } = await supabase
         .from('payment_requests')
@@ -455,52 +469,52 @@ export default function PaymentsPage() {
             tenant: request.tenant,
             landlord: session.user.id,
             amount: request.rent_amount,
-              water_bill: request.water_bill,
-              electrical_bill: request.electrical_bill,
-              other_bills: request.other_bills,
-              bills_description: request.bills_description,
-              method: request.payment_method || 'cash',
-              status: 'recorded'
-            })
-            .select()
-            .single()
-
-          if (paymentError) throw paymentError
-
-          // Update payment request status to paid
-          await supabase
-            .from('payment_requests')
-            .update({
-              status: 'paid',
-              payment_id: payment.id
-            })
-            .eq('id', requestId)
-
-          // Notify tenant that payment is confirmed
-          await supabase.from('notifications').insert({
-            recipient: request.tenant,
-            actor: session.user.id,
-            type: 'payment_confirmed',
-            message: `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord.`,
-            link: '/payments'
+            water_bill: request.water_bill,
+            electrical_bill: request.electrical_bill,
+            other_bills: request.other_bills,
+            bills_description: request.bills_description,
+            method: request.payment_method || 'cash',
+            status: 'recorded'
           })
+          .select()
+          .single()
 
-          loadPaymentRequests()
-          loadPayments()
-          resolve('Payment confirmed and recorded!')
-        } catch (error) {
-          console.error('Payment record error:', error)
-          reject('Failed to confirm payment')
-        }
-      })
+        if (paymentError) throw paymentError
+
+        // Update payment request status to paid
+        await supabase
+          .from('payment_requests')
+          .update({
+            status: 'paid',
+            payment_id: payment.id
+          })
+          .eq('id', requestId)
+
+        // Notify tenant that payment is confirmed
+        await supabase.from('notifications').insert({
+          recipient: request.tenant,
+          actor: session.user.id,
+          type: 'payment_confirmed',
+          message: `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord.`,
+          link: '/payments'
+        })
+
+        loadPaymentRequests()
+        loadPayments()
+        resolve('Payment confirmed and recorded!')
+      } catch (error) {
+        console.error('Payment record error:', error)
+        reject('Failed to confirm payment')
+      }
+    })
     showToast.info("Confirming payment...", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "topBounce",
-    icon: '',
-    sound: true,
-  });
+      duration: 4000,
+      progress: true,
+      position: "top-center",
+      transition: "topBounce",
+      icon: '',
+      sound: true,
+    });
 
   }
 
@@ -551,7 +565,7 @@ export default function PaymentsPage() {
   // Update bill
   async function handleUpdateBill(e) {
     e.preventDefault()
-    
+
     const { error } = await supabase
       .from('payment_requests')
       .update({
@@ -594,7 +608,7 @@ export default function PaymentsPage() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentMonth = new Date().getMonth();
     const data = [];
-    
+
     // Get last 12 months (whole year view)
     for (let i = 11; i >= 0; i--) {
       const monthIndex = (currentMonth - i + 12) % 12;
@@ -613,13 +627,13 @@ export default function PaymentsPage() {
       const monthIndex = paymentDate.getMonth();
       const monthLabel = months[monthIndex];
       const dataPoint = data.find(d => d.label === monthLabel);
-      
+
       if (dataPoint) {
         const rent = parseFloat(payment.amount || 0);
         const water = parseFloat(payment.water_bill || 0);
         const electric = parseFloat(payment.electrical_bill || 0);
         const other = parseFloat(payment.other_bills || 0);
-        
+
         dataPoint.rent += rent;
         dataPoint.water += water;
         dataPoint.electric += electric;
@@ -646,7 +660,7 @@ export default function PaymentsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-6">   
+    <div className="min-h-screen bg-white p-3 sm:p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
           <div>
@@ -654,7 +668,7 @@ export default function PaymentsPage() {
             <p className="text-sm text-gray-500 mt-1">Manage bills and income</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <Link 
+            <Link
               href="/payment-history"
               className="px-4 py-2 border-2 border-black text-black font-bold rounded-lg hover:bg-gray-50 text-center flex-1 sm:flex-none cursor-pointer"
             >
@@ -697,7 +711,7 @@ export default function PaymentsPage() {
                   <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-200"></div>Other</div>
                 </div>
               </div>
-              
+
               <div className="flex-1 flex items-end gap-2 sm:gap-3 h-48">
                 {chartData.map((data, index) => (
                   <div key={index} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer h-full justify-end">
@@ -706,33 +720,33 @@ export default function PaymentsPage() {
                       <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-[10px] px-2 py-1 rounded font-bold whitespace-nowrap z-20 pointer-events-none">
                         Total: ₱{data.total.toLocaleString()}
                       </div>
-                      
+
                       {/* Stacked Bars */}
                       <div className="w-full flex flex-col-reverse justify-start items-center h-full relative">
-                         {/* Rent */}
-                         <div 
-                           className="w-full bg-black transition-all" 
-                           style={{ height: `${(data.rent / maxChartValue) * 100}%` }}
-                           title={`Rent: ₱${data.rent.toLocaleString()}`}
-                         ></div>
-                         {/* Water */}
-                         <div 
-                           className="w-full bg-gray-600 transition-all" 
-                           style={{ height: `${(data.water / maxChartValue) * 100}%` }}
-                           title={`Water: ₱${data.water.toLocaleString()}`}
-                         ></div>
-                         {/* Electric */}
-                         <div 
-                           className="w-full bg-gray-400 transition-all" 
-                           style={{ height: `${(data.electric / maxChartValue) * 100}%` }}
-                           title={`Electric: ₱${data.electric.toLocaleString()}`}
-                         ></div>
-                         {/* Other */}
-                         <div 
-                           className="w-full bg-gray-200 rounded-t-sm transition-all" 
-                           style={{ height: `${(data.other / maxChartValue) * 100}%` }}
-                           title={`Other: ₱${data.other.toLocaleString()}`}
-                         ></div>
+                        {/* Rent */}
+                        <div
+                          className="w-full bg-black transition-all"
+                          style={{ height: `${(data.rent / maxChartValue) * 100}%` }}
+                          title={`Rent: ₱${data.rent.toLocaleString()}`}
+                        ></div>
+                        {/* Water */}
+                        <div
+                          className="w-full bg-gray-600 transition-all"
+                          style={{ height: `${(data.water / maxChartValue) * 100}%` }}
+                          title={`Water: ₱${data.water.toLocaleString()}`}
+                        ></div>
+                        {/* Electric */}
+                        <div
+                          className="w-full bg-gray-400 transition-all"
+                          style={{ height: `${(data.electric / maxChartValue) * 100}%` }}
+                          title={`Electric: ₱${data.electric.toLocaleString()}`}
+                        ></div>
+                        {/* Other */}
+                        <div
+                          className="w-full bg-gray-200 rounded-t-sm transition-all"
+                          style={{ height: `${(data.other / maxChartValue) * 100}%` }}
+                          title={`Other: ₱${data.other.toLocaleString()}`}
+                        ></div>
                       </div>
                     </div>
                     <span className="text-[10px] font-bold text-gray-500 mt-1">{data.label}</span>
@@ -747,238 +761,248 @@ export default function PaymentsPage() {
         {showFormModal && userRole === 'landlord' && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white border-2 border-black max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 rounded-2xl shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">Send Payment Request</h2>
-                <button
-                  onClick={() => setShowFormModal(false)}
-                  className="text-gray-400 hover:text-black cursor-pointer"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Send Bill</h2>
+                <button onClick={() => setShowFormModal(false)} className="text-gray-400 hover:text-black">✕</button>
               </div>
-            
+
+              {/* Tabs for Bill Type */}
+              <div className="flex gap-2 flex-wrap pb-2 mb-4 scrollbar-hide">
+                {[
+                  { id: 'rent', label: 'Rent', icon: '' },
+                  { id: 'electric', label: 'Electricity', icon: '' },
+                  { id: 'water', label: 'Water', icon: '' },
+                  { id: 'wifi', label: 'Wifi', icon: '' },
+                  { id: 'other', label: 'Other', icon: '' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1 whitespace-nowrap transition-colors cursor-pointer ${activeTab === tab.id
+                      ? 'bg-black text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                  >
+                    <span>{tab.icon}</span> {tab.label}
+                  </button>
+                ))}
+              </div>
+
               {approvedApplications.length === 0 ? (
                 <div className="text-black text-sm bg-gray-50 border border-gray-200 p-4 rounded-lg">
-                  <p className="font-bold">No approved applications found.</p>
-                  <p>Payment requests can only be sent to tenants with approved applications.</p>
+                  <p className="font-bold">No active tenants found.</p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Select Tenant - Always Visible */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider mb-1">Select Tenant Application *</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider mb-1">Select Tenant *</label>
                     <div className="relative">
                       <select
                         required
-                        className="w-full border-2 border-black px-3 py-2 rounded-lg bg-white appearance-none cursor-pointer font-medium focus:outline-none focus:ring-2 focus:ring-black"
-                        value={formData.application_id}
+                        className="w-full border-2 border-black px-3 py-2 rounded-lg bg-white appearance-none cursor-pointer font-medium focus:outline-none"
+                        value={selectedTenantId}
                         onChange={e => {
-                          const selectedApp = approvedApplications.find(app => app.id === e.target.value)
+                          const listId = e.target.value
+                          setSelectedTenantId(listId)
+                          const selectedApp = approvedApplications.find(app => app.id === listId)
+
                           if (selectedApp) {
-                            setFormData({ 
-                              ...formData, 
-                              application_id: e.target.value,
+
+                            // --- START AUTOMATIC DATE CALCULATION ---
+                            let nextDueDate = '';
+
+                            // 1. Find the latest RENT bill for this specific tenant
+                            const lastRentBill = paymentRequests
+                              .filter(p => p.tenant === selectedApp.tenant && parseFloat(p.rent_amount) > 0)
+                              .sort((a, b) => new Date(b.due_date) - new Date(a.due_date))[0]; // Get the newest one
+
+                            if (lastRentBill && lastRentBill.due_date) {
+                              // 2. If history exists: Take last due date + 30 Days
+                              const d = new Date(lastRentBill.due_date);
+                              d.setDate(d.getDate() + 30);
+                              nextDueDate = d.toISOString().split('T')[0]; // Format YYYY-MM-DD for input
+                            } else {
+                              // 3. If no history (First Bill): Default to Today's Date
+                              nextDueDate = new Date().toISOString().split('T')[0];
+                            }
+                            // --- END AUTOMATIC DATE CALCULATION ---
+
+                            setFormData({
+                              ...formData,
+                              application_id: selectedApp.application_id || '', // Use real app ID or empty for manual
                               property_id: selectedApp.property_id,
-                              tenant: selectedApp.tenant
+                              tenant: selectedApp.tenant,
+                              amount: selectedApp.price || '',
+                              due_date: nextDueDate
                             })
+                          } else {
+                            // Reset if empty selection
+                            setFormData({ ...formData, application_id: '', property_id: '', tenant: '', amount: '' })
                           }
                         }}
                       >
-                        <option value="">Select an approved application</option>
+                        <option value="">Select Tenant</option>
                         {approvedApplications.map(app => (
                           <option key={app.id} value={app.id}>
                             {app.property?.title} - {app.tenant_profile?.first_name} {app.tenant_profile?.last_name}
                           </option>
                         ))}
                       </select>
-                      <div className="absolute right-3 top-3 pointer-events-none">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </div>
                     </div>
                   </div>
 
                   <div className="border-t border-gray-100 pt-4">
-                    <h3 className="text-sm font-bold mb-4 text-black uppercase tracking-wider">Bill Details</h3>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Rent Amount *</label>
-                        <input
-                          type="number"
-                          required
-                          min="0"
-                          step="0.01"
-                          className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium transition-colors outline-none"
-                          placeholder="0.00"
-                          value={formData.amount}
-                          onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Water Bill</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium transition-colors outline-none"
-                          placeholder="0.00"
-                          value={formData.water_bill}
-                          onChange={e => setFormData({ ...formData, water_bill: e.target.value })}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Electrical Bill</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium transition-colors outline-none"
-                          placeholder="0.00"
-                          value={formData.electrical_bill}
-                          onChange={e => setFormData({ ...formData, electrical_bill: e.target.value })}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Other Bills</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium transition-colors outline-none"
-                          placeholder="0.00"
-                          value={formData.other_bills}
-                          onChange={e => setFormData({ ...formData, other_bills: e.target.value })}
-                        />
-                      </div>
-                    </div>
 
+                    {/* Dynamic Fields based on Tab */}
+                    {activeTab === 'rent' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Rent Amount *</label>
+                          <input type="text" required readOnly min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none bg-gray-100 text-gray-500 cursor-not-allowed" placeholder="0.00"
+                            value={formData.amount ? parseFloat(formData.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Rent Due Date *</label>
+                          <input
+                            type="date"
+                            required
+                            readOnly // <--- Disables manual editing
+                            className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none bg-gray-100 text-gray-500 cursor-not-allowed" // <--- Visual styling for disabled state
+                            value={formData.due_date}
+                          // onChange handler is removed since it's read-only
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'electric' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Electric Amount *</label>
+                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
+                            value={formData.electrical_bill} onChange={e => setFormData({ ...formData, electrical_bill: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
+                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
+                            value={formData.electrical_due_date} onChange={e => setFormData({ ...formData, electrical_due_date: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'water' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Water Amount *</label>
+                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
+                            value={formData.water_bill} onChange={e => setFormData({ ...formData, water_bill: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
+                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
+                            value={formData.water_due_date} onChange={e => setFormData({ ...formData, water_due_date: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'wifi' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Wifi Amount *</label>
+                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
+                            value={formData.wifi_bill} onChange={e => setFormData({ ...formData, wifi_bill: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
+                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
+                            value={formData.wifi_due_date} onChange={e => setFormData({ ...formData, wifi_due_date: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'other' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Other Amount *</label>
+                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
+                            value={formData.other_bills} onChange={e => setFormData({ ...formData, other_bills: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
+                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
+                            value={formData.other_due_date} onChange={e => setFormData({ ...formData, other_due_date: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Common Fields */}
                     <div className="mt-4">
-                      <label className="block text-xs font-bold text-gray-500 mb-1">Description (Optional)</label>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Message (Optional)</label>
                       <textarea
-                        className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium transition-colors outline-none resize-none"
+                        className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium outline-none resize-none"
                         rows="2"
-                        placeholder="Details about bills..."
+                        placeholder={`Details about ${activeTab}...`}
                         value={formData.bills_description}
                         onChange={e => setFormData({ ...formData, bills_description: e.target.value })}
                       />
                     </div>
 
-                    <div className="mt-4">
-                      <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
-                      <input
-                        type="date"
-                        required
-                        className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium cursor-pointer outline-none"
-                        value={formData.due_date}
-                        onChange={e => setFormData({ ...formData, due_date: e.target.value })}
-                      />
-                    </div>
-                    
-                    {/* Bill Receipt Upload */}
+                    {/* File Uploads (Bill Receipt & QR) - Keep as is from your original code */}
                     <div className="mt-4">
                       <label className="block text-xs font-bold text-gray-500 mb-1">Bill Receipt *</label>
+                      {/* ... (Your existing Bill Receipt upload UI code) ... */}
                       <div className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${billReceiptPreview ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
                         {billReceiptPreview ? (
                           <div className="relative inline-block">
                             <img src={billReceiptPreview} alt="Bill Receipt" className="max-h-40 rounded shadow-sm border border-gray-200" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBillReceiptFile(null)
-                                setBillReceiptPreview(null)
-                              }}
-                              className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full shadow-md cursor-pointer hover:bg-gray-800"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
+                            <button type="button" onClick={() => { setBillReceiptFile(null); setBillReceiptPreview(null) }} className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full shadow-md cursor-pointer hover:bg-gray-800">✕</button>
                           </div>
                         ) : (
                           <label className="cursor-pointer block w-full h-full">
-                            <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                            <span className="text-sm font-bold text-black">Upload Bill Receipt</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={e => {
-                                const file = e.target.files[0]
-                                if (file) {
-                                  setBillReceiptFile(file)
-                                  setBillReceiptPreview(URL.createObjectURL(file))
-                                }
-                              }}
-                            />
+                            <span className="text-sm font-bold text-black">Upload Receipt</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={e => { const file = e.target.files[0]; if (file) { setBillReceiptFile(file); setBillReceiptPreview(URL.createObjectURL(file)) } }} />
                           </label>
                         )}
                       </div>
                     </div>
-                    
-                    {/* QR Code Upload */}
+
                     <div className="mt-4">
                       <label className="block text-xs font-bold text-gray-500 mb-1">Payment QR Code (Optional)</label>
+                      {/* ... (Your existing QR upload UI code) ... */}
                       <div className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${qrCodePreview ? 'border-black bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
                         {qrCodePreview ? (
                           <div className="relative inline-block">
                             <img src={qrCodePreview} alt="QR Code" className="max-h-40 rounded shadow-sm border border-gray-200" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setQrCodeFile(null)
-                                setQrCodePreview(null)
-                              }}
-                              className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full shadow-md cursor-pointer hover:bg-gray-800"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
+                            <button type="button" onClick={() => { setQrCodeFile(null); setQrCodePreview(null) }} className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full shadow-md cursor-pointer hover:bg-gray-800">✕</button>
                           </div>
                         ) : (
                           <label className="cursor-pointer block w-full h-full">
-                            <svg className="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                            <span className="text-sm font-bold text-black">Upload Payment QR</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={e => {
-                                const file = e.target.files[0]
-                                if (file) {
-                                  setQrCodeFile(file)
-                                  setQrCodePreview(URL.createObjectURL(file))
-                                }
-                              }}
-                            />
+                            <span className="text-sm font-bold text-black">Upload QR</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={e => { const file = e.target.files[0]; if (file) { setQrCodeFile(file); setQrCodePreview(URL.createObjectURL(file)) } }} />
                           </label>
                         )}
                       </div>
                     </div>
 
                     <div className="mt-6 bg-black text-white p-4 rounded-lg flex justify-between items-center">
-                      <span className="text-sm font-bold uppercase tracking-wider">Total Amount</span>
+                      <span className="text-sm font-bold uppercase tracking-wider">Total</span>
                       <span className="text-xl font-bold">
-                        ₱{(
-                          (parseFloat(formData.amount) || 0) +
-                          (parseFloat(formData.water_bill) || 0) +
-                          (parseFloat(formData.electrical_bill) || 0) +
-                          (parseFloat(formData.other_bills) || 0)
-                        ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₱{((activeTab === 'rent' ? parseFloat(formData.amount) : 0) +
+                          (activeTab === 'electric' ? parseFloat(formData.electrical_bill) : 0) +
+                          (activeTab === 'water' ? parseFloat(formData.water_bill) : 0) +
+                          (activeTab === 'wifi' ? parseFloat(formData.wifi_bill) : 0) +
+                          (activeTab === 'other' ? parseFloat(formData.other_bills) : 0) || 0
+                        ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex gap-3 pt-2">
-                    <button 
-                      type="submit" 
-                      className="flex-1 px-6 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                    >
-                      Send Request
+                    <button type="submit" className="flex-1 px-6 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-lg cursor-pointer">
+                      Send {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Bill
                     </button>
-                    <button 
-                      type="button"
-                      onClick={() => setShowFormModal(false)}
-                      className="px-6 py-3 border-2 border-black text-black font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
+                    <button type="button" onClick={() => setShowFormModal(false)} className="px-6 py-3 border-2 border-black text-black font-bold rounded-lg hover:bg-gray-50 cursor-pointer">
                       Cancel
                     </button>
                   </div>
@@ -997,12 +1021,12 @@ export default function PaymentsPage() {
           </div>
           {loading ? (
             <div className="p-8 flex justify-center">
-               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
             </div>
           ) : paymentRequests.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
-                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
               </div>
               <p className="text-black font-bold">No bills found</p>
               <p className="text-sm text-gray-500 mt-1">
@@ -1015,7 +1039,7 @@ export default function PaymentsPage() {
               <div className="sm:hidden divide-y divide-gray-100">
                 {paymentRequests.map(request => {
                   const rent = parseFloat(request.rent_amount) || 0
-                  const total = rent + (parseFloat(request.water_bill)||0) + (parseFloat(request.electrical_bill)||0) + (parseFloat(request.other_bills)||0)
+                  const total = rent + (parseFloat(request.water_bill) || 0) + (parseFloat(request.electrical_bill) || 0) + (parseFloat(request.other_bills) || 0)
                   const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
 
                   return (
@@ -1023,28 +1047,30 @@ export default function PaymentsPage() {
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <div className="font-bold text-sm">{request.properties?.title || 'Property'}</div>
+                          <div className="text-xs font-bold text-blue-600 mt-1">
+                            {request.bills_description}
+                          </div>
                           <div className="text-xs text-gray-500">
-                            {userRole === 'landlord' 
+                            {userRole === 'landlord'
                               ? `Tenant: ${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`
                               : `Landlord: ${request.landlord_profile?.first_name || ''} ${request.landlord_profile?.last_name || ''}`}
                           </div>
                         </div>
-                        <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${
-                          request.status === 'paid' ? 'bg-black text-white border-black' :
+                        <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${request.status === 'paid' ? 'bg-black text-white border-black' :
                           request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
-                          request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                          isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                          'bg-white text-black border-black'
-                        }`}>
+                            request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                              isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
+                                'bg-white text-black border-black'
+                          }`}>
                           {request.status === 'pending_confirmation' ? 'Reviewing' : isPastDue ? 'Overdue' : request.status}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-baseline gap-1 mb-3">
                         <span className="text-xs font-bold text-gray-500 uppercase">Total</span>
                         <span className="text-xl font-bold">₱{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
-                      
+
                       <div className="flex gap-2">
                         {userRole === 'tenant' && request.status === 'pending' && (
                           <button
@@ -1060,121 +1086,172 @@ export default function PaymentsPage() {
                   )
                 })}
               </div>
-              
+
               {/* Desktop Table View */}
               <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                      {userRole === 'landlord' ? 'Tenant' : 'Landlord'}
-                    </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Due Date</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {paymentRequests.map(request => {
-                    const rent = parseFloat(request.rent_amount) || 0
-                    const total = rent + (parseFloat(request.water_bill)||0) + (parseFloat(request.electrical_bill)||0) + (parseFloat(request.other_bills)||0)
-                    const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      {/* UPDATED: Reduced padding (px-3 py-3) for all headers to save space */}
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        {userRole === 'landlord' ? 'Tenant' : 'Landlord'}
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bill Type</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rent Range</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Message</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Due Date</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paymentRequests.map(request => {
+                      const rent = parseFloat(request.rent_amount) || 0
+                      const water = parseFloat(request.water_bill) || 0
+                      const electric = parseFloat(request.electrical_bill) || 0
+                      const wifi = parseFloat(request.wifi_bill) || 0
+                      const other = parseFloat(request.other_bills) || 0
+                      const total = rent + water + electric + wifi + other
 
-                    return (
-                      <tr key={request.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-bold text-black">{request.properties?.title || 'N/A'}</div>
-                          <div className="text-xs text-gray-500">{request.properties?.address}</div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {userRole === 'landlord' 
-                            ? `${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`
-                            : `${request.landlord_profile?.first_name || ''} ${request.landlord_profile?.last_name || ''}`}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-bold text-black">
-                            ₱{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </div>
-                          <div className="text-[10px] text-gray-400">Rent: ₱{rent.toLocaleString()}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`text-sm ${isPastDue ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
-                            {request.due_date ? new Date(request.due_date).toLocaleDateString() : 'N/A'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full border ${
-                            request.status === 'paid' ? 'bg-black text-white border-black' :
-                            request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
-                            request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                            isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                            'bg-white text-black border-black'
-                          }`}>
-                            {request.status === 'paid' ? 'Paid' :
-                             request.status === 'pending_confirmation' ? 'Confirming' :
-                             request.status === 'cancelled' ? 'Cancelled' :
-                             isPastDue ? 'Overdue' : 'Pending'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {userRole === 'tenant' && request.status === 'pending' && (
-                            <button
-                              onClick={() => handlePayBill(request)}
-                              className="px-4 py-2 bg-black text-white text-xs font-bold rounded-lg hover:bg-gray-800 cursor-pointer shadow-sm hover:shadow-md transition-all"
-                            >
-                              Pay Now
-                            </button>
-                          )}
-                          {userRole === 'tenant' && request.status === 'pending_confirmation' && (
-                            <span className="text-xs font-bold text-gray-400">Wait for approval</span>
-                          )}
-                          {userRole === 'landlord' && request.status === 'pending' && (
+                      const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
+
+                      let billType = 'Other Bill';
+                      if (rent > 0) billType = 'House Rent';
+                      else if (electric > 0) billType = 'Electric Bill';
+                      else if (water > 0) billType = 'Water Bill';
+                      else if (wifi > 0) billType = 'Wifi Bill';
+
+                      return (
+                        <tr key={request.id} className="hover:bg-gray-50 transition-colors">
+                          {/* Property - constrained width */}
+                          <td className="px-3 py-3">
+                            <div className="max-w-[150px]">
+                              <div className="text-sm font-bold text-black truncate" title={request.properties?.title}>
+                                {request.properties?.title || 'N/A'}
+                              </div>
+                              <div className="flex items-center gap-1 text-xs text-gray-500 truncate" title={`${request.properties?.address}, ${request.properties?.city || ''}`}>
+                                <svg className="w-3 h-3 text-gray-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 9a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                </svg>
+                                <span className="truncate">{request.properties?.address}, {request.properties?.city || ''}</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Name - constrained width */}
+                          <td className="px-3 py-3 text-sm text-gray-600">
+                            <div className="max-w-[120px] truncate" title={userRole === 'landlord' ? `${request.tenant_profile?.first_name} ${request.tenant_profile?.last_name}` : `${request.landlord_profile?.first_name} ${request.landlord_profile?.last_name}`}>
+                              {userRole === 'landlord'
+                                ? `${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`
+                                : `${request.landlord_profile?.first_name || ''} ${request.landlord_profile?.last_name || ''}`}
+                            </div>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <span className="text-xs font-bold text-white-600 bg-[#F2F3F4] px-2 py-1 rounded whitespace-nowrap">
+                              {billType}
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
+                              {billType === 'House Rent' ? getRentDateRange(request.due_date) : '-'}
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <div className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]" title={request.bills_description}>
+                              {request.bills_description || '-'}
+                            </div>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <div className="text-sm font-bold text-black whitespace-nowrap">
+                              ₱{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                            {rent > 0 && <div className="text-[10px] text-gray-400 whitespace-nowrap">Rent: ₱{rent.toLocaleString()}</div>}
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <span className={`text-sm whitespace-nowrap ${isPastDue ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
+                              {request.due_date ? new Date(request.due_date).toLocaleDateString() : 'N/A'}
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border whitespace-nowrap ${request.status === 'paid' ? 'bg-black text-white border-black' :
+                              request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
+                                request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                                  isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
+                                    'bg-white text-black border-black'
+                              }`}>
+                              {request.status === 'paid' ? 'Paid' :
+                                request.status === 'pending_confirmation' ? 'Confirming' :
+                                  request.status === 'cancelled' ? 'Cancelled' :
+                                    isPastDue ? 'Overdue' : 'Pending'}
+                            </span>
+                          </td>
+
+                          <td className="px-3 py-3">
                             <div className="flex gap-2">
-                              <button
-                                onClick={() => handleEditBill(request)}
-                                className="px-3 py-1.5 border border-gray-300 hover:border-black text-black text-xs font-bold rounded cursor-pointer transition-colors"
-                              >
-                                Edit
-                              </button>
-                              {cancelBillId === request.id ? (
-                                <div className="flex gap-1">
-                                  <button onClick={() => handleCancelBill(request.id)} className="px-2 py-1 bg-red-600 text-white text-xs font-bold rounded cursor-pointer">Yes</button>
-                                  <button onClick={() => setCancelBillId(null)} className="px-2 py-1 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">No</button>
-                                </div>
-                              ) : (
+                              {userRole === 'tenant' && request.status === 'pending' && (
                                 <button
-                                  onClick={() => setCancelBillId(request.id)}
-                                  className="px-3 py-1.5 text-red-600 hover:bg-red-50 text-xs font-bold rounded cursor-pointer transition-colors"
+                                  onClick={() => handlePayBill(request)}
+                                  className="px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap"
                                 >
-                                  Cancel
+                                  Pay Now
                                 </button>
                               )}
+                              {userRole === 'tenant' && request.status === 'pending_confirmation' && (
+                                <span className="text-xs font-bold text-gray-400 whitespace-nowrap">Wait for approval</span>
+                              )}
+                              {userRole === 'landlord' && request.status === 'pending' && (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => handleEditBill(request)}
+                                    className="px-2 py-1 border border-gray-300 hover:border-black text-black text-xs font-bold rounded cursor-pointer transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                  {cancelBillId === request.id ? (
+                                    <div className="flex gap-1">
+                                      <button onClick={() => handleCancelBill(request.id)} className="px-2 py-1 bg-red-600 text-white text-xs font-bold rounded cursor-pointer">Yes</button>
+                                      <button onClick={() => setCancelBillId(null)} className="px-2 py-1 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">No</button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setCancelBillId(request.id)}
+                                      className="px-2 py-1 text-red-600 hover:bg-red-50 text-xs font-bold rounded cursor-pointer transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {userRole === 'landlord' && request.status === 'pending_confirmation' && (
+                                confirmPaymentId === request.id ? (
+                                  <div className="flex gap-1 items-center">
+                                    <button onClick={() => confirmPayment(request.id)} className="px-2 py-1 bg-black text-white text-xs font-bold rounded cursor-pointer">Yes</button>
+                                    <button onClick={() => setConfirmPaymentId(null)} className="px-2 py-1 border border-gray-300 text-black text-xs font-bold rounded cursor-pointer">No</button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmPaymentId(request.id)}
+                                    className="px-3 py-1.5 border-2 border-black text-black hover:bg-black hover:text-white text-xs font-bold rounded cursor-pointer transition-all whitespace-nowrap"
+                                  >
+                                    Confirm
+                                  </button>
+                                )
+                              )}
                             </div>
-                          )}
-                          {userRole === 'landlord' && request.status === 'pending_confirmation' && (
-                            confirmPaymentId === request.id ? (
-                              <div className="flex gap-2 items-center">
-                                <span className="text-xs font-bold">Sure?</span>
-                                <button onClick={() => confirmPayment(request.id)} className="px-3 py-1.5 bg-black text-white text-xs font-bold rounded cursor-pointer">Yes</button>
-                                <button onClick={() => setConfirmPaymentId(null)} className="px-3 py-1.5 border border-gray-300 text-black text-xs font-bold rounded cursor-pointer">No</button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setConfirmPaymentId(request.id)}
-                                className="px-4 py-2 border-2 border-black text-black hover:bg-black hover:text-white text-xs font-bold rounded-lg cursor-pointer transition-all"
-                              >
-                                Confirm
-                              </button>
-                            )
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </>
           )}
@@ -1208,7 +1285,7 @@ export default function PaymentsPage() {
                   <div className="font-bold text-black">{selectedBill.properties?.title}</div>
                   <div className="text-xs text-gray-500 mt-0.5">{selectedBill.properties?.address}</div>
                 </div>
-                
+
                 {/* View Bill Receipt Button */}
                 {selectedBill.bill_receipt_url && (
                   <button
@@ -1229,7 +1306,7 @@ export default function PaymentsPage() {
                   <div className="text-sm font-bold text-black mb-3 border-b border-gray-100 pb-2">Amount Details</div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 font-medium">Rent</span>
+                      <span className="text-gray-500 font-medium">House Rent</span>
                       <span className="font-bold">₱{parseFloat(selectedBill.rent_amount || 0).toLocaleString()}</span>
                     </div>
                     {parseFloat(selectedBill.water_bill || 0) > 0 && (
@@ -1271,16 +1348,15 @@ export default function PaymentsPage() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('cash')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
-                        paymentMethod === 'cash' 
-                          ? 'border-black bg-black text-white' 
-                          : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                      }`}
+                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'cash'
+                        ? 'border-black bg-black text-white'
+                        : 'border-gray-200 bg-white hover:border-gray-400 text-black'
+                        }`}
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                       <span className="font-bold text-sm">Cash</span>
                     </button>
-                    
+
                     <button
                       type="button"
                       onClick={() => {
@@ -1298,13 +1374,12 @@ export default function PaymentsPage() {
                         }
                       }}
                       disabled={!selectedBill.qr_code_url}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
-                        !selectedBill.qr_code_url 
-                          ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : paymentMethod === 'qr_code' 
-                            ? 'border-black bg-black text-white' 
-                            : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                      }`}
+                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${!selectedBill.qr_code_url
+                        ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : paymentMethod === 'qr_code'
+                          ? 'border-black bg-black text-white'
+                          : 'border-gray-200 bg-white hover:border-gray-400 text-black'
+                        }`}
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
                       <span className="font-bold text-sm">QR Code</span>
@@ -1313,14 +1388,13 @@ export default function PaymentsPage() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('paypal')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${
-                        paymentMethod === 'paypal' 
-                          ? 'border-[#0070ba] bg-[#0070ba] text-white' 
-                          : 'border-gray-200 bg-white hover:border-[#0070ba] text-black'
-                      }`}
+                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'paypal'
+                        ? 'border-[#0070ba] bg-[#0070ba] text-white'
+                        : 'border-gray-200 bg-white hover:border-[#0070ba] text-black'
+                        }`}
                     >
                       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c2.078 0 3.604.476 4.538 1.415.924.93 1.251 2.262.973 3.96l-.006.04v.022c-.298 1.947-1.268 3.479-2.884 4.558-1.569 1.047-3.618 1.578-6.092 1.578h-1.62a.77.77 0 0 0-.759.688l-.946 5.993a.641.641 0 0 1-.633.543h-.68zm13.795-14.2l-.006.046c-.37 2.416-1.511 4.249-3.395 5.452-1.813 1.158-4.227 1.745-7.176 1.745h-1.62c-.682 0-1.261.461-1.417 1.122l-.946 5.993a.641.641 0 0 1-.633.543H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c4.214 0 6.716 1.967 7.685 5.397z"/>
+                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c2.078 0 3.604.476 4.538 1.415.924.93 1.251 2.262.973 3.96l-.006.04v.022c-.298 1.947-1.268 3.479-2.884 4.558-1.569 1.047-3.618 1.578-6.092 1.578h-1.62a.77.77 0 0 0-.759.688l-.946 5.993a.641.641 0 0 1-.633.543h-.68zm13.795-14.2l-.006.046c-.37 2.416-1.511 4.249-3.395 5.452-1.813 1.158-4.227 1.745-7.176 1.745h-1.62c-.682 0-1.261.461-1.417 1.122l-.946 5.993a.641.641 0 0 1-.633.543H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c4.214 0 6.716 1.967 7.685 5.397z" />
                       </svg>
                       <span className="font-bold text-sm">PayPal</span>
                     </button>
@@ -1332,16 +1406,16 @@ export default function PaymentsPage() {
                   <div className="space-y-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
                     <div className="text-center">
                       <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Scan to Pay</p>
-                      <img 
-                        src={selectedBill.qr_code_url} 
-                        alt="Payment QR Code" 
+                      <img
+                        src={selectedBill.qr_code_url}
+                        alt="Payment QR Code"
                         className="max-h-48 mx-auto rounded-lg shadow-sm border border-white"
                       />
                     </div>
-                    
+
                     <div className="border-t border-gray-200 pt-4">
                       <p className="text-sm font-bold text-black mb-3">Payment Proof (Required)</p>
-                      
+
                       <div className="mb-3">
                         <input
                           type="text"
@@ -1351,7 +1425,7 @@ export default function PaymentsPage() {
                           className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium outline-none transition-colors"
                         />
                       </div>
-                      
+
                       <div>
                         <div className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer bg-white transition-colors ${proofPreview ? 'border-black' : 'border-gray-300 hover:border-gray-400'}`}>
                           {proofPreview ? (
@@ -1398,13 +1472,13 @@ export default function PaymentsPage() {
                       <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with PayPal</p>
                       <p className="text-xs text-gray-500">Secure payment powered by PayPal</p>
                     </div>
-                    
-                    <PayPalScriptProvider options={{ 
+
+                    <PayPalScriptProvider options={{
                       clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
                       currency: 'PHP'
                     }}>
                       <PayPalButtons
-                        style={{ 
+                        style={{
                           layout: 'vertical',
                           color: 'blue',
                           shape: 'rect',
@@ -1581,7 +1655,7 @@ export default function PaymentsPage() {
             </div>
           </div>
         )}
-        
+
         {/* Bill Receipt Modal */}
         {showBillReceiptModal && selectedBillReceipt && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
@@ -1605,7 +1679,7 @@ export default function PaymentsPage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 rounded-xl shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Edit Bill</h3>
-              
+
               <form onSubmit={handleUpdateBill} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1632,13 +1706,13 @@ export default function PaymentsPage() {
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="flex-1 px-6 py-3 bg-black text-white font-bold rounded-xl cursor-pointer hover:bg-gray-800"
                   >
                     Save Changes
                   </button>
-                  <button 
+                  <button
                     type="button"
                     onClick={() => {
                       setShowEditModal(false)

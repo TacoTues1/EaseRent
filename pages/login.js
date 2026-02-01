@@ -11,45 +11,67 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const [rememberMe, setRememberMe] = useState(false) 
+  const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  
+
 
   useEffect(() => {
     // Check if user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.push('/dashboard')
+      if (session) {
+        // If there is a redirect param, go there. Otherwise, go to dashboard.
+        const redirectUrl = router.query.redirect || '/dashboard'
+        router.push(redirectUrl)
+      }
     })
+
+    // Load saved email if "Remember Me" was previously checked
+    const savedEmail = localStorage.getItem('rememberedEmail')
+    if (savedEmail) {
+      setEmail(savedEmail)
+      setRememberMe(true)
+    }
   }, [router])
 
   const handleLogin = async (e) => {
     e.preventDefault()
     setLoading(true)
-    
+
     try {
+      // Set session persistence based on "Remember Me" checkbox
+      // If rememberMe is true, session persists in localStorage
+      // If rememberMe is false, session only lasts until browser/tab closes
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) throw error
-      
+
+      // Save or remove email based on "Remember Me" setting
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email)
+      } else {
+        localStorage.removeItem('rememberedEmail')
+      }
+
       showToast.success("Login successful!", {
         duration: 4000,
         progress: true,
         position: "top-center",
-        transition: "popUp",    
+        transition: "popUp",
         sound: true,
       });
-      router.push('/dashboard')
+      const redirectUrl = router.query.redirect || '/dashboard'
+      router.push(redirectUrl)
     } catch (error) {
       showToast.error("Wrong Password or Email!", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "fadeIn",
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "fadeIn",
+        sound: true,
+      });
     } finally {
       setLoading(false)
     }
@@ -57,52 +79,54 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
+      const nextPath = router.query.redirect || '/dashboard'
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}${nextPath}`
         }
       })
       if (error) throw error
     } catch (error) {
       showToast.error("Login Failed, Please Try again!", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceInDown",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceInDown",
+        icon: '',
+        sound: true,
+      });
     }
   }
 
   const handleFacebookLogin = async () => {
     try {
+      const nextPath = router.query.redirect || '/dashboard'
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'facebook',
         options: {
-            redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}${nextPath}`
         }
       })
       if (error) throw error
     } catch (error) {
       showToast.error("Login Failed, Please Try again!", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceInDown",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceInDown",
+        icon: '',
+        sound: true,
+      });
     }
   }
 
   return (
     <div className="min-h-screen bg-[#F2F3F4] font-sans text-black flex flex-col">
-      
+
       <div className="absolute top-6 left-6 z-50">
-        <button 
-          onClick={() => router.push('/')}
+        <button
+          onClick={() => router.push(router.query.redirect || '/')}
           className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-md border border-gray-200 transition-all font-bold text-sm cursor-pointer"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,18 +138,18 @@ export default function Login() {
 
       {/* Main Content Wrapper */}
       <div className="flex-grow flex flex-col lg:flex-row w-full max-w-7xl mx-auto">
-        
+
         {/* --- LEFT PANEL: LOGO / BRANDING --- */}
         {/* Changed to 'hidden lg:flex' so it disappears on mobile */}
         <div className="lg:w-1/2 hidden lg:flex flex-col justify-center items-center p-8 lg:p-12 bg-[#F2F3F4] order-1 lg:order-1">
-          
+
           <div className="w-full text-center lg:text-left mt-8">
-             <img 
-                src="/logo_login.png" 
-                alt="Company Logo" 
-                // UPDATED: Removed 'max-w-xl' so it can fill the entire half of the screen
-                className="mx-auto lg:mx-0 w-full h-auto object-contain mb-6   lg:mb-0 transition-all duration-300" 
-              /> 
+            <img
+              src="/logo_login.png"
+              alt="Company Logo"
+              // UPDATED: Removed 'max-w-xl' so it can fill the entire half of the screen
+              className="mx-auto lg:mx-0 w-full h-auto object-contain mb-6   lg:mb-0 transition-all duration-300"
+            />
           </div>
         </div>
 
@@ -165,18 +189,18 @@ export default function Login() {
                     Password
                   </label>
                   <div className="relative">
-                  <input  
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent focus:z-10 sm:text-sm font-medium transition-all"
-                    placeholder="Password"
-                  />
-                  <button
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent focus:z-10 sm:text-sm font-medium transition-all"
+                      placeholder="Password"
+                    />
+                    <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5 cursor-pointer text-gray-500 hover:text-black transition-colors"
@@ -194,7 +218,7 @@ export default function Login() {
                         </svg>
                       )}
                     </button>
-                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -250,29 +274,29 @@ export default function Login() {
                   type="button"
                   onClick={handleGoogleLogin}
                   className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all cursor-pointer"
-                          >
-                                  <svg
-                        className="h-5 w-5 mr-2"
-                        viewBox="0 0 48 48"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fill="#EA4335"
-                          d="M24 9.5c3.15 0 5.95 1.1 8.15 2.9l6.05-6.05C34.25 2.55 29.45 0 24 0 14.65 0 6.6 5.35 2.7 13.1l7.05 5.45C11.5 13.1 17.25 9.5 24 9.5z"
-                        />
-                        <path
-                          fill="#4285F4"
-                          d="M46.1 24.5c0-1.6-.15-3.15-.4-4.65H24v9h12.45c-.55 2.95-2.2 5.45-4.7 7.15l7.2 5.55c4.2-3.9 7.15-9.65 7.15-17.05z"
-                        />
-                       <path
-                          fill="#FBBC05"
-                          d="M9.75 28.55c-.5-1.5-.8-3.1-.8-4.75s.3-3.25.8-4.75l-7.05-5.45C.95 17.15 0 20.45 0 23.8s.95 6.65 2.7 9.7l7.05-4.95z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M24 48c5.45 0 10.25-1.8 13.65-4.9l-7.2-5.55c-2 1.35-4.55 2.15-6.45 2.15-6.75 0-12.5-4.55-14.25-10.65l-7.05 4.95C6.6 42.65 14.65 48 24 48z"
-                        />
-                      </svg>
+                >
+                  <svg
+                    className="h-5 w-5 mr-2"
+                    viewBox="0 0 48 48"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill="#EA4335"
+                      d="M24 9.5c3.15 0 5.95 1.1 8.15 2.9l6.05-6.05C34.25 2.55 29.45 0 24 0 14.65 0 6.6 5.35 2.7 13.1l7.05 5.45C11.5 13.1 17.25 9.5 24 9.5z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M46.1 24.5c0-1.6-.15-3.15-.4-4.65H24v9h12.45c-.55 2.95-2.2 5.45-4.7 7.15l7.2 5.55c4.2-3.9 7.15-9.65 7.15-17.05z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M9.75 28.55c-.5-1.5-.8-3.1-.8-4.75s.3-3.25.8-4.75l-7.05-5.45C.95 17.15 0 20.45 0 23.8s.95 6.65 2.7 9.7l7.05-4.95z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M24 48c5.45 0 10.25-1.8 13.65-4.9l-7.2-5.55c-2 1.35-4.55 2.15-6.45 2.15-6.75 0-12.5-4.55-14.25-10.65l-7.05 4.95C6.6 42.65 14.65 48 24 48z"
+                    />
+                  </svg>
                   Continue with Google
                 </button>
 

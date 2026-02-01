@@ -15,10 +15,12 @@ export default function SchedulePage() {
   const [submitting, setSubmitting] = useState(false)
   const [searchDate, setSearchDate] = useState('') // Date filter for searching
 
-  // Define time slots
+  // Define time slots - 2 AM slots and 2 PM slots
   const TIME_SLOTS = {
-    morning: { label: 'Morning (8:00 AM - 11:00 AM)', start: '08:00', end: '11:00' },
-    afternoon: { label: 'Afternoon (1:00 PM - 5:30 PM)', start: '13:00', end: '17:30' }
+    am1: { label: 'AM Slot 1 (8:30 AM - 10:00 AM)', start: '08:30', end: '10:00' },
+    am2: { label: 'AM Slot 2 (10:00 AM - 11:30 AM)', start: '10:00', end: '11:30' },
+    pm1: { label: 'PM Slot 1 (1:00 PM - 2:30 PM)', start: '13:00', end: '14:30' },
+    pm2: { label: 'PM Slot 2 (2:30 PM - 4:00 PM)', start: '14:30', end: '16:00' }
   }
 
   useEffect(() => {
@@ -36,13 +38,13 @@ export default function SchedulePage() {
     if (session && profile) {
       if (profile.role !== 'landlord') {
         showToast.warning("Only landlords can access this page", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+          duration: 4000,
+          progress: true,
+          position: "top-center",
+          transition: "bounceIn",
+          icon: '',
+          sound: true,
+        });
         router.push('/dashboard')
         return
       }
@@ -56,7 +58,7 @@ export default function SchedulePage() {
       .select('*')
       .eq('id', userId)
       .maybeSingle()
-    
+
     if (data) {
       setProfile(data)
     }
@@ -76,13 +78,13 @@ export default function SchedulePage() {
     if (error) {
       console.error('Error loading time slots:', error)
       showToast.error("Failed to load time slots", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
     } else {
       setTimeSlots(data || [])
@@ -90,17 +92,17 @@ export default function SchedulePage() {
   }
 
   async function addTimeSlot() {
-    const selectedDates = Object.keys(selectedDateSlots).filter(date => selectedDateSlots[date])
-    
+    const selectedDates = Object.keys(selectedDateSlots).filter(date => selectedDateSlots[date] && selectedDateSlots[date].length > 0)
+
     if (selectedDates.length === 0) {
       showToast.warning('Please select at least one date with a time slot', {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       return
     }
 
@@ -108,45 +110,49 @@ export default function SchedulePage() {
 
     const slotsToCreate = []
 
-    // Create time slots for each selected date with its chosen time
+    // Create time slots for each selected date with its chosen times (now supports multiple per day)
     for (const dateStr of selectedDates) {
-      const timeSlotType = selectedDateSlots[dateStr]
-      const timeSlotConfig = TIME_SLOTS[timeSlotType]
+      const timeSlotTypes = selectedDateSlots[dateStr] // This is now an array
       const date = new Date(dateStr)
-      
-      // Create start datetime
-      const [startHour, startMinute] = timeSlotConfig.start.split(':')
-      const startDateTime = new Date(date)
-      startDateTime.setHours(parseInt(startHour), parseInt(startMinute), 0, 0)
 
-      // Create end datetime
-      const [endHour, endMinute] = timeSlotConfig.end.split(':')
-      const endDateTime = new Date(date)
-      endDateTime.setHours(parseInt(endHour), parseInt(endMinute), 0, 0)
+      for (const timeSlotType of timeSlotTypes) {
+        const timeSlotConfig = TIME_SLOTS[timeSlotType]
+        if (!timeSlotConfig) continue
 
-      // Check if it's in the past
-      if (startDateTime < new Date()) {
-        continue // Skip past dates
+        // Create start datetime
+        const [startHour, startMinute] = timeSlotConfig.start.split(':')
+        const startDateTime = new Date(date)
+        startDateTime.setHours(parseInt(startHour), parseInt(startMinute), 0, 0)
+
+        // Create end datetime
+        const [endHour, endMinute] = timeSlotConfig.end.split(':')
+        const endDateTime = new Date(date)
+        endDateTime.setHours(parseInt(endHour), parseInt(endMinute), 0, 0)
+
+        // Check if it's in the past
+        if (startDateTime < new Date()) {
+          continue // Skip past dates
+        }
+
+        slotsToCreate.push({
+          property_id: null,
+          landlord_id: session.user.id,
+          start_time: startDateTime.toISOString(),
+          end_time: endDateTime.toISOString(),
+          is_booked: false
+        })
       }
-
-      slotsToCreate.push({
-        property_id: null,
-        landlord_id: session.user.id,
-        start_time: startDateTime.toISOString(),
-        end_time: endDateTime.toISOString(),
-        is_booked: false
-      })
     }
 
     if (slotsToCreate.length === 0) {
       showToast.warning('All selected dates are in the past', {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
       setSubmitting(false)
       return
     }
@@ -159,13 +165,13 @@ export default function SchedulePage() {
     if (error) {
       console.error('Error adding time slots:', error)
       showToast.error("Failed to add time slots", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
     } else {
       showToast.success(`${slotsToCreate.length} time slot(s) added successfully`, {
@@ -187,11 +193,22 @@ export default function SchedulePage() {
   function toggleDateTimeSlot(dateStr, timeSlot) {
     setSelectedDateSlots(prev => {
       const newState = { ...prev }
-      
-      // Set the time slot for this date (allows changing from morning to afternoon or vice versa)
-      newState[dateStr] = timeSlot
-      setActiveDate(null)
-      
+      const currentSlots = newState[dateStr] || []
+
+      // Toggle the time slot - add if not present, remove if already selected
+      if (currentSlots.includes(timeSlot)) {
+        // Remove the slot
+        const filtered = currentSlots.filter(s => s !== timeSlot)
+        if (filtered.length === 0) {
+          delete newState[dateStr]
+        } else {
+          newState[dateStr] = filtered
+        }
+      } else {
+        // Add the slot
+        newState[dateStr] = [...currentSlots, timeSlot]
+      }
+
       return newState
     })
   }
@@ -217,12 +234,12 @@ export default function SchedulePage() {
   function selectAllDates(timeSlot, filterFn) {
     const dates = getNextDays(60).filter(filterFn)
     const newState = {}
-    
+
     dates.forEach(date => {
       const dateStr = date.toISOString().split('T')[0]
-      newState[dateStr] = timeSlot
+      newState[dateStr] = [timeSlot] // Store as array
     })
-    
+
     setSelectedDateSlots(newState)
   }
 
@@ -230,7 +247,7 @@ export default function SchedulePage() {
     const days = []
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
+
     for (let i = 0; i < count; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
@@ -273,29 +290,28 @@ export default function SchedulePage() {
   function getTimeSlotLabel(startTime, endTime) {
     const start = new Date(startTime)
     const startHour = start.getHours()
-    
-    // Morning: 8-11
-    if (startHour === 8) {
-      return { label: 'Morning', time: '8:00 AM - 11:00 AM', color: 'border border-black text-black' }
-    }
-  }
+    const startMinute = start.getMinutes()
 
-  function getTimeSlotLabel(startTime, endTime) {
-    const start = new Date(startTime)
-    const startHour = start.getHours()
-    
-    // Morning: 8-11
-    if (startHour === 8) {
-      return { label: 'Morning', time: '8:00 AM - 11:00 AM', color: 'border border-black text-black' }
+    // AM Slot 1: 8:30 - 10:00
+    if (startHour === 8 && startMinute === 30) {
+      return { label: 'AM 1', time: '8:30 AM - 10:00 AM', color: 'border border-black text-black bg-gray-50' }
     }
-    // Afternoon: 13-17
-    else if (startHour === 13) {
-      return { label: 'Afternoon', time: '1:00 PM - 5:30 PM', color: 'border border-black text-black' }
+    // AM Slot 2: 10:00 - 11:30
+    else if (startHour === 10 && startMinute === 0) {
+      return { label: 'AM 2', time: '10:00 AM - 11:30 AM', color: 'border border-black text-black bg-gray-50' }
     }
-    // Fallback for custom times
+    // PM Slot 1: 1:00 - 2:30
+    else if (startHour === 13 && startMinute === 0) {
+      return { label: 'PM 1', time: '1:00 PM - 2:30 PM', color: 'border border-black text-black bg-gray-50' }
+    }
+    // PM Slot 2: 2:30 - 4:00
+    else if (startHour === 14 && startMinute === 30) {
+      return { label: 'PM 2', time: '2:30 PM - 4:00 PM', color: 'border border-black text-black bg-gray-50' }
+    }
+    // Fallback for legacy/custom times
     else {
-      return { 
-        label: 'Custom', 
+      return {
+        label: 'Custom',
         time: `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
         color: 'border border-gray-400 text-gray-600'
       }
@@ -395,50 +411,49 @@ export default function SchedulePage() {
                   return slotDate === searchDate
                 })
                 .map((slot) => {
-                const timeSlotInfo = getTimeSlotLabel(slot.start_time, slot.end_time)
-                const dateStr = new Date(slot.start_time).toLocaleDateString('en-US', { 
-                  weekday: 'short', 
-                  month: 'short', 
-                  day: 'numeric'
-                })
-                
-                return (
-                  <div 
-                    key={slot.id} 
-                    className={`p-4 border rounded-xl flex items-center justify-between gap-4 transition-all ${
-                        slot.is_booked ? 'bg-gray-50 border-gray-200' : 'bg-white border-black shadow-sm'
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                         <span className="text-sm font-bold text-black">{dateStr}</span>
-                         {slot.is_booked && (
-                            <span className="text-[10px] uppercase font-bold bg-black text-white px-2 py-0.5 rounded">Booked</span>
-                         )}
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${timeSlotInfo.color}`}>
-                          {timeSlotInfo.label}
-                        </span>
-                        <span className="text-xs text-gray-500">{timeSlotInfo.time}</span>
-                      </div>
-                    </div>
+                  const timeSlotInfo = getTimeSlotLabel(slot.start_time, slot.end_time)
+                  const dateStr = new Date(slot.start_time).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                  })
 
-                    {!slot.is_booked && (
-                      <button
-                        onClick={() => deleteTimeSlot(slot.id)}
-                        className="text-gray-300 hover:text-black p-2 cursor-pointer transition-colors"
-                        title="Delete"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`p-4 border rounded-xl flex items-center justify-between gap-4 transition-all ${slot.is_booked ? 'bg-gray-50 border-gray-200' : 'bg-white border-black shadow-sm'
+                        }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-bold text-black">{dateStr}</span>
+                          {slot.is_booked && (
+                            <span className="text-[10px] uppercase font-bold bg-black text-white px-2 py-0.5 rounded">Booked</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${timeSlotInfo.color}`}>
+                            {timeSlotInfo.label}
+                          </span>
+                          <span className="text-xs text-gray-500">{timeSlotInfo.time}</span>
+                        </div>
+                      </div>
+
+                      {!slot.is_booked && (
+                        <button
+                          onClick={() => deleteTimeSlot(slot.id)}
+                          className="text-gray-300 hover:text-black p-2 cursor-pointer transition-colors"
+                          title="Delete"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
             </div>
           )}
         </div>
@@ -449,176 +464,201 @@ export default function SchedulePage() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white max-w-5xl w-full p-6 max-h-[90vh] overflow-hidden flex flex-col rounded-2xl shadow-xl">
             <div className="flex justify-between items-start mb-6 flex-shrink-0">
-               <div>
-                  <h3 className="text-2xl font-bold text-black">Select Availability</h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Click dates to toggle times. Selected: {Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length}
-                  </p>
-               </div>
-               <button onClick={() => setShowAddModal(false)} className="text-black text-2xl font-light cursor-pointer leading-none">&times;</button>
+              <div>
+                <h3 className="text-2xl font-bold text-black">Select Availability</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Click dates to toggle times. Selected: {Object.values(selectedDateSlots).reduce((sum, slots) => sum + (slots?.length || 0), 0)} slots on {Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]?.length > 0).length} days
+                </p>
+              </div>
+              <button onClick={() => setShowAddModal(false)} className="text-black text-2xl font-light cursor-pointer leading-none">&times;</button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
-                  {getNextDays(60).map((date) => {
-                    const dateStr = date.toISOString().split('T')[0]
-                    const selectedTimeSlot = selectedDateSlots[dateStr]
-                    const isActive = activeDate === dateStr
-                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
-                    const dayNum = date.getDate()
-                    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
-                    
-                    return (
-                      <div
-                        key={dateStr}
-                        className={`relative border transition-all duration-200 overflow-hidden rounded-xl min-h-[140px] ${
-                          selectedTimeSlot 
-                            ? 'border-black bg-black text-white' 
-                            : isActive
-                            ? 'border-black ring-1 ring-black'
-                            : 'border-gray-200 hover:border-gray-400'
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
+                {getNextDays(60).map((date) => {
+                  const dateStr = date.toISOString().split('T')[0]
+                  const selectedSlots = selectedDateSlots[dateStr] || []
+                  const hasSlots = selectedSlots.length > 0
+                  const isActive = activeDate === dateStr
+                  const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+                  const dayNum = date.getDate()
+                  const monthName = date.toLocaleDateString('en-US', { month: 'short' })
+
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`relative border transition-all duration-200 overflow-hidden rounded-xl min-h-[140px] ${hasSlots
+                        ? 'border-black bg-black text-white'
+                        : isActive
+                          ? 'border-black ring-1 ring-black'
+                          : 'border-gray-200 hover:border-gray-400'
                         }`}
+                    >
+                      {/* Date Content */}
+                      <button
+                        type="button"
+                        onClick={() => toggleActiveDate(dateStr)}
+                        className={`w-full h-full p-4 flex flex-col items-center justify-center cursor-pointer transition-opacity ${isActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                          }`}
                       >
-                        {/* Date Content */}
-                        <button
-                          type="button"
-                          onClick={() => toggleActiveDate(dateStr)}
-                          className={`w-full h-full p-4 flex flex-col items-center justify-center cursor-pointer transition-opacity ${
-                             isActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                        <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${hasSlots ? 'text-gray-400' : 'text-gray-400'}`}>{dayName}</div>
+                        <div className="font-bold text-3xl mb-1">{dayNum}</div>
+
+                        {hasSlots ? (
+                          <div className="mt-2 px-2 py-1 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wide">
+                            {selectedSlots.length === 1
+                              ? (selectedSlots[0] === 'am1' ? 'AM 1' : selectedSlots[0] === 'am2' ? 'AM 2' : selectedSlots[0] === 'pm1' ? 'PM 1' : 'PM 2')
+                              : `${selectedSlots.length} slots`
+                            }
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400">{monthName}</div>
+                        )}
+                      </button>
+
+                      {/* Overlay Options (Show on click) */}
+                      <div
+                        className={`absolute inset-0 bg-white flex flex-col p-2 gap-1 transition-opacity duration-200 ${isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
                           }`}
-                        >
-                          <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${selectedTimeSlot ? 'text-gray-400' : 'text-gray-400'}`}>{dayName}</div>
-                          <div className="font-bold text-3xl mb-1">{dayNum}</div>
-                          
-                          {selectedTimeSlot ? (
-                             <div className="mt-2 px-2 py-1 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wide">
-                                {selectedTimeSlot === 'morning' ? 'Morning' : 'Afternoon'}
-                             </div>
-                          ) : (
-                             <div className="text-xs text-gray-400">{monthName}</div>
-                          )}
-                        </button>
-                        
-                        {/* Overlay Options (Show on click) */}
-                        <div 
-                          className={`absolute inset-0 bg-white flex flex-col p-2 gap-2 transition-opacity duration-200 ${
-                            isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
-                          }`}
-                        >
+                      >
+                        <div className="grid grid-cols-2 gap-1 flex-1">
                           <button
                             type="button"
-                            onClick={() => toggleDateTimeSlot(dateStr, 'morning')}
-                            className={`flex-1 flex flex-col items-center justify-center rounded-lg border cursor-pointer ${
-                               selectedTimeSlot === 'morning' 
-                               ? 'bg-black text-white border-black' 
-                               : 'bg-white text-black border-gray-200 hover:border-black'
-                            }`}
+                            onClick={() => toggleDateTimeSlot(dateStr, 'am1')}
+                            className={`flex flex-col items-center justify-center rounded-lg border cursor-pointer text-center ${selectedSlots.includes('am1')
+                              ? 'bg-black text-white border-black'
+                              : 'bg-gray-50 text-black border-gray-300 hover:border-black'
+                              }`}
                           >
-                             <span className="text-xs font-bold">Morning</span>
-                             <span className="text-[9px] opacity-60">8-11 AM</span>
+                            <span className="text-[10px] font-bold">AM 1</span>
+                            <span className="text-[8px] opacity-80">8:30-10</span>
                           </button>
-                          
+
                           <button
                             type="button"
-                            onClick={() => toggleDateTimeSlot(dateStr, 'afternoon')}
-                            className={`flex-1 flex flex-col items-center justify-center rounded-lg border cursor-pointer ${
-                               selectedTimeSlot === 'afternoon' 
-                               ? 'bg-black text-white border-black' 
-                               : 'bg-white text-black border-gray-200 hover:border-black'
-                            }`}
+                            onClick={() => toggleDateTimeSlot(dateStr, 'am2')}
+                            className={`flex flex-col items-center justify-center rounded-lg border cursor-pointer text-center ${selectedSlots.includes('am2')
+                              ? 'bg-black text-white border-black'
+                              : 'bg-gray-50 text-black border-gray-300 hover:border-black'
+                              }`}
                           >
-                             <span className="text-xs font-bold">Afternoon</span>
-                             <span className="text-[9px] opacity-60">1-5:30 PM</span>
+                            <span className="text-[10px] font-bold">AM 2</span>
+                            <span className="text-[8px] opacity-80">10-11:30</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleDateTimeSlot(dateStr, 'pm1')}
+                            className={`flex flex-col items-center justify-center rounded-lg border cursor-pointer text-center ${selectedSlots.includes('pm1')
+                              ? 'bg-black text-white border-black'
+                              : 'bg-gray-50 text-black border-gray-300 hover:border-black'
+                              }`}
+                          >
+                            <span className="text-[10px] font-bold">PM 1</span>
+                            <span className="text-[8px] opacity-80">1:00-2:30</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleDateTimeSlot(dateStr, 'pm2')}
+                            className={`flex flex-col items-center justify-center rounded-lg border cursor-pointer text-center ${selectedSlots.includes('pm2')
+                              ? 'bg-black text-white border-black'
+                              : 'bg-gray-50 text-black border-gray-300 hover:border-black'
+                              }`}
+                          >
+                            <span className="text-[10px] font-bold">PM 2</span>
+                            <span className="text-[8px] opacity-80">2:30-4:00</span>
                           </button>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Footer Actions */}
             <div className="mt-6 pt-6 border-t border-gray-100 flex flex-col gap-4">
-               {/* Bulk Selectors */}
-               <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2 self-center">Quick Select:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      selectAllDates('morning', (date) => {
-                        const day = date.getDay()
-                        return day !== 0 && day !== 6 
-                      })
-                    }}
-                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
-                  >
-                    Weekdays Morning
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      selectAllDates('afternoon', (date) => {
-                        const day = date.getDay()
-                        return day !== 0 && day !== 6
-                      })
-                    }}
-                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
-                  >
-                    Weekdays Afternoon
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      selectAllDates('morning', (date) => {
-                        const day = date.getDay()
-                        return day === 0 || day === 6
-                      })
-                    }}
-                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
-                  >
-                    Weekends Morning
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      selectAllDates('afternoon', (date) => {
-                        const day = date.getDay()
-                        return day === 0 || day === 6
-                      })
-                    }}
-                    className="text-[10px] font-bold px-3 py-1.5 border border-gray-200 rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
-                  >
-                    Weekends Afternoon
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDateSlots({})}
-                    className="text-[10px] font-bold px-3 py-1.5 border border-red-200 text-red-600 rounded-full hover:bg-red-50 transition-colors cursor-pointer ml-auto"
-                  >
-                    Clear Selection
-                  </button>
-               </div>
+              {/* Bulk Selectors */}
+              <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2 self-center">Quick Select:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectAllDates('am1', (date) => {
+                      const day = date.getDay()
+                      return day !== 0 && day !== 6
+                    })
+                  }}
+                  className="text-[10px] font-bold px-3 py-1.5 border border-gray-300 text-black rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
+                >
+                  Weekdays AM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectAllDates('pm1', (date) => {
+                      const day = date.getDay()
+                      return day !== 0 && day !== 6
+                    })
+                  }}
+                  className="text-[10px] font-bold px-3 py-1.5 border border-gray-300 text-black rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
+                >
+                  Weekdays PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectAllDates('am1', (date) => {
+                      const day = date.getDay()
+                      return day === 0 || day === 6
+                    })
+                  }}
+                  className="text-[10px] font-bold px-3 py-1.5 border border-gray-300 text-black rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
+                >
+                  Weekends AM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectAllDates('pm1', (date) => {
+                      const day = date.getDay()
+                      return day === 0 || day === 6
+                    })
+                  }}
+                  className="text-[10px] font-bold px-3 py-1.5 border border-gray-300 text-black rounded-full hover:border-black hover:bg-black hover:text-white transition-colors cursor-pointer"
+                >
+                  Weekends PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDateSlots({})}
+                  className="text-[10px] font-bold px-3 py-1.5 border border-gray-300 text-gray-500 rounded-full hover:bg-gray-100 transition-colors cursor-pointer ml-auto"
+                >
+                  Clear Selection
+                </button>
+              </div>
 
-               <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowAddModal(false)
-                      setSelectedDateSlots({})
-                      setActiveDate(null)
-                    }}
-                    disabled={submitting}
-                    className="flex-1 py-3 border border-gray-300 text-black font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={addTimeSlot}
-                    disabled={submitting || Object.keys(selectedDateSlots).filter(d => selectedDateSlots[d]).length === 0}
-                    className="flex-1 py-3 bg-black text-white font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
-                  >
-                    {submitting ? 'Saving...' : `Confirm & Add Slots`}
-                  </button>
-               </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false)
+                    setSelectedDateSlots({})
+                    setActiveDate(null)
+                  }}
+                  disabled={submitting}
+                  className="flex-1 py-3 border border-gray-300 text-black font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addTimeSlot}
+                  disabled={submitting || Object.values(selectedDateSlots).reduce((sum, slots) => sum + (slots?.length || 0), 0) === 0}
+                  className="flex-1 py-3 bg-black text-white font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
+                >
+                  {submitting ? 'Saving...' : `Confirm & Add ${Object.values(selectedDateSlots).reduce((sum, slots) => sum + (slots?.length || 0), 0)} Slots`}
+                </button>
+              </div>
             </div>
           </div>
         </div>

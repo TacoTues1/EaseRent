@@ -43,7 +43,7 @@ export default function BookingsPage() {
       .select('*')
       .eq('id', userId)
       .maybeSingle()
-    
+
     if (data) {
       setProfile(data)
     }
@@ -95,7 +95,7 @@ export default function BookingsPage() {
 
     } else {
       // --- TENANT LOGIC ---
-      
+
       // 1. Fetch Existing Bookings
       let query = supabase
         .from('bookings')
@@ -113,7 +113,7 @@ export default function BookingsPage() {
 
       const { data: existingBookings, error } = await query
       if (error) console.error('Error loading bookings:', error)
-      
+
       bookingsData = existingBookings || []
 
       // 2. Fetch "Accepted" Applications (Ready to Book)
@@ -121,22 +121,22 @@ export default function BookingsPage() {
         // FIX: Remove 'created_at' to avoid 400 Bad Request if column doesn't exist
         const { data: acceptedApps } = await supabase
           .from('applications')
-          .select('id, property_id, tenant, status, message') 
+          .select('id, property_id, tenant, status, message')
           .eq('tenant', session.user.id)
           .eq('status', 'accepted')
 
         if (acceptedApps && acceptedApps.length > 0) {
-           const appsToBook = acceptedApps.map(app => ({
-               id: app.id,
-               is_application: true,
-               property_id: app.property_id,
-               tenant: app.tenant,
-               booking_date: null,
-               status: 'ready_to_book',
-               notes: app.message
-           }))
-           
-           bookingsData = [...appsToBook, ...bookingsData]
+          const appsToBook = acceptedApps.map(app => ({
+            id: app.id,
+            is_application: true,
+            property_id: app.property_id,
+            tenant: app.tenant,
+            booking_date: null,
+            status: 'ready_to_book',
+            notes: app.message
+          }))
+
+          bookingsData = [...appsToBook, ...bookingsData]
         }
       }
     }
@@ -180,10 +180,10 @@ export default function BookingsPage() {
     // --- DEDUPLICATION LOGIC ---
     // Only show the single most relevant status per property
     let finalBookings = enrichedBookings;
-    
+
     // if (userRole !== 'landlord') {
     //   const distinctMap = {};
-      
+
     //   const getScore = (status) => {
     //     const s = (status || '').toLowerCase();
     //     if (['pending', 'pending_approval', 'approved', 'accepted'].includes(s)) return 3;
@@ -212,48 +212,48 @@ export default function BookingsPage() {
     //        }
     //     }
     //   });
-      
+
     //   finalBookings = Object.values(distinctMap);
     //   finalBookings.sort((a, b) => new Date(b.booking_date || 0) - new Date(a.booking_date || 0));
     // }
 
     // setBookings(finalBookings)
     // setLoading(false)
-    const hasActiveBooking = bookingsData.some(b => 
+    const hasActiveBooking = bookingsData.some(b =>
       ['pending', 'pending_approval', 'approved', 'accepted'].includes(b.status)
     );
 
     // Helper to get sort weight (Lower number = Higher priority/Top of list)
     const getSortWeight = (booking) => {
       const s = (booking.status || '').toLowerCase();
-      
+
       // 1. Pending (First)
       if (['pending', 'pending_approval'].includes(s)) return 1;
-      
+
       // 2. Ready to Book & Limit Reached
       if (s === 'ready_to_book') {
         // If user is tenant and has an active booking elsewhere, this is "Limit Reached"
         if (userRole !== 'landlord' && hasActiveBooking) return 3; // Limit Reached
         return 2; // Ready to Book
       }
-      
+
       // 4. Approved
       if (['approved', 'accepted'].includes(s)) return 4;
-      
+
       // 5. Rejected/Cancelled (Last)
       if (['rejected', 'cancelled'].includes(s)) return 5;
-      
+
       return 6; // Default/Unknown
     };
 
     if (userRole !== 'landlord') {
       const distinctMap = {};
-      
+
       // Prioritize status for deduplication (Tenant POV)
       const getDedupeScore = (status) => {
         const s = (status || '').toLowerCase();
         if (['pending', 'pending_approval', 'approved', 'accepted'].includes(s)) return 3;
-        if (s === 'ready_to_book') return 2; 
+        if (s === 'ready_to_book') return 2;
         if (['rejected', 'cancelled'].includes(s)) return 1;
         return 0;
       };
@@ -261,24 +261,24 @@ export default function BookingsPage() {
       enrichedBookings.forEach(item => {
         const pid = item.property_id;
         if (!distinctMap[pid]) {
-           distinctMap[pid] = item;
+          distinctMap[pid] = item;
         } else {
-           const existing = distinctMap[pid];
-           const scoreNew = getDedupeScore(item.status);
-           const scoreExisting = getDedupeScore(existing.status);
+          const existing = distinctMap[pid];
+          const scoreNew = getDedupeScore(item.status);
+          const scoreExisting = getDedupeScore(existing.status);
 
-           if (scoreNew > scoreExisting) {
+          if (scoreNew > scoreExisting) {
+            distinctMap[pid] = item;
+          } else if (scoreNew === scoreExisting) {
+            const dateNew = new Date(item.booking_date || 0);
+            const dateExisting = new Date(existing.booking_date || 0);
+            if (dateNew > dateExisting) {
               distinctMap[pid] = item;
-           } else if (scoreNew === scoreExisting) {
-              const dateNew = new Date(item.booking_date || 0);
-              const dateExisting = new Date(existing.booking_date || 0);
-              if (dateNew > dateExisting) {
-                 distinctMap[pid] = item;
-              }
-           }
+            }
+          }
         }
       });
-      
+
       finalBookings = Object.values(distinctMap);
     }
 
@@ -286,11 +286,11 @@ export default function BookingsPage() {
     finalBookings.sort((a, b) => {
       const weightA = getSortWeight(a);
       const weightB = getSortWeight(b);
-      
+
       if (weightA !== weightB) {
         return weightA - weightB;
       }
-      
+
       // Secondary sort: Date (Newest first) within the same status group
       return new Date(b.booking_date || 0) - new Date(a.booking_date || 0);
     });
@@ -310,7 +310,7 @@ export default function BookingsPage() {
       if (booking.time_slot_id) {
         await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', booking.time_slot_id)
       }
-      
+
       await createNotification({
         recipient: booking.tenant,
         actor: session.user.id,
@@ -321,7 +321,7 @@ export default function BookingsPage() {
 
       fetch('/api/notify', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'booking_status',
           recordId: booking.id,
@@ -366,7 +366,7 @@ export default function BookingsPage() {
 
       fetch('/api/notify', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'booking_status',
           recordId: booking.id,
@@ -429,7 +429,7 @@ export default function BookingsPage() {
     setShowBookingModal(true)
     setBookingNotes('')
     setSelectedTimeSlot('')
-    
+
     const { data } = await supabase
       .from('available_time_slots')
       .select('*')
@@ -437,7 +437,7 @@ export default function BookingsPage() {
       .eq('is_booked', false)
       .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true })
-    
+
     setAvailableTimeSlots(data || [])
   }
 
@@ -467,16 +467,16 @@ export default function BookingsPage() {
       // If we are trying to create a NEW one (even for a different property) -> BLOCK IT
       // Only allow if we are Rescheduling the EXACT SAME booking ID
       if (globalActive.id !== selectedApplication.id) {
-         showToast.error("Limit reached: You can only have 1 active viewing schedule at a time.", { duration: 4000, transition: "bounceIn" })
-         setSubmittingBooking(false)
-         return
+        showToast.error("Limit reached: You can only have 1 active viewing schedule at a time.", { duration: 4000, transition: "bounceIn" })
+        setSubmittingBooking(false)
+        return
       }
     }
 
     const slot = availableTimeSlots.find(s => s.id === selectedTimeSlot)
 
     // 1. Create NEW booking
-    const { data: newBooking, error} = await supabase.from('bookings').insert({
+    const { data: newBooking, error } = await supabase.from('bookings').insert({
       property_id: selectedApplication.property_id,
       tenant: session.user.id,
       landlord: selectedApplication.property.landlord,
@@ -500,25 +500,25 @@ export default function BookingsPage() {
 
     // 3. Handle Status Updates
     if (!selectedApplication.is_application) {
-       if (selectedApplication.status !== 'rejected' && selectedApplication.status !== 'cancelled') {
-          await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', selectedApplication.id)
-          
-          if (selectedApplication.time_slot_id) {
-            await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', selectedApplication.time_slot_id)
-          }
-       }
+      if (selectedApplication.status !== 'rejected' && selectedApplication.status !== 'cancelled') {
+        await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', selectedApplication.id)
+
+        if (selectedApplication.time_slot_id) {
+          await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', selectedApplication.time_slot_id)
+        }
+      }
     }
 
     if (newBooking) {
-        fetch('/api/notify', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            type: 'booking_new',
-            recordId: newBooking.id,
-            actorId: session.user.id
-          })
+      fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'booking_new',
+          recordId: newBooking.id,
+          actorId: session.user.id
         })
+      })
     }
     // 4. Notify Landlord
     await createNotification({
@@ -552,6 +552,8 @@ export default function BookingsPage() {
       case 'rejected':
       case 'cancelled':
         return <span className="px-2.5 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold uppercase tracking-wide border border-red-100 rounded-full">{status}</span>
+      case 'completed':
+        return <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wide border border-slate-200 rounded-full">Completed</span>
       default:
         return <span className="px-2.5 py-0.5 bg-gray-50 text-gray-600 text-[10px] font-bold uppercase tracking-wide border border-gray-200 rounded-full">{status}</span>
     }
@@ -559,7 +561,7 @@ export default function BookingsPage() {
 
   function getTimeSlotInfo(bookingDate) {
     if (!bookingDate) return { emoji: '📅', label: 'Not Scheduled', time: 'Select a time' }
-    
+
     const date = new Date(bookingDate)
     const hour = date.getHours()
     if (hour === 8) {
@@ -567,9 +569,9 @@ export default function BookingsPage() {
     } else if (hour === 13) {
       return { emoji: '☀️', label: 'Afternoon', time: '1:00 PM - 5:30 PM' }
     } else {
-      return { 
-        emoji: '⏰', 
-        label: 'Custom', 
+      return {
+        emoji: '⏰',
+        label: 'Custom',
         time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
       }
     }
@@ -585,7 +587,7 @@ export default function BookingsPage() {
 
   // --- GLOBAL BUTTON STATE ---
   // Check if user has ANY active booking currently displayed
-  const hasGlobalActive = bookings.some(b => 
+  const hasGlobalActive = bookings.some(b =>
     ['pending', 'pending_approval', 'approved', 'accepted'].includes(b.status)
   )
 
@@ -605,30 +607,30 @@ export default function BookingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
           <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Pending</span>
-               <div className="w-8 h-8 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-               </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Pending</span>
+              <div className="w-8 h-8 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
             </div>
             <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved</span>
-               <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-               </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved</span>
+              <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
             </div>
             <p className="text-3xl font-bold text-gray-900">{approvedCount}</p>
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-               <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Rejected/Cancelled</span>
-               <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-red-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-               </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Rejected/Cancelled</span>
+              <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </div>
             </div>
             <p className="text-3xl font-bold text-gray-900">{rejectedCount}</p>
           </div>
@@ -637,22 +639,21 @@ export default function BookingsPage() {
         {/* Filter Tabs */}
         <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto">
           {['all', 'approved', 'pending_approval', 'rejected'].map(f => (
-             <button
-               key={f}
-               onClick={() => setFilter(f)}
-               className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all uppercase tracking-wide ${
-                 filter === f
-                   ? 'bg-black text-white'
-                   : 'bg-transparent text-gray-500'
-               }`}
-             >
-               {f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)} ({
-                 f === 'all' ? bookings.length :
-                 f === 'approved' ? approvedCount :
-                 f === 'pending_approval' ? pendingCount :
-                 rejectedCount
-               })
-             </button>
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all uppercase tracking-wide ${filter === f
+                ? 'bg-black text-white'
+                : 'bg-transparent text-gray-500'
+                }`}
+            >
+              {f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)} ({
+                f === 'all' ? bookings.length :
+                  f === 'approved' ? approvedCount :
+                    f === 'pending_approval' ? pendingCount :
+                      rejectedCount
+              })
+            </button>
           ))}
         </div>
 
@@ -660,7 +661,7 @@ export default function BookingsPage() {
         {bookings.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </div>
             <h3 className="text-gray-900 font-bold mb-1">No bookings found</h3>
             <p className="text-gray-500 text-sm">No bookings in this category.</p>
@@ -677,24 +678,24 @@ export default function BookingsPage() {
               return (
                 <div key={booking.id} className="bg-white border border-gray-100 p-5 md:p-6 rounded-2xl shadow-sm transition-all">
                   <div className="flex flex-col md:flex-row md:items-start gap-6">
-                    
+
                     {/* Main Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-3 mb-2">
                         <h3 className="text-lg font-bold text-gray-900">{booking.property?.title}</h3>
                         {getStatusBadge(booking.status, hasGlobalActive)}
                       </div>
-                      
+
                       <div className="flex flex-col gap-1 text-sm text-gray-500 mb-4">
-                         <div className="flex items-center gap-2">
-                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                           <span>{booking.property?.address}, {booking.property?.city}</span>
-                         </div>
-                         <div className="flex items-center gap-2">
-                           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                           <span className="font-medium text-gray-900">{booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}</span>
-                           {booking.tenant_profile?.phone && <span className="text-gray-400">• {booking.tenant_profile.phone}</span>}
-                         </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          <span>{booking.property?.address}, {booking.property?.city}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                          <span className="font-medium text-gray-900">{booking.tenant_profile?.first_name} {booking.tenant_profile?.last_name}</span>
+                          {booking.tenant_profile?.phone && <span className="text-gray-400">• {booking.tenant_profile.phone}</span>}
+                        </div>
                       </div>
 
                       {booking.notes && (
@@ -703,7 +704,7 @@ export default function BookingsPage() {
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Time & Actions */}
                     <div className="flex flex-col md:items-end gap-4 min-w-[200px]">
                       {booking.status === 'ready_to_book' ? (
@@ -720,63 +721,61 @@ export default function BookingsPage() {
                             {bookingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </p>
                           <div className="flex items-center justify-end gap-2 text-sm text-gray-600">
-                             <span>{timeInfo.time}</span>
-                             {isPast && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
+                            <span>{timeInfo.time}</span>
+                            {isPast && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
                           </div>
                         </div>
                       )}
-                      
-                      {/* Landlord Actions */}
-                      {roleLower === 'landlord' && 
-                       (statusLower === 'pending' || statusLower === 'pending_approval') && (
-                        <div className="flex gap-2 w-full md:w-auto">
-                          <button
-                            onClick={() => approveBooking(booking)}
-                            className="flex-1 md:flex-none px-4 py-2.5 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-green-700 transition-colors shadow-sm"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => rejectBooking(booking)}
-                            className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm"
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      )}
 
-                      {/* TENANT ACTIONS */}
-                      {roleLower !== 'landlord' && !isPast && (
+                      {/* Landlord Actions */}
+                      {roleLower === 'landlord' &&
+                        (statusLower === 'pending' || statusLower === 'pending_approval') && (
+                          <div className="flex gap-2 w-full md:w-auto">
+                            <button
+                              onClick={() => approveBooking(booking)}
+                              className="flex-1 md:flex-none px-4 py-2.5 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-green-700 transition-colors shadow-sm"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => rejectBooking(booking)}
+                              className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        )}
+
+                      {/* TENANT ACTIONS - Hide all buttons for completed status */}
+                      {roleLower !== 'landlord' && !isPast && statusLower !== 'completed' && (
                         <div className="flex gap-2 w-full md:w-auto">
-                          
+
                           {/* Case 1: Ready to Book (Accepted Application) */}
                           {booking.status === 'ready_to_book' && (
-                             <button
-                               onClick={() => !hasGlobalActive && openBookingModal(booking)}
-                               disabled={hasGlobalActive}
-                               className={`flex-1 md:flex-none px-4 py-2.5 text-xs font-bold rounded-lg transition-colors shadow-sm ${
-                                 hasGlobalActive 
-                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                                   : 'bg-black text-white cursor-pointer hover:bg-gray-800'
-                               }`}
-                             >
-                               {hasGlobalActive ? 'Booking Limit Reached' : 'Schedule Viewing'}
-                             </button>
+                            <button
+                              onClick={() => !hasGlobalActive && openBookingModal(booking)}
+                              disabled={hasGlobalActive}
+                              className={`flex-1 md:flex-none px-4 py-2.5 text-xs font-bold rounded-lg transition-colors shadow-sm ${hasGlobalActive
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                : 'bg-black text-white cursor-pointer hover:bg-gray-800'
+                                }`}
+                            >
+                              {hasGlobalActive ? 'Booking Limit Reached' : 'Schedule Viewing'}
+                            </button>
                           )}
 
                           {/* Case 2: Rejected/Cancelled - "Book Again" */}
                           {['rejected', 'cancelled'].includes(statusLower) && (
-                             <button
-                               onClick={() => !hasGlobalActive && openBookingModal(booking)}
-                               disabled={hasGlobalActive}
-                               className={`flex-1 md:flex-none px-4 py-2.5 text-xs font-bold rounded-lg transition-colors shadow-sm ${
-                                 hasGlobalActive 
-                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                                   : 'bg-black text-white cursor-pointer hover:bg-gray-800'
-                               }`}
-                             >
-                               {hasGlobalActive ? 'Booking Limit Reached' : 'Book Again'}
-                             </button>
+                            <button
+                              onClick={() => !hasGlobalActive && openBookingModal(booking)}
+                              disabled={hasGlobalActive}
+                              className={`flex-1 md:flex-none px-4 py-2.5 text-xs font-bold rounded-lg transition-colors shadow-sm ${hasGlobalActive
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                                : 'bg-black text-white cursor-pointer hover:bg-gray-800'
+                                }`}
+                            >
+                              {hasGlobalActive ? 'Booking Limit Reached' : 'Book Again'}
+                            </button>
                           )}
 
                           {/* Case 3: Pending/Approved - "Reschedule" (with 12h rule) */}
@@ -784,21 +783,21 @@ export default function BookingsPage() {
                             canModifyBooking(bookingDate) ? (
                               <>
                                 {['pending', 'pending_approval'].includes(statusLower) && (
-        <button
-          onClick={() => openBookingModal(booking)}
-          className="flex-1 md:flex-none px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-blue-700 transition-colors shadow-sm"
-        >
-          Reschedule
-        </button>
-      )}
-       {['pending', 'pending_approval'].includes(statusLower) && (
-                                <button
-                                    onClick={() => promptCancelBooking(booking)} 
+                                  <button
+                                    onClick={() => openBookingModal(booking)}
+                                    className="flex-1 md:flex-none px-4 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-blue-700 transition-colors shadow-sm"
+                                  >
+                                    Reschedule
+                                  </button>
+                                )}
+                                {['pending', 'pending_approval'].includes(statusLower) && (
+                                  <button
+                                    onClick={() => promptCancelBooking(booking)}
                                     className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-red-50 transition-colors shadow-sm"
                                   >
                                     Cancel
                                   </button>
-                                  )}
+                                )}
                               </>
                             ) : (
                               <span className="text-[10px] text-red-500 font-medium bg-red-50 px-2 py-1 rounded border border-red-100">
@@ -820,9 +819,9 @@ export default function BookingsPage() {
       {showCancelModal && bookingToCancel && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6 text-center">
-            
+
             <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
-               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
 
             <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel Viewing?</h3>
@@ -876,15 +875,14 @@ export default function BookingsPage() {
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                     {availableTimeSlots.map((slot) => {
                       const startTime = new Date(slot.start_time)
-                      
+
                       return (
                         <label
                           key={slot.id}
-                          className={`block p-3 border rounded-xl cursor-pointer transition-all ${
-                            selectedTimeSlot === slot.id
-                              ? 'border-black bg-black text-white shadow-md'
-                              : 'border-gray-200 bg-white hover:border-gray-300'
-                          }`}
+                          className={`block p-3 border rounded-xl cursor-pointer transition-all ${selectedTimeSlot === slot.id
+                            ? 'border-black bg-black text-white shadow-md'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                            }`}
                         >
                           <input
                             type="radio"
@@ -896,18 +894,17 @@ export default function BookingsPage() {
                             required
                           />
                           <div className="flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${
-                                selectedTimeSlot === slot.id ? 'border-white bg-white' : 'border-gray-300'
-                            }`}>
-                                {selectedTimeSlot === slot.id && <div className="w-2 h-2 rounded-full bg-black"></div>}
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${selectedTimeSlot === slot.id ? 'border-white bg-white' : 'border-gray-300'
+                              }`}>
+                              {selectedTimeSlot === slot.id && <div className="w-2 h-2 rounded-full bg-black"></div>}
                             </div>
                             <div className="flex-1">
-                                <div className="text-sm font-bold">
-                                  {startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                </div>
-                                <div className={`text-xs ${selectedTimeSlot === slot.id ? 'text-gray-300' : 'text-gray-500'}`}>
-                                  {startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(slot.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                                </div>
+                              <div className="text-sm font-bold">
+                                {startTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </div>
+                              <div className={`text-xs ${selectedTimeSlot === slot.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                                {startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(slot.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              </div>
                             </div>
                           </div>
                         </label>
@@ -944,7 +941,7 @@ export default function BookingsPage() {
                 >
                   {submittingBooking ? 'Sending Request...' : 'Request Viewing'}
                 </button>
-              <span className="ml-2 inline-block text-sm">Note: You can't cancel the booking once approved.</span>
+                <span className="ml-2 inline-block text-sm">Note: You can't cancel the booking once approved.</span>
               </div>
             </form>
           </div>

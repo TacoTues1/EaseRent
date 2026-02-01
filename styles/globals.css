@@ -5,7 +5,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
-html, body, #__next {
+html,
+body,
+#__next {
   height: 100%;
 }
 
@@ -14,10 +16,25 @@ body {
   color: #000000;
 }
 
-/* Remove all transitions and animations globally, EXCEPT for toast notifications */
-*:not([data-sonner-toast]):not([data-sonner-toast] *):not([role="status"]):not([role="status"] *) {
+/* Remove all transitions and animations globally, EXCEPT for toast notifications and spinners */
+*:not([data-sonner-toast]):not([data-sonner-toast] *):not([role="status"]):not([role="status"] *):not(.animate-spin) {
   transition: none !important;
   animation: none !important;
+}
+
+/* Allow spinner animations */
+.animate-spin {
+  animation: spin 1s linear infinite !important;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Smooth animations specifically for react-hot-toast */
@@ -25,8 +42,8 @@ body {
 [data-sonner-toast] *,
 [role="status"],
 [role="status"] *,
-div[role="status"] > div,
-div[role="status"] > div > *,
+div[role="status"]>div,
+div[role="status"]>div>*,
 div[role="status"] span,
 div[role="status"] div {
   transition: none !important;
@@ -38,6 +55,7 @@ div[role="status"] div {
   0% {
     opacity: 0;
   }
+
   100% {
     opacity: 1;
   }
@@ -50,8 +68,8 @@ div[role="status"] {
 
 /* Ensure NO child elements (text, icons) animate at all */
 div[role="status"] *,
-div[role="status"] > *,
-div[role="status"] > * > *,
+div[role="status"]>*,
+div[role="status"]>*>*,
 div[role="status"] span,
 div[role="status"] div,
 div[role="status"] svg,
@@ -68,6 +86,7 @@ div[role="status"] [data-icon] {
   .xs\:inline {
     display: none !important;
   }
+
   .xs\:hidden {
     display: block !important;
   }
@@ -77,6 +96,7 @@ div[role="status"] [data-icon] {
   .xs\:inline {
     display: inline !important;
   }
+
   .xs\:hidden {
     display: none !important;
   }
@@ -201,14 +221,17 @@ nav .nav-link {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   .maplibregl-popup-content {
-    @apply bg-transparent! shadow-none! p-0! rounded-none!;
+    @apply !bg-transparent !shadow-none !p-0 !rounded-none;
   }
+
   .maplibregl-popup-tip {
-    @apply hidden!;
+    @apply !hidden;
   }
 }
 
@@ -217,9 +240,11 @@ nav .nav-link {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 .property-loader {
   width: 85px;
   height: 25px;

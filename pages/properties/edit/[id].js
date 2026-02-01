@@ -13,6 +13,7 @@ export default function EditProperty() {
   const [imageUrls, setImageUrls] = useState([''])
   const [uploadingImages, setUploadingImages] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [uploadingTerms, setUploadingTerms] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -40,9 +41,10 @@ export default function EditProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating Shower',
-    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
-    'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
+    'Wifi','Air Condition','Washing Machine','Parking',
+    'Hot Shower','Bathroom','Smoke Alarm','Veranda',
+    'Fire Extinguisher','Outside Garden','Furnished',
+    'Semi-Furnished','Pet Friendly','Kitchen','Smart TV'
   ]
 
   const toggleAmenity = (amenity) => {
@@ -207,6 +209,54 @@ export default function EditProperty() {
       setUploadingImages(prev => ({ ...prev, [index]: false }))
     }
   }
+
+  async function handleTermsUpload(e) {
+      const file = e.target.files?.[0]
+      if (!file) return
+  
+      if (file.type !== 'application/pdf') {
+        setMessage('Please upload a PDF file')
+        return
+      }
+  
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setMessage('PDF size must be less than 10MB')
+        return
+      }
+  
+      setUploadingTerms(true)
+      try {
+        const fileExt = file.name.split('.').pop()
+        // Create a unique filename for the terms
+        const fileName = `${session.user.id}/terms-${Date.now()}.${fileExt}`
+        
+        const { data, error } = await supabase.storage
+          .from('property-documents') // Needs a bucket named 'property-documents'
+          .upload(fileName, file)
+  
+        if (error) {
+          if (error.message.includes('Bucket not found') || error.message.includes('bucket')) {
+            throw new Error('Storage bucket not set up. Please create "property-documents" bucket in Supabase Dashboard.')
+          }
+          throw error
+        }
+  
+        const { data: publicUrlData } = supabase.storage
+          .from('property-documents')
+          .getPublicUrl(fileName)
+  
+        // Save URL to formData
+        setFormData(prev => ({ ...prev, terms_conditions: publicUrlData.publicUrl }))
+        
+        setMessage('Terms PDF uploaded successfully!')
+        setTimeout(() => setMessage(null), 3000)
+      } catch (error) {
+        console.error('Upload error:', error)
+        setMessage(error.message || 'Error uploading PDF')
+      } finally {
+        setUploadingTerms(false)
+      }
+    }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -528,22 +578,49 @@ export default function EditProperty() {
                     onChange={handleChange}
                   />
                </div>
+
                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Terms & Conditions</label>
-                    <a href="/terms" target="_blank" className="text-xs font-medium text-black cursor-pointer border-b border-gray-300 pb-0.5">Template</a>
+                  <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Terms & Conditions (PDF)</label>
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex flex-col justify-center h-[132px]">
+                    
+                    {formData.terms_conditions && formData.terms_conditions.startsWith('http') ? (
+                       <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 mb-2">
+                          <a href={formData.terms_conditions} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 font-medium hover:underline">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            View Uploaded PDF
+                          </a>
+                          <button 
+                            type="button" 
+                            onClick={() => setFormData(prev => ({ ...prev, terms_conditions: '' }))}
+                            className="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-wider"
+                          >
+                            Remove
+                          </button>
+                       </div>
+                    ) : (
+                       <p className="text-xs text-gray-400 text-center mb-3">
+                         No custom terms uploaded. The default system terms will be used.
+                       </p>
+                    )}
+
+                    <div className="relative">
+                       <input
+                         type="file"
+                         accept="application/pdf"
+                         onChange={handleTermsUpload}
+                         disabled={uploadingTerms}
+                         className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
+                       />
+                       {uploadingTerms && (
+                         <div className="absolute right-0 top-1/2 -translate-y-1/2 text-xs text-black font-bold bg-white px-2">Uploading...</div>
+                       )}
+                    </div>
                   </div>
-                  <textarea
-                    name="terms_conditions"
-                    rows="5"
-                    className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black outline-none resize-none"
-                    placeholder="Lease terms, deposit details..."
-                    value={formData.terms_conditions}
-                    onChange={handleChange}
-                  />
                </div>
             </div>
           </div>
+
+          
 
           {/* Sidebar - Media & Actions */}
           <div className="w-full lg:w-80 flex flex-col gap-6">
