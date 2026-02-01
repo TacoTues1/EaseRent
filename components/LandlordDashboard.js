@@ -680,8 +680,12 @@ export default function LandlordDashboard({ session, profile }) {
 
                           <div className="mt-auto">
                             <div className="flex items-center justify-between mb-2 sm:mb-3">
-                              <p className="text-base sm:text-lg font-black text-black">₱{Number(property.price).toLocaleString()}</p>
-                              <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
+                                <div className="flex items-baseline gap-1">
+                                  <p className="text-base sm:text-lg font-black text-black">
+                                    ₱{Number(property.price).toLocaleString()}
+                                  </p>
+                                  <span className="text-sm text-gray-600">/Monthly</span>
+                                </div>                              <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
                                 View Details
                               </button>
                             </div>

@@ -621,21 +621,23 @@ export default function Home() {
                                   </div>
                               </div>
                               <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg 
-  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
-  fill="currentColor" 
-  viewBox="0 0 24 24"
->
-  <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-</svg>{property.bedrooms}</span>
+                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                                    <svg 
+                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
+                                      fill="currentColor" 
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                                    </svg>{property.bedrooms}</span>
                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
-  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-  viewBox="0 0 24 24"
-  fill="currentColor"
->
-  <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-</svg>{property.bathrooms}</span>
+                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                                    <svg
+                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                      viewBox="0 0 24 24"
+                                      fill="currentColor"
+                                  >
+                                      <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                                  </svg>{property.bathrooms}</span>
                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
                                   <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{property.area_sqft} sqm</span>
                               </div>
@@ -725,9 +727,21 @@ export default function Home() {
                                                   </div>
                                               </div>
                                               <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>{item.bedrooms}</span>
+                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg 
+                                                       className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
+                                                       fill="currentColor" 
+                                                       viewBox="0 0 24 24"
+                                                     >
+                                                       <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                                                     </svg>{item.bedrooms}</span>
                                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>{item.bathrooms}</span>
+                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                                      viewBox="0 0 24 24"
+                                                      fill="currentColor"
+                                                  >
+                                                      <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                                                  </svg>{item.bathrooms}</span>
                                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
                                                   <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
                                               </div>
@@ -818,9 +832,21 @@ export default function Home() {
                                                   </div>
                                               </div>
                                               <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>{item.bedrooms}</span>
+                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg 
+                                                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" 
+                                                      fill="currentColor" 
+                                                      viewBox="0 0 24 24"
+                                                    >
+                                                      <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                                                    </svg>{item.bedrooms}</span>
                                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /></svg>{item.bathrooms}</span>
+                                                  <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg
+                                                        className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                                        viewBox="0 0 24 24"
+                                                        fill="currentColor"
+                                                    >
+                                                        <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                                                    </svg>{item.bathrooms}</span>
                                                   <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
                                                   <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{item.area_sqft} sqm</span>
                                               </div>
