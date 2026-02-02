@@ -28,6 +28,8 @@ export default function PropertyDetail() {
   const [bookingNote, setBookingNote] = useState('')
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showGalleryModal, setShowGalleryModal] = useState(false)
+  const [showAllReviewsModal, setShowAllReviewsModal] = useState(false)
+  const [showAllReviews, setShowAllReviews] = useState(false)
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -496,27 +498,138 @@ export default function PropertyDetail() {
                 <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">About this property</h3>
                 <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{property.description || 'No description provided.'}</p>
               </div>
-              {property.amenities && property.amenities.length > 0 && (
-                <div className="pt-6 border-t border-gray-100">
-                  <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">Amenities</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {(showAllAmenities ? property.amenities : property.amenities.slice(0, 8)).map((amenity, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full"
-                      >
-                        {amenity}
-                      </span>
+            </div>
+
+            {/* Reviews Section - Center */}
+            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+              {/* Header */}
+              <div className="flex items-center gap-3 mb-6">
+                <h3 className="text-lg font-bold text-gray-900">Reviews</h3>
+                <span className="px-2.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-full">{reviews.length}</span>
+              </div>
+
+              {reviews.length > 0 && (
+                <>
+                  {/* Overall Rating Summary */}
+                  <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-2xl p-5 border border-yellow-100 mb-6">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      {/* Overall Rating - Highlighted */}
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center">
+                          <svg className="w-8 h-8 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
+                        </div>
+                        <div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-black text-gray-900">
+                              {(reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1)}
+                            </span>
+                            <span className="text-gray-400 text-lg">/5</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">Overall Review</p>
+                        </div>
+                      </div>
+
+                      {/* Category Averages */}
+                      <div className="flex gap-6 md:gap-8">
+                        {/* Cleanliness */}
+                        <div className="text-center">
+                          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mx-auto mb-1">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+                          </div>
+                          <p className="text-sm font-bold text-gray-800">
+                            {(reviews.reduce((acc, curr) => acc + (curr.cleanliness_rating || curr.rating), 0) / reviews.length).toFixed(1)}
+                          </p>
+                          <p className="text-[10px] text-gray-500">Cleanliness</p>
+                        </div>
+
+                        {/* Communication */}
+                        <div className="text-center">
+                          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center text-green-600 mx-auto mb-1">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                          </div>
+                          <p className="text-sm font-bold text-gray-800">
+                            {(reviews.reduce((acc, curr) => acc + (curr.communication_rating || curr.rating), 0) / reviews.length).toFixed(1)}
+                          </p>
+                          <p className="text-[10px] text-gray-500">Communication</p>
+                        </div>
+
+                        {/* Location */}
+                        <div className="text-center">
+                          <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 mx-auto mb-1">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          </div>
+                          <p className="text-sm font-bold text-gray-800">
+                            {(reviews.reduce((acc, curr) => acc + (curr.location_rating || curr.rating), 0) / reviews.length).toFixed(1)}
+                          </p>
+                          <p className="text-[10px] text-gray-500">Location</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* All Reviews */}
+                  <div className="space-y-4">
+                    {(showAllReviews ? reviews : reviews.slice(0, 2)).map((review, i) => (
+                      <div key={i} className="p-4 bg-gray-50 rounded-xl">
+                        {/* Review Header */}
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
+                              {review.tenant?.first_name?.charAt(0)}{review.tenant?.last_name?.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-800 text-sm">
+                                {review.tenant?.first_name} {review.tenant?.last_name}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{new Date(review.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+                            </div>
+                          </div>
+                          {/* Overall Review Stars */}
+                          <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-full shadow-sm">
+                            <svg className="w-4 h-4 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
+                            <span className="text-sm font-bold text-gray-800">{review.rating}</span>
+                          </div>
+                        </div>
+
+                        {/* Category Ratings */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <span className="px-2 py-1 bg-white rounded-full text-[10px] font-medium text-gray-600">
+                            Cleanliness: <span className="font-bold text-gray-800">{review.cleanliness_rating || review.rating}/5</span>
+                          </span>
+                          <span className="px-2 py-1 bg-white rounded-full text-[10px] font-medium text-gray-600">
+                            Communication: <span className="font-bold text-gray-800">{review.communication_rating || review.rating}/5</span>
+                          </span>
+                          <span className="px-2 py-1 bg-white rounded-full text-[10px] font-medium text-gray-600">
+                            Location: <span className="font-bold text-gray-800">{review.location_rating || review.rating}/5</span>
+                          </span>
+                        </div>
+
+                        {/* Review Comment */}
+                        <p className="text-gray-600 leading-relaxed text-sm">{review.comment}</p>
+                      </div>
                     ))}
                   </div>
-                  {property.amenities.length > 8 && (
+
+                  {/* Show More/Less Button */}
+                  {reviews.length > 2 && (
                     <button
-                      onClick={() => setShowAllAmenities(!showAllAmenities)}
-                      className="mt-3 text-xs font-bold text-black underline cursor-pointer hover:text-gray-600 transition-colors"
+                      onClick={() => setShowAllReviews(!showAllReviews)}
+                      className="w-full mt-4 py-3 border border-gray-200 rounded-xl text-sm font-bold text-gray-800 hover:bg-gray-50 transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
-                      {showAllAmenities ? 'Show less' : `+${property.amenities.length - 8} more`}
+                      <svg className={`w-4 h-4 transition-transform ${showAllReviews ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      {showAllReviews ? 'Show less' : `Show all ${reviews.length} reviews`}
                     </button>
                   )}
+                </>
+              )}
+
+              {reviews.length === 0 && (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                  </div>
+                  <p className="text-gray-500 font-medium">No reviews yet</p>
+                  <p className="text-gray-400 text-sm mt-1">Be the first to review this property</p>
                 </div>
               )}
             </div>
@@ -724,47 +837,30 @@ export default function PropertyDetail() {
               </div>
             )}
 
-            {/* Reviews Section */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 text-xs">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-900">Reviews ({reviews.length})</h3>
-                <div className="flex items-center gap-1 text-yellow-500 font-bold">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                  {reviews.length > 0
-                    ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1)
-                    : '0.0'
-                  }
-                </div>
-              </div>
-
-              {reviews.length === 0 ? (
-                <p className="text-gray-400 italic text-center py-2">No reviews yet.</p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {reviews.map((review, i) => (
-                    <div key={i} className="pb-4 border-b border-gray-50 last:border-0 last:pb-0">
-                      <div className="flex justify-between items-start mb-1">
-                        <div>
-                          <p className="font-bold text-gray-800 flex items-center gap-2">
-                            {review.tenant?.first_name} {review.tenant?.last_name}
-                            <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] uppercase font-bold tracking-wide">
-                              Previous Renter
-                            </span>
-                          </p>
-                          <div className="flex text-yellow-400 text-[10px] mt-0.5">
-                            {[...Array(5)].map((_, i) => (
-                              <svg key={i} className={`w-3 h-3 ${i < review.rating ? 'fill-current' : 'text-gray-200 fill-current'}`} viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                            ))}
-                          </div>
-                        </div>
-                        <span className="text-[10px] text-gray-400">{new Date(review.created_at).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-gray-600 leading-relaxed mt-1.5">{review.comment}</p>
-                    </div>
+            {/* Amenities Section */}
+            {property.amenities && property.amenities.length > 0 && (
+              <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">Amenities</h3>
+                <div className="flex flex-wrap gap-2">
+                  {(showAllAmenities ? property.amenities : property.amenities.slice(0, 6)).map((amenity, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full"
+                    >
+                      {amenity}
+                    </span>
                   ))}
                 </div>
-              )}
-            </div>
+                {property.amenities.length > 6 && (
+                  <button
+                    onClick={() => setShowAllAmenities(!showAllAmenities)}
+                    className="mt-3 text-xs font-bold text-black underline cursor-pointer hover:text-gray-600 transition-colors"
+                  >
+                    {showAllAmenities ? 'Show less' : `+${property.amenities.length - 6} more`}
+                  </button>
+                )}
+              </div>
+            )}
 
           </div>
         </div>

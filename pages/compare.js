@@ -75,15 +75,15 @@ export default function Compare() {
         {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
-                <Link 
-                    href="/properties" 
-                    className="group inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-black mb-3 transition-colors"
+                <button 
+                    onClick={() => router.back()} 
+                    className="group inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-black mb-3 transition-colors cursor-pointer"
                 >
                     <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center group-hover:border-black transition-colors shadow-sm">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                     </div>
                     Back to Listings
-                </Link>
+                </button>
                 <h1 className="text-4xl font-extrabold tracking-tight text-gray-900">Compare Properties</h1>
                 <p className="text-lg text-gray-500 mt-2">
                     {properties.length > 0 
