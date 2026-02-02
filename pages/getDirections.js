@@ -38,7 +38,12 @@ export default function GetDirections() {
     bike: [],
     foot: []
   });
-  const [selectedMode, setSelectedMode] = useState('driving'); 
+  const [selectedMode, setSelectedMode] = useState('driving');
+  
+  // NEW: Selected route index for each mode (0 = primary, 1 = alternate)
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+  // Store the active route coordinates for navigation
+  const activeRouteCoords = useRef([]); 
 
   const formatDuration = (seconds) => {
     if (!seconds) return '--';
@@ -152,35 +157,68 @@ export default function GetDirections() {
   };
 
   // --- Route Drawing Helper ---
-  const drawRoutes = (routes, LInstance, mode) => {
+  const drawRoutes = useCallback((routes, LInstance, mode, selectedIdx = 0) => {
     if (!mapInstance.current || !routes || routes.length === 0) return;
-    routeLines.current.forEach(line => line.remove());
+    
+    // Clear existing route lines
+    routeLines.current.forEach(line => {
+      if (line && line.remove) line.remove();
+    });
     routeLines.current = [];
 
     let mainColor = '#111827'; 
     if (mode === 'bike') mainColor = '#7c3aed'; 
     if (mode === 'foot') mainColor = '#059669'; 
 
-    routes.slice(1).forEach(route => {
-        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-        const polyline = LInstance.polyline(coords, {
-            color: '#272828', weight: 5, opacity: 0.5, lineJoin: 'round'
-        }).addTo(mapInstance.current);
-        routeLines.current.push(polyline);
+    // Draw all routes, with non-selected ones first (behind)
+    routes.forEach((route, index) => {
+      if (index === selectedIdx) return; // Skip selected, draw it last
+      
+      const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+      const polyline = LInstance.polyline(coords, {
+        color: '#9ca3af', 
+        weight: 5, 
+        opacity: 0.5, 
+        lineJoin: 'round',
+        className: 'route-alternate'
+      }).addTo(mapInstance.current);
+      
+      // Make alternate routes clickable to select them
+      polyline.on('click', () => {
+        setSelectedRouteIndex(index);
+        drawRoutes(routes, LInstance, mode, index);
+      });
+      
+      routeLines.current.push(polyline);
     });
 
-    const bestRoute = routes[0];
-    const bestCoords = bestRoute.geometry.coordinates.map(c => [c[1], c[0]]);
-    const bestPolyline = LInstance.polyline(bestCoords, {
-        color: mainColor, weight: 7, opacity: 1.0, lineJoin: 'round'
-    }).addTo(mapInstance.current);
-    routeLines.current.push(bestPolyline);
-    
-    // Only fit bounds if we are NOT navigating (to allow user to pan around freely while driving)
-    if (!isNavigating) {
-        mapInstance.current.fitBounds(bestPolyline.getBounds(), { paddingTopLeft: [50, 50], paddingBottomRight: [50, 300] });
+    // Draw selected route last (on top)
+    const selectedRoute = routes[selectedIdx];
+    if (selectedRoute) {
+      const selectedCoords = selectedRoute.geometry.coordinates.map(c => [c[1], c[0]]);
+      
+      // Store active route coordinates for navigation
+      activeRouteCoords.current = selectedCoords;
+      
+      const selectedPolyline = LInstance.polyline(selectedCoords, {
+        color: mainColor, 
+        weight: 7, 
+        opacity: 1.0, 
+        lineJoin: 'round',
+        className: 'route-selected'
+      }).addTo(mapInstance.current);
+      
+      routeLines.current.push(selectedPolyline);
+      
+      // Only fit bounds if we are NOT navigating
+      if (!isNavigating) {
+        mapInstance.current.fitBounds(selectedPolyline.getBounds(), { 
+          paddingTopLeft: [50, 50], 
+          paddingBottomRight: [50, 300] 
+        });
+      }
     }
-  };
+  }, [isNavigating]);
 
   // --- Route Calculation ---
   const fetchRouteData = async (profile, start, end) => {
@@ -215,6 +253,8 @@ export default function GetDirections() {
     if (!preserveMode) {
         setIsRouting(false);
         setStatusMsg('');
+        // Reset to first route when calculating fresh routes
+        setSelectedRouteIndex(0);
     }
 
     // Determine mode: if preserving, keep current. If new calculation, pick best available.
@@ -224,27 +264,50 @@ export default function GetDirections() {
         setSelectedMode(modeToUse);
     }
     
+    // Get the current route index (preserve during navigation)
+    const routeIdx = preserveMode ? selectedRouteIndex : 0;
+    
     // Draw based on the determined mode
-    if (modeToUse === 'driving' && drivingRoutes.length > 0) drawRoutes(drivingRoutes, L, 'driving');
-    else if (modeToUse === 'bike' && bikeRoutes.length > 0) drawRoutes(bikeRoutes, L, 'bike');
-    else if (modeToUse === 'foot' && footRoutes.length > 0) drawRoutes(footRoutes, L, 'foot');
-  }, [selectedMode, isNavigating]); // Depends on selectedMode so it knows what to preserve
+    if (modeToUse === 'driving' && drivingRoutes.length > 0) drawRoutes(drivingRoutes, L, 'driving', routeIdx);
+    else if (modeToUse === 'bike' && bikeRoutes.length > 0) drawRoutes(bikeRoutes, L, 'bike', routeIdx);
+    else if (modeToUse === 'foot' && footRoutes.length > 0) drawRoutes(footRoutes, L, 'foot', routeIdx);
+  }, [selectedMode, isNavigating, selectedRouteIndex, drawRoutes]);
 
   // --- Real-time Route Updater ---
   useEffect(() => {
     // Only update if we are actively navigating, have locations, and the map is ready
     if (isNavigating && userLocation && destLocation && mapInstance.current) {
         const now = Date.now();
-        // Throttle updates to every 500ms for near real-time response
-        if (now - lastRouteUpdate.current > 500) {
+        // Throttle updates to every 2 seconds to reduce API calls
+        if (now - lastRouteUpdate.current > 2000) {
             lastRouteUpdate.current = now;
             import('leaflet').then(L => {
-                // Pass true to preserveMode to keep current vehicle selection and silence status
-                calculateAllRoutes(userLocation, destLocation, L, true);
+                // Redraw the current selected route from stored coordinates
+                // This keeps the line visible and in sync with user position
+                if (activeRouteCoords.current.length > 0) {
+                    // Clear and redraw the route line
+                    routeLines.current.forEach(line => {
+                        if (line && line.remove) line.remove();
+                    });
+                    routeLines.current = [];
+                    
+                    let mainColor = '#111827'; 
+                    if (selectedMode === 'bike') mainColor = '#7c3aed'; 
+                    if (selectedMode === 'foot') mainColor = '#059669';
+                    
+                    const polyline = L.polyline(activeRouteCoords.current, {
+                        color: mainColor, 
+                        weight: 7, 
+                        opacity: 1.0, 
+                        lineJoin: 'round'
+                    }).addTo(mapInstance.current);
+                    
+                    routeLines.current.push(polyline);
+                }
             });
         }
     }
-  }, [userLocation, isNavigating, destLocation, calculateAllRoutes]);
+  }, [userLocation, isNavigating, destLocation, selectedMode]);
 
   const handleAddressChange = (e) => {
     const value = e.target.value;
@@ -428,9 +491,20 @@ export default function GetDirections() {
 
   const handleModeClick = (mode) => {
     setSelectedMode(mode);
+    setSelectedRouteIndex(0); // Reset to first route when changing mode
     import('leaflet').then(L => {
         if (routesData[mode] && routesData[mode].length > 0) {
-            drawRoutes(routesData[mode], L, mode);
+            drawRoutes(routesData[mode], L, mode, 0);
+        }
+    });
+  };
+
+  // Handle route selection (for alternate routes)
+  const handleRouteSelect = (index) => {
+    setSelectedRouteIndex(index);
+    import('leaflet').then(L => {
+        if (routesData[selectedMode] && routesData[selectedMode].length > 0) {
+            drawRoutes(routesData[selectedMode], L, selectedMode, index);
         }
     });
   };
@@ -507,49 +581,98 @@ export default function GetDirections() {
 
               {/* ROUTE STATS & LIVE NAVIGATION */}
               {routesData.driving.length > 0 || routesData.bike.length > 0 || routesData.foot.length > 0 ? (
-                  /* --- GRID LAYOUT (4 COLS) --- */
-                  <div className="grid grid-cols-4 gap-2">
-                      
-                      {/* 1. Driving */}
-                      <button onClick={() => handleModeClick('driving')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'driving' ? 'bg-gray-900 text-white border-gray-900 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
-                         <span className="text-[10px] font-bold uppercase">{routesData.driving.length > 1 ? `Car (${routesData.driving.length})` : 'Car'}</span>
-                         <span className="text-xs font-bold mt-0.5">{routesData.driving[0] ? formatDuration(routesData.driving[0].duration) : '--'}</span>
-                      </button>
+                  <div className="flex flex-col gap-3">
+                      {/* Route Mode Selection (4 COLS) */}
+                      <div className="grid grid-cols-4 gap-2">
+                          
+                          {/* 1. Driving */}
+                          <button onClick={() => handleModeClick('driving')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'driving' ? 'bg-gray-900 text-white border-gray-900 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                             <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+                             <span className="text-[10px] font-bold uppercase">{routesData.driving.length > 1 ? `Car (${routesData.driving.length})` : 'Car'}</span>
+                             <span className="text-xs font-bold mt-0.5">{routesData.driving[0] ? formatDuration(routesData.driving[0].duration) : '--'}</span>
+                          </button>
 
-                      {/* 2. Bike */}
-                      <button onClick={() => handleModeClick('bike')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'bike' ? 'bg-violet-600 text-white border-violet-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm5.8-10l2.4-2.4.8.8c1.3 1.3 3 2.1 5.1 2.1V9c-1.5 0-2.7-.6-3.6-1.5l-1.9-1.9c-.5-.4-1-.6-1.6-.6s-1.1.2-1.4.6L7.8 8.4c-.4.4-.6.9-.6 1.4 0 .6.2 1.1.6 1.4L11 14v5h2v-6.2l-2.2-2.3zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z"/></svg>
-                         <span className="text-[10px] font-bold uppercase">{routesData.bike.length > 1 ? `Bike (${routesData.bike.length})` : 'Bike'}</span>
-                         <span className="text-xs font-bold mt-0.5">{routesData.bike[0] ? formatDuration(routesData.bike[0].duration) : '--'}</span>
-                      </button>
+                          {/* 2. Bike */}
+                          <button onClick={() => handleModeClick('bike')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'bike' ? 'bg-violet-600 text-white border-violet-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                             <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm5.8-10l2.4-2.4.8.8c1.3 1.3 3 2.1 5.1 2.1V9c-1.5 0-2.7-.6-3.6-1.5l-1.9-1.9c-.5-.4-1-.6-1.6-.6s-1.1.2-1.4.6L7.8 8.4c-.4.4-.6.9-.6 1.4 0 .6.2 1.1.6 1.4L11 14v5h2v-6.2l-2.2-2.3zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z"/></svg>
+                             <span className="text-[10px] font-bold uppercase">{routesData.bike.length > 1 ? `Bike (${routesData.bike.length})` : 'Bike'}</span>
+                             <span className="text-xs font-bold mt-0.5">{routesData.bike[0] ? formatDuration(routesData.bike[0].duration) : '--'}</span>
+                          </button>
 
-                      {/* 3. Walk */}
-                      <button onClick={() => handleModeClick('foot')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'foot' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>
-                         <span className="text-[10px] font-bold uppercase">{routesData.foot.length > 1 ? `Walk (${routesData.foot.length})` : 'Walk'}</span>
-                         <span className="text-xs font-bold mt-0.5">{routesData.foot[0] ? formatDuration(routesData.foot[0].duration) : '--'}</span>
-                      </button>
+                          {/* 3. Walk */}
+                          <button onClick={() => handleModeClick('foot')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'foot' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                             <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>
+                             <span className="text-[10px] font-bold uppercase">{routesData.foot.length > 1 ? `Walk (${routesData.foot.length})` : 'Walk'}</span>
+                             <span className="text-xs font-bold mt-0.5">{routesData.foot[0] ? formatDuration(routesData.foot[0].duration) : '--'}</span>
+                          </button>
 
-                      {/* 4. START NAVIGATION (Beside the others) */}
-                      <button 
-                        onClick={toggleNavigation}
-                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${isNavigating ? 'bg-red-500 text-white border-red-500 shadow-lg scale-105' : 'bg-blue-600 text-white border-blue-600 shadow-lg hover:bg-blue-700 hover:scale-105'}`}
-                      >
-                         {isNavigating ? (
-                            <>
-                                <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                <span className="text-[10px] font-bold uppercase">Stop</span>
-                                <span className="text-xs font-bold mt-0.5">Nav</span>
-                            </>
-                         ) : (
-                            <>
-                                <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                                <span className="text-[10px] font-bold uppercase">Start</span>
-                                <span className="text-xs font-bold mt-0.5">Nav</span>
-                            </>
-                         )}
-                      </button>
+                          {/* 4. START NAVIGATION (Beside the others) */}
+                          <button 
+                            onClick={toggleNavigation}
+                            className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${isNavigating ? 'bg-red-500 text-white border-red-500 shadow-lg scale-105' : 'bg-blue-600 text-white border-blue-600 shadow-lg hover:bg-blue-700 hover:scale-105'}`}
+                          >
+                             {isNavigating ? (
+                                <>
+                                    <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    <span className="text-[10px] font-bold uppercase">Stop</span>
+                                    <span className="text-xs font-bold mt-0.5">Nav</span>
+                                </>
+                             ) : (
+                                <>
+                                    <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                    <span className="text-[10px] font-bold uppercase">Start</span>
+                                    <span className="text-xs font-bold mt-0.5">Nav</span>
+                                </>
+                             )}
+                          </button>
+                      </div>
+
+                      {/* Route Selection (when alternate routes available) */}
+                      {routesData[selectedMode] && routesData[selectedMode].length > 1 && !isNavigating && (
+                        <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                          <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+                            Select Route ({routesData[selectedMode].length} available)
+                          </p>
+                          <div className="flex gap-2">
+                            {routesData[selectedMode].map((route, index) => {
+                              const isSelected = selectedRouteIndex === index;
+                              const distance = (route.distance / 1000).toFixed(1);
+                              const duration = formatDuration(route.duration);
+                              
+                              return (
+                                <button
+                                  key={index}
+                                  onClick={() => handleRouteSelect(index)}
+                                  className={`flex-1 p-3 rounded-lg border-2 transition-all cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-white border-black shadow-md' 
+                                      : 'bg-white border-gray-200 hover:border-gray-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className={`text-xs font-bold ${isSelected ? 'text-black' : 'text-gray-500'}`}>
+                                      {index === 0 ? '🏆 Fastest' : `Route ${index + 1}`}
+                                    </span>
+                                    {isSelected && (
+                                      <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className={`font-bold ${isSelected ? 'text-black' : 'text-gray-600'}`}>{duration}</span>
+                                    <span className="text-gray-400">•</span>
+                                    <span className="text-gray-500">{distance} km</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-2 text-center">
+                            Tap on the gray route on the map to select it
+                          </p>
+                        </div>
+                      )}
                   </div>
               ) : (
                 <div className="text-center py-3">

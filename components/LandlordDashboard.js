@@ -31,6 +31,16 @@ export default function LandlordDashboard({ session, profile }) {
     occupancy: null
   })
 
+  // EMAIL NOTIFICATION MODAL STATE
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [allTenants, setAllTenants] = useState([])
+  const [selectedTenants, setSelectedTenants] = useState([])
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [emailEnding, setEmailEnding] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false)
+
   // Landlord data states
   const [occupancies, setOccupancies] = useState([])
   const [pendingEndRequests, setPendingEndRequests] = useState([])
@@ -124,6 +134,100 @@ export default function LandlordDashboard({ session, profile }) {
   async function loadOccupancies() {
     const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title)`).eq('landlord_id', session.user.id).eq('status', 'active')
     setOccupancies(data || [])
+  }
+
+  // Load all tenants under landlord's properties for email notifications
+  async function loadAllTenants() {
+    const { data } = await supabase
+      .from('tenant_occupancies')
+      .select(`
+        id,
+        tenant_id,
+        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone, phone_verified),
+        property:properties(id, title)
+      `)
+      .eq('landlord_id', session.user.id)
+      .eq('status', 'active')
+    
+    // Format tenants with property info
+    const formattedTenants = (data || []).map(occ => ({
+      id: occ.tenant_id,
+      name: `${occ.tenant?.first_name || ''} ${occ.tenant?.middle_name || ''} ${occ.tenant?.last_name || ''}`.trim(),
+      phone: occ.tenant?.phone,
+      phone_verified: occ.tenant?.phone_verified,
+      property: occ.property?.title || 'Unknown Property'
+    }))
+    
+    setAllTenants(formattedTenants)
+  }
+
+  function openEmailModal() {
+    loadAllTenants()
+    setSelectedTenants([])
+    setEmailSubject('')
+    setEmailBody('')
+    setEmailEnding('')
+    setShowEmailModal(true)
+  }
+
+  function toggleTenantSelection(tenantId) {
+    setSelectedTenants(prev => 
+      prev.includes(tenantId) 
+        ? prev.filter(id => id !== tenantId)
+        : [...prev, tenantId]
+    )
+  }
+
+  function selectAllTenants() {
+    if (selectedTenants.length === allTenants.length) {
+      setSelectedTenants([])
+    } else {
+      setSelectedTenants(allTenants.map(t => t.id))
+    }
+  }
+
+  async function sendBulkNotification() {
+    if (selectedTenants.length === 0) {
+      showToast.error('Please select at least one tenant', { duration: 4000, transition: "bounceIn" })
+      return
+    }
+    if (!emailSubject.trim()) {
+      showToast.error('Please enter a subject', { duration: 4000, transition: "bounceIn" })
+      return
+    }
+    if (!emailBody.trim()) {
+      showToast.error('Please enter a message body', { duration: 4000, transition: "bounceIn" })
+      return
+    }
+
+    setSendingEmail(true)
+    try {
+      const response = await fetch('/api/send-bulk-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantIds: selectedTenants,
+          subject: emailSubject,
+          body: emailBody,
+          ending: emailEnding,
+          landlordId: session.user.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showToast.success(result.message, { duration: 5000, transition: "bounceIn" })
+        setShowEmailModal(false)
+      } else {
+        showToast.error(result.error || 'Failed to send notifications', { duration: 4000, transition: "bounceIn" })
+      }
+    } catch (err) {
+      console.error('Send notification error:', err)
+      showToast.error('Failed to send notifications', { duration: 4000, transition: "bounceIn" })
+    } finally {
+      setSendingEmail(false)
+    }
   }
 
   function getPropertyOccupancy(propertyId) { return occupancies.find(o => o.property_id === propertyId) }
@@ -584,6 +688,13 @@ export default function LandlordDashboard({ session, profile }) {
                 </div>
                 <div className="flex items-center gap-4">
                   <button
+                    onClick={openEmailModal}
+                    className="flex items-center gap-2 px-6 py-3 bg-white text-black border-2 border-black rounded-2xl shadow-sm hover:bg-gray-50 text-sm font-bold cursor-pointer transition-all transform hover:-translate-y-0.5"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    Email Tenants
+                  </button>
+                  <button
                     onClick={() => router.push('/properties/new')}
                     className="flex items-center gap-2 px-6 py-3 bg-black text-white rounded-2xl shadow-xl shadow-black/10 hover:shadow-black/20 text-sm font-bold cursor-pointer hover:bg-gray-800 transition-all transform hover:-translate-y-0.5"
                   >
@@ -594,11 +705,10 @@ export default function LandlordDashboard({ session, profile }) {
               </div>
 
               {loading ? (
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="bg-white rounded-3xl h-[300px] animate-pulse border border-gray-100"></div>
-                  ))}
-                </div>
+                <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading Amazing Properties...</p>
+      </div>
               ) : properties.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100 h-[400px] flex flex-col items-center justify-center">
                   <div className="w-20 h-20 mx-auto mb-6 bg-gray-50 rounded-full flex items-center justify-center">
@@ -844,6 +954,183 @@ export default function LandlordDashboard({ session, profile }) {
               >
                 End Contract
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Notification Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+            {/* Header */}
+            <div className="flex justify-between items-center p-6 border-b border-gray-100">
+              <div>
+                <h3 className="font-black text-xl text-gray-900">📬 Send Notification</h3>
+                <p className="text-sm text-gray-500 mt-1">Email & SMS your tenants</p>
+              </div>
+              <button onClick={() => setShowEmailModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-500 hover:text-black transition-colors">✕</button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {/* Recipient Selector */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  To: Recipients
+                </label>
+                <div className="relative">
+                  <div 
+                    onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-gray-300 transition-colors flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {selectedTenants.length === 0 ? (
+                        <span className="text-gray-400">Select tenants...</span>
+                      ) : selectedTenants.length === allTenants.length ? (
+                        <span className="bg-black text-white px-3 py-1 rounded-full text-xs font-bold">All Tenants ({allTenants.length})</span>
+                      ) : (
+                        selectedTenants.slice(0, 3).map(id => {
+                          const tenant = allTenants.find(t => t.id === id)
+                          return tenant ? (
+                            <span key={id} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1">
+                              {tenant.name}
+                              {tenant.phone_verified && <span className="text-green-500">📱</span>}
+                            </span>
+                          ) : null
+                        })
+                      )}
+                      {selectedTenants.length > 3 && (
+                        <span className="text-xs text-gray-500">+{selectedTenants.length - 3} more</span>
+                      )}
+                    </div>
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+
+                  {/* Dropdown */}
+                  {showTenantDropdown && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-60 overflow-y-auto">
+                      {/* Select All */}
+                      <div 
+                        onClick={selectAllTenants}
+                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 flex items-center gap-3"
+                      >
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedTenants.length === allTenants.length ? 'bg-black border-black' : 'border-gray-300'}`}>
+                          {selectedTenants.length === allTenants.length && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                        </div>
+                        <span className="font-bold text-sm">Select All ({allTenants.length})</span>
+                      </div>
+
+                      {allTenants.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-gray-400 text-sm">
+                          No active tenants found
+                        </div>
+                      ) : (
+                        allTenants.map(tenant => (
+                          <div 
+                            key={tenant.id}
+                            onClick={() => toggleTenantSelection(tenant.id)}
+                            className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center gap-3"
+                          >
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedTenants.includes(tenant.id) ? 'bg-black border-black' : 'border-gray-300'}`}>
+                              {selectedTenants.includes(tenant.id) && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium text-sm text-gray-900">{tenant.name}</p>
+                              <p className="text-xs text-gray-500">{tenant.property}</p>
+                            </div>
+                            {tenant.phone_verified && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                SMS
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+                  <span className="text-green-500">Note:</span> = It will only send SMS to tenants with verified phone numbers.
+                </p>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors"
+                  placeholder="e.g. Important Notice: Scheduled Maintenance"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                />
+              </div>
+
+              {/* Body */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  Message Body
+                </label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors resize-none"
+                  rows={6}
+                  placeholder="Write your message here..."
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                />
+              </div>
+
+              {/* Ending/Signature */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                  Closing/Ending (Optional)
+                </label>
+                <textarea
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-colors resize-none"
+                  rows={2}
+                  placeholder="e.g. Thank you for your understanding. Please contact me if you have any questions."
+                  value={emailEnding}
+                  onChange={(e) => setEmailEnding(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100 flex justify-between items-center">
+              <p className="text-xs text-gray-500">
+                {selectedTenants.length} recipient{selectedTenants.length !== 1 ? 's' : ''} selected
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowEmailModal(false)}
+                  className="px-6 py-2.5 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={sendBulkNotification}
+                  disabled={sendingEmail || selectedTenants.length === 0}
+                  className="px-6 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 cursor-pointer shadow-lg shadow-black/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {sendingEmail ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                      Send Notification
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

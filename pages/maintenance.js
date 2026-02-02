@@ -482,8 +482,10 @@ export default function MaintenancePage() {
         {/* Requests List */}
         <div className="space-y-4">
           {loading ? (
-            <div className="text-center py-20"><div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div></div>
-          ) : filteredRequests.length === 0 ? (
+<div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading Maintenance Requests...</p>
+      </div>          ) : filteredRequests.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
               <p className="text-gray-900 font-bold mb-1">
                 {requests.length === 0

@@ -709,9 +709,10 @@ export default function AllProperties() {
             </div>
 
             {loading ? (
-              <div className="text-center py-20">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mx-auto"></div>
-              </div>
+              <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading Amazing Properties...</p>
+      </div>
             ) : properties.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
                 <div className="w-16 h-16 mx-auto mb-4 bg-gray-50 rounded-full flex items-center justify-center">
