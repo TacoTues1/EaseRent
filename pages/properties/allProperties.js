@@ -47,6 +47,9 @@ export default function AllProperties() {
   const [guestFavorites, setGuestFavorites] = useState([])
   const [topRated, setTopRated] = useState([])
 
+  // Track if URL params have been parsed (only parse once on initial load)
+  const urlParamsParsed = useRef(false)
+
   // Carousel Item Class for responsiveness
   const carouselItemClass = "basis-full sm:basis-1/2 md:basis-1/3 lg:basis-1/4 pl-4"
 
@@ -68,9 +71,10 @@ export default function AllProperties() {
     loadFeaturedProperties()
   }, [])
 
-  // Parse URL query parameters
+  // Parse URL query parameters - ONLY on initial load
   useEffect(() => {
-    if (router.isReady) {
+    if (router.isReady && !urlParamsParsed.current) {
+      urlParamsParsed.current = true
       const { search, minPrice, maxPrice, amenities, sort } = router.query
       if (search) setSearchQuery(search)
       if (minPrice || maxPrice) {
@@ -315,8 +319,9 @@ export default function AllProperties() {
     router.push(`/compare?ids=${ids}`)
   }
 
-  // --- REUSABLE FILTER CONTENT COMPONENT ---
-  const FilterContent = () => (
+  // --- REUSABLE FILTER CONTENT ---
+  // Note: Defined inline to prevent losing input focus on re-renders
+  const filterContent = (
     <div className="space-y-6">
       {/* Search */}
       <div>
@@ -536,7 +541,7 @@ export default function AllProperties() {
 
             {/* Top Left Badges */}
             <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 items-start">
-              <span className={`px-2 py-0.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider rounded-md shadow-sm backdrop-blur-md ${
+              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${
                 property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'
               }`}>
                 {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
@@ -544,8 +549,8 @@ export default function AllProperties() {
               
               {/* Tenants Favorite Badge */}
               {isTenantsFavorite && (
-                 <span className="px-2 py-0.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider rounded-md shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-1">
-                   <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                 <span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5">
+                   <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                    {stats.favorite_count}
                  </span>
               )}
@@ -625,7 +630,7 @@ export default function AllProperties() {
                   </button>
                )}
             </div>
-            <FilterContent />
+            {filterContent}
           </aside>
 
           {/* --- MOBILE FILTER TOGGLE & BOTTOM SHEET --- */}
@@ -674,7 +679,7 @@ export default function AllProperties() {
                    
                    {/* Scrollable Content */}
                    <div className="flex-1 overflow-y-auto p-5 pb-24">
-                      <FilterContent />
+                      {filterContent}
                    </div>
 
                    {/* Fixed Bottom Action */}

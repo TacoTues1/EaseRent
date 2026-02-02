@@ -36,7 +36,7 @@ export default function Home() {
   const [priceRange, setPriceRange] = useState({ min: '', max: '' })
   const [sortBy, setSortBy] = useState('newest')
   const [isExpanded, setIsExpanded] = useState(false)
-  
+
   // Real-time search state
   const [searchResults, setSearchResults] = useState([])
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
@@ -142,7 +142,7 @@ export default function Home() {
           .eq('is_deleted', false)
           .or(`title.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
           .limit(6)
-        
+
         if (data && !error) {
           setSearchResults(data)
           setShowSearchDropdown(true)
@@ -519,7 +519,7 @@ export default function Home() {
                     }}
                   />
                   {searchQuery && (
-                    <button 
+                    <button
                       onClick={() => { setSearchQuery(''); setSearchResults([]); setShowSearchDropdown(false) }}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-900 transition-colors cursor-pointer"
                     >
@@ -528,7 +528,7 @@ export default function Home() {
                       </svg>
                     </button>
                   )}
-                  
+
                   {/* Search Dropdown */}
                   {showSearchDropdown && searchResults.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
@@ -569,7 +569,7 @@ export default function Home() {
                         ))}
                       </div>
                       <div className="border-t border-gray-100 p-2">
-                        <button 
+                        <button
                           onClick={() => {
                             router.push(`/properties/allProperties?search=${encodeURIComponent(searchQuery)}`)
                             setShowSearchDropdown(false)
@@ -581,7 +581,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* No results message */}
                   {showSearchDropdown && searchQuery.trim() && searchResults.length === 0 && !isSearching && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 p-4 text-center animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
@@ -742,9 +742,9 @@ export default function Home() {
 
                           {/* Gradient & Labels */}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                          <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                            <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                            {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                          <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
+                            <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                            {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                           </div>
                           <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
                             <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
@@ -850,9 +850,16 @@ export default function Home() {
 
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                              <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                              {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
+                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {stats.favorite_count >= 1 && (
+                                <span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5">
+                                  <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24">
+                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                                  </svg>
+                                  {stats.favorite_count}
+                                </span>
+                              )}
                             </div>
                             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
                               <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
@@ -957,9 +964,9 @@ export default function Home() {
 
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1">
-                              <span className={`px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] uppercase font-bold tracking-wider rounded sm:rounded-md shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                              {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Guest Favorite</span></span>)}
+                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
+                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                             </div>
                             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
                               <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(item.price).toLocaleString()}</p>
