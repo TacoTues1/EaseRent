@@ -429,7 +429,7 @@ export default function TenantDashboard({ session, profile }) {
               : property.status === 'occupied'
                 ? 'Occupied'
                 : 'Not Available'}
-          </span>                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-gradient-to-r from-pink-500 to-red-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg><span className="hidden sm:inline">Tenants Favorite</span></span>)}
+          </span>                {stats.favorite_count >= 1 && (<span className="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[9px] md:text-[10px] font-bold rounded sm:rounded-md shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5 sm:gap-1"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 md:w-3 md:h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>{stats.favorite_count}</span>)}
         </div>
         <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
           <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
@@ -458,8 +458,8 @@ export default function TenantDashboard({ session, profile }) {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mb-4"></div>
-        <p className="text-gray-500 font-medium">Loading Properties...</p>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+        <p className="text-gray-500 font-medium">Loading Amazing Properties...</p>
       </div>
     )
   }

@@ -1021,7 +1021,7 @@ export default function PaymentsPage() {
           </div>
           {loading ? (
             <div className="p-8 flex justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
             </div>
           ) : paymentRequests.length === 0 ? (
             <div className="p-12 text-center">

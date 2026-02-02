@@ -8,6 +8,7 @@ export default function GetDirections() {
   const mapRef = useRef(null);      
   const mapInstance = useRef(null); 
   const userMarker = useRef(null);
+  const userArrow = useRef(null);
   const destMarker = useRef(null);
   const routeLines = useRef([]); 
   const isInitializing = useRef(false);
@@ -24,6 +25,7 @@ export default function GetDirections() {
   const [isRouting, setIsRouting] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isPanelHidden, setIsPanelHidden] = useState(false);
 
   // Autocomplete State
   const [suggestions, setSuggestions] = useState([]);
@@ -233,8 +235,8 @@ export default function GetDirections() {
     // Only update if we are actively navigating, have locations, and the map is ready
     if (isNavigating && userLocation && destLocation && mapInstance.current) {
         const now = Date.now();
-        // Throttle updates to every 4 seconds to avoid API bans
-        if (now - lastRouteUpdate.current > 4000) {
+        // Throttle updates to every 500ms for near real-time response
+        if (now - lastRouteUpdate.current > 500) {
             lastRouteUpdate.current = now;
             import('leaflet').then(L => {
                 // Pass true to preserveMode to keep current vehicle selection and silence status
@@ -256,7 +258,7 @@ export default function GetDirections() {
           setSuggestions(data);
           setShowSuggestions(true);
         } catch (error) { console.error("Autocomplete Error:", error); }
-      }, 500);
+      }, 250);
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
@@ -281,12 +283,48 @@ export default function GetDirections() {
     }
   };
 
-  const updateUserMarker = (lat, lng, L) => {
+  const updateUserMarker = (lat, lng, L, heading = null) => {
     if (userMarker.current) userMarker.current.remove();
-    const marker = L.circleMarker([lat, lng], {
-        radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
-    }).addTo(mapInstance.current);
+    if (userArrow.current) userArrow.current.remove();
+    
+    // Calculate bearing to destination for direction
+    let bearingDeg = 0;
+    if (destLocation) {
+      bearingDeg = calculateBearing(lat, lng, destLocation.lat, destLocation.lng);
+    }
+    // Use device heading if available, otherwise use bearing to destination
+    if (heading !== null && !isNaN(heading)) {
+      bearingDeg = heading;
+    }
+    
+    // Create a simple navigation marker with Tailwind classes
+    const navigationIcon = L.divIcon({
+      className: '',
+      html: `
+        <div class="relative w-12 h-12">
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500/20 rounded-full animate-ping"></div>
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-600 border-[3px] border-white rounded-full shadow-lg z-10"></div>
+          <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" style="transform: translate(-50%, -50%) rotate(${bearingDeg}deg);">
+            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[14px] border-b-blue-600 -mt-6"></div>
+          </div>
+        </div>
+      `,
+      iconSize: [48, 48],
+      iconAnchor: [24, 24]
+    });
+    
+    const marker = L.marker([lat, lng], { icon: navigationIcon }).addTo(mapInstance.current);
     userMarker.current = marker;
+  };
+
+  // Calculate bearing between two points
+  const calculateBearing = (lat1, lng1, lat2, lng2) => {
+    const toRad = (deg) => deg * Math.PI / 180;
+    const toDeg = (rad) => rad * 180 / Math.PI;
+    const dLng = toRad(lng2 - lng1);
+    const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
   };
 
   // --- User Location & Navigation Logic ---
@@ -324,6 +362,12 @@ export default function GetDirections() {
     );
   };
 
+  // Helper to offset user position to bottom of screen so they see more road ahead
+  const getOffsetCenter = (lat, lng, offsetY = 0.0008) => {
+    // Offset north so user appears in lower part of screen
+    return [lat + offsetY, lng];
+  };
+
   const toggleNavigation = () => {
     if (isNavigating) {
         // Stop Tracking
@@ -333,6 +377,14 @@ export default function GetDirections() {
             watchId.current = null;
         }
         setStatusMsg('Navigation Stopped');
+        
+        // Zoom out to see full route
+        if (mapInstance.current && userLocation && destLocation) {
+            import('leaflet').then((L) => {
+                const bounds = L.latLngBounds([userLocation.lat, userLocation.lng], [destLocation.lat, destLocation.lng]);
+                mapInstance.current.fitBounds(bounds, { padding: [50, 150] });
+            });
+        }
     } else {
         // Start Tracking
         if (!userLocation) {
@@ -345,22 +397,26 @@ export default function GetDirections() {
         
         setIsNavigating(true);
         setStatusMsg('Live Navigation Active');
+        
+        // Zoom in close with user at bottom of screen
+        if (mapInstance.current && userLocation) {
+            const offsetCenter = getOffsetCenter(userLocation.lat, userLocation.lng);
+            mapInstance.current.setView(offsetCenter, 18, { animate: true });
+        }
 
         watchId.current = navigator.geolocation.watchPosition(
             (position) => {
                 const lat = position.coords.latitude;
                 const lng = position.coords.longitude;
+                const heading = position.coords.heading;
                 setUserLocation({ lat, lng });
 
                 if (mapInstance.current) {
                     import('leaflet').then((L) => {
-                        if (userMarker.current) userMarker.current.remove();
-                        const marker = L.circleMarker([lat, lng], {
-                            radius: 10, fillColor: "#2563eb", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
-                        }).addTo(mapInstance.current);
-                        userMarker.current = marker;
-                        // Keep user centered
-                        mapInstance.current.setView([lat, lng]); 
+                        updateUserMarker(lat, lng, L, heading);
+                        // Position user at bottom of screen so they see road ahead
+                        const offsetCenter = getOffsetCenter(lat, lng);
+                        mapInstance.current.setView(offsetCenter, 18, { animate: true, duration: 0.3 }); 
                     });
                 }
             },
@@ -398,23 +454,36 @@ export default function GetDirections() {
         </div>
 
         {/* FLOATING BOTTOM PANEL */}
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[95%] max-w-md z-[1000]">
-           <div className="bg-white/95 backdrop-blur-md shadow-2xl rounded-3xl p-5 border border-gray-100 flex flex-col gap-4">
-              <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto mb-1"></div>
+        <div className={`absolute left-1/2 transform -translate-x-1/2 w-[95%] max-w-md z-[1000] transition-all duration-300 ${isPanelHidden ? 'bottom-4' : 'bottom-4'}`}>
+           
+           {/* Toggle Button */}
+           <button 
+             onClick={() => setIsPanelHidden(!isPanelHidden)}
+             className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-white shadow-lg rounded-full p-2 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer z-10"
+           >
+             <svg className={`w-5 h-5 text-gray-600 transition-transform duration-300 ${isPanelHidden ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+             </svg>
+           </button>
+           
+           {/* Panel Content */}
+           <div className={`bg-white shadow-2xl rounded-2xl border border-gray-200 overflow-hidden transition-all duration-300 ${isPanelHidden ? 'max-h-0 p-0 opacity-0' : 'max-h-[500px] p-4 opacity-100'}`}>
+              <div className="flex flex-col gap-3">
               
               {/* STATUS BAR */}
               {isNavigating && (
-                 <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-xs font-bold text-center border border-blue-100 mb-2 animate-pulse">
-                    Live Tracking Active • Following you
+                 <div className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2 shadow-lg">
+                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                    Live Navigation Active
                  </div>
               )}
 
               {/* INPUTS ROW */}
               <div className="flex flex-col gap-2 relative">
-                 <div className="flex items-center bg-gray-100 rounded-xl px-3 py-2 relative z-50">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                 <div className="flex items-center bg-gray-50 rounded-xl px-3 py-2.5 relative z-50 border border-gray-200">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full mr-3 shadow-sm"></div>
                     <input className="flex-1 bg-transparent text-sm font-medium outline-none placeholder-gray-400" placeholder="Your Location" value={fromAddress} onChange={handleAddressChange} onFocus={() => { if(suggestions.length > 0) setShowSuggestions(true); }} />
-                    <button onClick={handleShowMyLocation} className="p-1.5 bg-white rounded-lg shadow-sm text-blue-600 hover:scale-105 transition-transform cursor-pointer" title="Locate Me">
+                    <button onClick={handleShowMyLocation} className="p-2 bg-blue-500 rounded-lg text-white hover:bg-blue-600 transition-colors cursor-pointer shadow-sm" title="Locate Me">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     </button>
                     {showSuggestions && suggestions.length > 0 && (
@@ -428,36 +497,36 @@ export default function GetDirections() {
                     )}
                  </div>
                  
-                 <div className="pl-4 -my-1 z-0"><div className="w-0.5 h-3 bg-gray-300"></div></div>
+                 <div className="pl-5 -my-0.5 z-0"><div className="w-0.5 h-4 bg-gray-300 rounded-full"></div></div>
 
-                 <div className="flex items-center bg-gray-100 rounded-xl px-3 py-2 z-0">
-                    <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
-                    <input className="flex-1 bg-transparent text-sm font-medium outline-none text-gray-500 cursor-not-allowed" placeholder="Destination" value={toAddress || "Property Location"} readOnly />
+                 <div className="flex items-center bg-gray-50 rounded-xl px-3 py-2.5 z-0 border border-gray-200">
+                    <div className="w-3 h-3 bg-red-500 rounded-full mr-3 shadow-sm"></div>
+                    <input className="flex-1 bg-transparent text-sm font-medium outline-none text-gray-600" placeholder="Destination" value={toAddress || "Property Location"} readOnly />
                  </div>
               </div>
 
               {/* ROUTE STATS & LIVE NAVIGATION */}
               {routesData.driving.length > 0 || routesData.bike.length > 0 || routesData.foot.length > 0 ? (
                   /* --- GRID LAYOUT (4 COLS) --- */
-                  <div className="grid grid-cols-4 gap-2 mt-2">
+                  <div className="grid grid-cols-4 gap-2">
                       
                       {/* 1. Driving */}
-                      <button onClick={() => handleModeClick('driving')} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${selectedMode === 'driving' ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+                      <button onClick={() => handleModeClick('driving')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'driving' ? 'bg-gray-900 text-white border-gray-900 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
                          <span className="text-[10px] font-bold uppercase">{routesData.driving.length > 1 ? `Car (${routesData.driving.length})` : 'Car'}</span>
                          <span className="text-xs font-bold mt-0.5">{routesData.driving[0] ? formatDuration(routesData.driving[0].duration) : '--'}</span>
                       </button>
 
                       {/* 2. Bike */}
-                      <button onClick={() => handleModeClick('bike')} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${selectedMode === 'bike' ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.75 18.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zm0 0h1.5m-1.5 0l-5.25-5.25h-3m3 0l-3-3m0 0H6.75m1.5 0l3 3m0 0l-1.5 1.5m3-3L15 8.25m0 0l3 3m0 0l1.5-1.5M15 8.25V6" /></svg>
+                      <button onClick={() => handleModeClick('bike')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'bike' ? 'bg-violet-600 text-white border-violet-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm5.8-10l2.4-2.4.8.8c1.3 1.3 3 2.1 5.1 2.1V9c-1.5 0-2.7-.6-3.6-1.5l-1.9-1.9c-.5-.4-1-.6-1.6-.6s-1.1.2-1.4.6L7.8 8.4c-.4.4-.6.9-.6 1.4 0 .6.2 1.1.6 1.4L11 14v5h2v-6.2l-2.2-2.3zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z"/></svg>
                          <span className="text-[10px] font-bold uppercase">{routesData.bike.length > 1 ? `Bike (${routesData.bike.length})` : 'Bike'}</span>
                          <span className="text-xs font-bold mt-0.5">{routesData.bike[0] ? formatDuration(routesData.bike[0].duration) : '--'}</span>
                       </button>
 
                       {/* 3. Walk */}
-                      <button onClick={() => handleModeClick('foot')} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${selectedMode === 'foot' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-gray-400 border-gray-100'}`}>
-                         <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 4.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 19.5l-3-6-3 6m3-13.5V12m0 0l3.75 3.75M12 12l-3.75 3.75" /></svg>
+                      <button onClick={() => handleModeClick('foot')} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${selectedMode === 'foot' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                         <svg className="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 24 24"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>
                          <span className="text-[10px] font-bold uppercase">{routesData.foot.length > 1 ? `Walk (${routesData.foot.length})` : 'Walk'}</span>
                          <span className="text-xs font-bold mt-0.5">{routesData.foot[0] ? formatDuration(routesData.foot[0].duration) : '--'}</span>
                       </button>
@@ -465,7 +534,7 @@ export default function GetDirections() {
                       {/* 4. START NAVIGATION (Beside the others) */}
                       <button 
                         onClick={toggleNavigation}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer ${isNavigating ? 'bg-red-600 text-white border-red-600 shadow-md animate-pulse' : 'bg-blue-600 text-white border-blue-600 shadow-md hover:bg-blue-700'}`}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all cursor-pointer ${isNavigating ? 'bg-red-500 text-white border-red-500 shadow-lg scale-105' : 'bg-blue-600 text-white border-blue-600 shadow-lg hover:bg-blue-700 hover:scale-105'}`}
                       >
                          {isNavigating ? (
                             <>
@@ -483,10 +552,18 @@ export default function GetDirections() {
                       </button>
                   </div>
               ) : (
-                <div className="text-center py-4">
-                    {statusMsg ? <p className="text-sm font-medium text-blue-600 animate-pulse">{statusMsg}</p> : <p className="text-sm text-gray-400">Tap the location icon to start.</p>}
+                <div className="text-center py-3">
+                    {statusMsg ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-200 border-t-blue-600"></div>
+                        <p className="text-sm font-medium text-gray-600">{statusMsg}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">Tap the location button to start</p>
+                    )}
                 </div>
               )}
+              </div>
            </div>
         </div>
       </div>

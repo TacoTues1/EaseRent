@@ -163,7 +163,7 @@ export default function Navbar() {
   async function loadProfile(userId, retries = 3) {
     try {
       // 1. Try to fetch the profile
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+      const { data } = await supabase.from('profiles').select('*, avatar_url').eq('id', userId).maybeSingle()
 
       if (data) {
         setProfile(data)
@@ -580,9 +580,13 @@ export default function Navbar() {
                 {/* Desktop User Dropdown */}
                 <div className="hidden md:block relative">
                   <button onClick={() => { setShowDropdown(!showDropdown); setShowNotifDropdown(false) }} className="flex items-center gap-3 pl-2 pr-3 py-1.5 bg-white border border-gray-200 hover:border-black rounded-full shadow-sm hover:shadow transition-all group cursor-pointer">
-                    <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm group-hover:bg-gray-800 transition-colors">
-                      {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
-                    </div>
+                    {profile?.avatar_url ? (
+                      <img src={profile.avatar_url} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+                    ) : (
+                      <div className="w-8 h-8 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm group-hover:bg-gray-800 transition-colors">
+                        {profile?.first_name?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                    )}
                     <span className="text-sm font-medium text-gray-700 group-hover:text-black hidden lg:block">{profile?.first_name}</span>
                     <svg className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

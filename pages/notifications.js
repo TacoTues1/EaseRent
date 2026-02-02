@@ -177,7 +177,7 @@ export default function NotificationsPage() {
 
   if (!session) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+      <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black"></div>
     </div>
   )
 
@@ -209,7 +209,7 @@ export default function NotificationsPage() {
         <div className="flex flex-col gap-3">
           {loading ? (
             <div className="flex justify-center py-10">
-               <div className="inline-block animate-spin h-6 w-6 border-b-2 border-black"></div>
+               <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
             </div>
           ) : notifications.length === 0 ? (
             <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-xl">

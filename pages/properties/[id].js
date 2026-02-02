@@ -114,7 +114,7 @@ export default function PropertyDetail() {
       if (propertyData.landlord) {
         const { data: landlordData, error: landlordError } = await supabase
           .from('profiles')
-          .select('*')
+          .select('*, avatar_url')
           .eq('id', propertyData.landlord)
           .maybeSingle()
 
@@ -669,9 +669,13 @@ export default function PropertyDetail() {
             {/* Booking Action Card (Updated with Message Field) */}
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
               <div className="flex items-center gap-3 mb-5 pb-5 border-b border-gray-50">
-                <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-sm">
-                  {landlordProfile?.first_name ? landlordProfile.first_name.charAt(0).toUpperCase() : 'L'}
-                </div>
+                {landlordProfile?.avatar_url ? (
+                  <img src={landlordProfile.avatar_url} alt="Landlord" className="w-10 h-10 rounded-full object-cover border-2 border-gray-100" />
+                ) : (
+                  <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-sm">
+                    {landlordProfile?.first_name ? landlordProfile.first_name.charAt(0).toUpperCase() : 'L'}
+                  </div>
+                )}
                 <div className="flex-1 overflow-hidden">
                   <p className="font-bold text-gray-900 text-sm truncate">{landlordProfile?.first_name ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Property Owner'}</p>
                   <p className="text-xs text-gray-500">Posted By</p>

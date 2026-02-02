@@ -83,19 +83,15 @@ export default function AllProperties() {
     }
   }, [router.isReady, router.query])
 
+  // Combined search/filter effect with debounce to prevent double loading
   useEffect(() => {
-    if (router.isReady) {
-      loadProperties()
-    }
-  }, [sortBy, router.isReady])
-
-  // Real-time Search Effect
-  useEffect(() => {
+    if (!router.isReady) return
+    
     const delayDebounceFn = setTimeout(() => {
       loadProperties()
     }, 300)
     return () => clearTimeout(delayDebounceFn)
-  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, propertyStats])
+  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, sortBy, router.isReady, propertyStats])
 
   // Disable body scroll when mobile filters are open
   useEffect(() => {
@@ -250,6 +246,12 @@ export default function AllProperties() {
         const stats = propertyStats[property.id] || { favorite_count: 0 }
         return stats.favorite_count >= 1 
       })
+       // Sort by favorite count (most favorites first)
+       filteredData = filteredData.sort((a, b) => {
+         const statsA = propertyStats[a.id] || { favorite_count: 0 }
+         const statsB = propertyStats[b.id] || { favorite_count: 0 }
+         return statsB.favorite_count - statsA.favorite_count
+       })
     }
 
     setProperties(filteredData)
@@ -451,7 +453,7 @@ export default function AllProperties() {
     const isSelectedForCompare = comparisonList.some(p => p.id === property.id)
     const isFavorite = favorites.includes(property.id)
     const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
-    const isTenantsFavorite = stats.favorite_count >= 3 
+    const isTenantsFavorite = stats.favorite_count >= 1 
 
     return (
         <div 
@@ -543,8 +545,8 @@ export default function AllProperties() {
               {/* Tenants Favorite Badge */}
               {isTenantsFavorite && (
                  <span className="px-2 py-0.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-wider rounded-md shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-1">
-                   <svg className="w-3 h-3 fill-current hidden sm:block" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                   Favorite
+                   <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                   {stats.favorite_count}
                  </span>
               )}
             </div>
@@ -708,7 +710,7 @@ export default function AllProperties() {
 
             {loading ? (
               <div className="text-center py-20">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-black"></div>
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mx-auto"></div>
               </div>
             ) : properties.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">

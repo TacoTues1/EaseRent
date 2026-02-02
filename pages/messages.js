@@ -180,7 +180,7 @@ export default function Messages() {
   async function loadProfile(userId) {
     const { data } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, avatar_url')
       .eq('id', userId)
       .single()
     
@@ -218,7 +218,7 @@ export default function Messages() {
 
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
-        .select('id, first_name, middle_name, last_name, role')
+        .select('id, first_name, middle_name, last_name, role, avatar_url')
         .in('id', Array.from(userIds))
 
       if (profileError) {
@@ -264,7 +264,7 @@ export default function Messages() {
         // We fetch all users who have the role 'tenant'
         const { data: tenants, error } = await supabase
           .from('profiles')
-          .select('id, first_name, middle_name, last_name, role, phone')
+          .select('id, first_name, middle_name, last_name, role, phone, avatar_url')
           .eq('role', 'tenant') // Filter for tenants only
           .neq('id', session.user.id)
           .order('first_name')
@@ -297,7 +297,7 @@ export default function Messages() {
           // Step C: Fetch profile details for those specific landlords
           const { data: landlords, error: profileError } = await supabase
             .from('profiles')
-            .select('id, first_name, middle_name, last_name, role, phone')
+            .select('id, first_name, middle_name, last_name, role, phone, avatar_url')
             .in('id', landlordIds)
 
           if (profileError) throw profileError
@@ -845,7 +845,7 @@ export default function Messages() {
   if (!session || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="inline-block animate-spin h-12 w-12 border-b-2 border-black"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black"></div>
       </div>
     )
   }
@@ -915,7 +915,7 @@ export default function Messages() {
 
               {loading ? (
                 <div className="flex items-center justify-center p-8">
-                  <div className="inline-block animate-spin h-6 w-6 border-2 border-gray-300 border-t-black rounded-full"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
                 </div>
               ) : showNewConversation ? (
                 <div className="flex-1 overflow-y-auto">
@@ -923,8 +923,22 @@ export default function Messages() {
                     <div className="p-8 text-center"><p className="text-sm text-gray-500">No users found.</p></div>
                   ) : (
                     filteredUsers.map(user => (
-                      <div key={user.id} onClick={() => startNewConversation(user)} className="p-4 border-b border-gray-50 cursor-pointer">
-                        <div className="flex items-center justify-between">
+                      <div key={user.id} onClick={() => startNewConversation(user)} className="p-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          {/* Profile Circle */}
+                          <div className="flex-shrink-0">
+                            {user.avatar_url ? (
+                              <img 
+                                src={user.avatar_url} 
+                                alt={`${user.first_name} ${user.last_name}`}
+                                className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
+                                {(user.first_name?.[0] || '?').toUpperCase()}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-bold text-sm text-black truncate">{user.first_name} {user.last_name}</div>
                             {user.phone && <div className="text-xs text-gray-500 mt-0.5 truncate">{user.phone}</div>}
@@ -961,18 +975,32 @@ export default function Messages() {
                             : 'bg-white text-black'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0 pr-3">
+                        <div className="flex items-center gap-3">
+                          {/* Profile Circle */}
+                          <div className="flex-shrink-0">
+                            {conv.other_user?.avatar_url ? (
+                              <img 
+                                src={conv.other_user.avatar_url} 
+                                alt={otherPerson}
+                                className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
+                              />
+                            ) : (
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${isSelected ? 'bg-white text-black' : 'bg-gray-100 text-gray-600'}`}>
+                                {(conv.other_user?.first_name?.[0] || '?').toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
                             <div className={`text-sm truncate ${hasUnread ? 'font-bold' : 'font-medium'}`}>
                               {otherPerson}
                             </div>
-                            <div className={`text-xs mt-1 truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <div className={`text-xs mt-0.5 truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
                               {conv.property?.title || (conv.other_user?.role === 'landlord' ? 'Landlord' : 'Tenant')}
                             </div>
                           </div>
                           {hasUnread && (
                             <div className="flex-shrink-0">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${isSelected ? 'border-white text-white' : 'border-black text-black'}`}>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-white text-black' : 'bg-black text-white'}`}>
                                 {unreadCount}
                               </span>
                             </div>
@@ -998,6 +1026,20 @@ export default function Messages() {
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                       </button>
+                      {/* Profile Circle in Chat Header */}
+                      <div className="flex-shrink-0">
+                        {selectedConversation.other_user?.avatar_url ? (
+                          <img 
+                            src={selectedConversation.other_user.avatar_url} 
+                            alt="Profile"
+                            className="w-10 h-10 rounded-full object-cover border-2 border-gray-100"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
+                            {(selectedConversation.other_user?.first_name?.[0] || '?').toUpperCase()}
+                          </div>
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <div className="font-bold text-black text-sm truncate">
                           {selectedConversation.other_user ? `${selectedConversation.other_user.first_name || ''} ${selectedConversation.other_user.last_name || ''}`.trim() : 'Unknown User'}
@@ -1030,15 +1072,36 @@ export default function Messages() {
                       const myMessages = messages.filter(m => m.sender_id === session.user.id)
                       const latestMyMessage = myMessages.length > 0 ? myMessages[myMessages.length - 1] : null
                       const isLatestFromMe = latestMyMessage && msg.id === latestMyMessage.id
+
+                      // Get avatar for the message sender
+                      const senderAvatar = isOwn ? profile?.avatar_url : selectedConversation?.other_user?.avatar_url
+                      const senderInitial = isOwn 
+                        ? (profile?.first_name?.[0] || '?').toUpperCase()
+                        : (selectedConversation?.other_user?.first_name?.[0] || '?').toUpperCase()
                       
                       return (
-                        <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+                        <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                           <div className={`flex gap-2 max-w-[75%] sm:max-w-[60%] ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
                             
-                            <div className={`flex flex-col rounded-2xl p-3 shadow-sm text-sm ${
+                            {/* Profile Circle for Messages */}
+                            <div className="flex-shrink-0 self-end mb-1">
+                              {senderAvatar ? (
+                                <img 
+                                  src={senderAvatar} 
+                                  alt="Profile"
+                                  className="w-7 h-7 rounded-full object-cover border border-gray-200"
+                                />
+                              ) : (
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${isOwn ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                                  {senderInitial}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className={`flex flex-col rounded-2xl p-3 text-sm transition-all duration-200 ${
                                 isOwn 
-                                  ? 'bg-black text-white rounded-tr-sm' 
-                                  : 'bg-gray-100 text-black rounded-tl-sm'
+                                  ? 'bg-gray-900 text-white rounded-tr-sm shadow-md hover:shadow-lg hover:bg-gray-800' 
+                                  : 'bg-gray-100 text-black rounded-tl-sm shadow-sm'
                               }`}>
                               
                               {msg.message && (

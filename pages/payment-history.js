@@ -122,7 +122,7 @@ export default function PaymentHistoryPage() {
   if (!session) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black"></div>
       </div>
     )
   }
@@ -204,7 +204,7 @@ export default function PaymentHistoryPage() {
           
           {loading ? (
             <div className="p-8 flex justify-center">
-              <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
             </div>
           ) : payments.length === 0 ? (
             <div className="p-12 text-center">

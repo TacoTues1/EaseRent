@@ -22,6 +22,9 @@ export default function Settings() {
   const [otp, setOtp] = useState('')
   const [otpLoading, setOtpLoading] = useState(false)
   const [verifiedPhone, setVerifiedPhone] = useState('')  // Track the phone number that was verified
+  const [avatarUrl, setAvatarUrl] = useState('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -66,7 +69,7 @@ export default function Settings() {
     setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, avatar_url')
       .eq('id', userId)
       .maybeSingle()
     
@@ -79,6 +82,7 @@ export default function Settings() {
       // Ensure date format is YYYY-MM-DD in case DB returns a timestamp
       setBirthday(data.birthday ? data.birthday.split('T')[0] : '') 
       setGender(data.gender || '')
+      setAvatarUrl(data.avatar_url || '')
       
       // Track verified phone from profile
       if (data.phone_verified && data.phone) {
@@ -86,6 +90,88 @@ export default function Settings() {
       }
     }
     setLoading(false)
+  }
+
+  // Handle avatar upload
+  async function handleAvatarUpload(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      showToast.error('Please select an image file', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      return
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      showToast.error('Image must be less than 2MB', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      return
+    }
+
+    setUploadingAvatar(true)
+
+    try {
+      // Create unique file name
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${session.user.id}/avatar-${Date.now()}.${fileExt}`
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      // Update profile with new avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', session.user.id)
+
+      if (updateError) throw updateError
+
+      setAvatarUrl(publicUrl)
+      showToast.success('Profile picture updated!', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    } catch (error) {
+      console.error('Error uploading avatar:', error)
+      showToast.error('Failed to upload profile picture', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   // Check if the input phone number matches the verified phone
@@ -295,7 +381,7 @@ export default function Settings() {
   if (!session || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="inline-block animate-spin h-8 w-8 border-b-2 border-black"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black"></div>
       </div>
     )
   }
@@ -311,6 +397,54 @@ export default function Settings() {
           </div>
           
           <form onSubmit={handleUpdateProfile} className="p-6">
+            {/* Profile Picture Section */}
+            <div className="mb-8 flex flex-col items-center">
+              <div className="relative group">
+                {/* Profile Circle */}
+                <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-gray-100 shadow-lg">
+                  {avatarUrl ? (
+                    <img 
+                      src={avatarUrl} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center text-3xl font-bold text-gray-400">
+                      {(firstName?.[0] || session.user.email?.[0] || '?').toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Upload Overlay */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="absolute inset-0 w-28 h-28 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                >
+                  {uploadingAvatar ? (
+                    <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
+                </button>
+                
+                {/* Hidden File Input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-3">Click to change profile picture</p>
+              <p className="text-[10px] text-gray-400">Max 2MB • JPG, PNG, GIF</p>
+            </div>
+
             {/* Success/Error Message */}
             {message.text && (
               <div className={`mb-6 p-4 text-sm font-bold border-2 border-black ${
