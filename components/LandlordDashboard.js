@@ -17,6 +17,12 @@ export default function LandlordDashboard({ session, profile }) {
   const [acceptedApplications, setAcceptedApplications] = useState([])
   const [penaltyDetails, setPenaltyDetails] = useState('')
   const [startDate, setStartDate] = useState('') // NEW: Start Date State
+  const [endDate, setEndDate] = useState('') // NEW: Contract End Date State
+  const [wifiDueDay, setWifiDueDay] = useState('') // NEW: Wifi Due Day
+  const [electricityDueDay, setElectricityDueDay] = useState('') // NEW: Electricity Due Day
+
+  const [contractFile, setContractFile] = useState(null) // Contract PDF file
+  const [uploadingContract, setUploadingContract] = useState(false)
 
   // Confirmation Modal State
   const [confirmationModal, setConfirmationModal] = useState({
@@ -31,6 +37,14 @@ export default function LandlordDashboard({ session, profile }) {
     occupancy: null
   })
 
+  // Renewal Confirmation Modal State
+  const [renewalModal, setRenewalModal] = useState({
+    isOpen: false,
+    occupancy: null,
+    action: null // 'approve' or 'reject'
+  })
+  const [renewalSigningDate, setRenewalSigningDate] = useState('')
+
   // EMAIL NOTIFICATION MODAL STATE
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [allTenants, setAllTenants] = useState([])
@@ -44,6 +58,7 @@ export default function LandlordDashboard({ session, profile }) {
   // Landlord data states
   const [occupancies, setOccupancies] = useState([])
   const [pendingEndRequests, setPendingEndRequests] = useState([])
+  const [pendingRenewalRequests, setPendingRenewalRequests] = useState([])
   const [dashboardTasks, setDashboardTasks] = useState({ maintenance: [], payments: [] })
 
   const router = useRouter()
@@ -71,8 +86,10 @@ export default function LandlordDashboard({ session, profile }) {
       loadProperties()
       loadOccupancies()
       loadPendingEndRequests()
+      loadPendingRenewalRequests()
       loadDashboardTasks()
     }
+    // Check for reminders (only sends at 8:00 AM, once per day)
     fetch('/api/manual-reminders').catch(err => console.error("Reminder check failed", err));
   }, [profile])
 
@@ -131,6 +148,132 @@ export default function LandlordDashboard({ session, profile }) {
     setPendingEndRequests(data || [])
   }
 
+  async function loadPendingRenewalRequests() {
+    const { data } = await supabase
+      .from('tenant_occupancies')
+      .select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title, address, price)`)
+      .eq('landlord_id', session.user.id)
+      .eq('renewal_requested', true)
+      .eq('renewal_status', 'pending')
+    setPendingRenewalRequests(data || [])
+  }
+
+  // Open renewal confirmation modal
+  function openRenewalModal(occupancy, action) {
+    setRenewalModal({ isOpen: true, occupancy, action })
+    // Default signing date to 3 days from now
+    const defaultDate = new Date()
+    defaultDate.setDate(defaultDate.getDate() + 3)
+    setRenewalSigningDate(defaultDate.toISOString().split('T')[0])
+  }
+
+  // Close renewal modal
+  function closeRenewalModal() {
+    setRenewalModal({ isOpen: false, occupancy: null, action: null })
+    setRenewalSigningDate('')
+  }
+
+  // Process renewal after modal confirmation
+  async function confirmRenewalRequest() {
+    const { occupancy, action } = renewalModal
+    if (!occupancy) return
+
+    const approved = action === 'approve'
+
+    // For approval, require signing date
+    if (approved && !renewalSigningDate) {
+      showToast.error('Please select a contract signing date', { duration: 4000, transition: "bounceIn" })
+      return
+    }
+
+    const newEndDate = new Date(occupancy.contract_end_date)
+    newEndDate.setFullYear(newEndDate.getFullYear() + 1) // Extend by 1 year
+
+    const updateData = {
+      renewal_status: approved ? 'approved' : 'rejected',
+      renewal_requested: false
+    }
+
+    if (approved) {
+      updateData.contract_end_date = newEndDate.toISOString().split('T')[0]
+      updateData.renewal_signing_date = renewalSigningDate // Store signing date
+    }
+
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update(updateData)
+      .eq('id', occupancy.id)
+
+    if (error) {
+      showToast.error('Failed to process renewal request')
+      return
+    }
+
+    // Notify tenant
+    let message = ''
+    if (approved) {
+      message = `Your contract renewal for "${occupancy.property?.title}" has been approved! New contract end date: ${newEndDate.toLocaleDateString()}. Please come for contract signing on ${new Date(renewalSigningDate).toLocaleDateString()}.`
+    } else {
+      message = `Your contract renewal request for "${occupancy.property?.title}" was not approved. Please contact your landlord for more details.`
+    }
+
+    await createNotification({
+      recipient: occupancy.tenant_id,
+      actor: session.user.id,
+      type: approved ? 'contract_renewal_approved' : 'contract_renewal_rejected',
+      message: message,
+      link: '/dashboard'
+    })
+
+    // --- AUTO-SEND RENEWAL PAYMENT BILL (Rent + Advance) ---
+    if (approved) {
+      const rentAmount = occupancy.property?.price || 0
+      const advanceAmount = rentAmount // Advance equals one month's rent
+      const dueDate = new Date(renewalSigningDate) // Due on signing date
+
+      try {
+        const { error: billError } = await supabase.from('payment_requests').insert({
+          landlord: session.user.id,
+          tenant: occupancy.tenant_id,
+          property_id: occupancy.property_id,
+          occupancy_id: occupancy.id, // Link to occupancy so it shows in TenantDashboard
+          rent_amount: rentAmount,
+          advance_amount: advanceAmount, // Renewal only
+          water_bill: 0,
+          electrical_bill: 0,
+          other_bills: 0,
+          bills_description: 'Contract Renewal Payment (Rent + Advance)',
+          due_date: dueDate.toISOString(),
+          status: 'pending',
+          is_renewal_payment: true // Mark as renewal payment
+        });
+
+        if (billError) {
+          console.error('Renewal bill creation error:', billError);
+        } else {
+          // Notify tenant about the bill
+          await createNotification({
+            recipient: occupancy.tenant_id,
+            actor: session.user.id,
+            type: 'payment_request',
+            message: `Your renewal payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(advanceAmount).toLocaleString()} (Advance) = ₱${Number(rentAmount + advanceAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString()}`,
+            link: '/payments'
+          });
+        }
+      } catch (err) {
+        console.error('Renewal bill exception:', err);
+      }
+
+      showToast.success('Renewal approved! Payment bill sent automatically.', { duration: 4000, transition: "bounceIn" })
+    } else {
+      showToast.success('Renewal rejected', { duration: 4000, transition: "bounceIn" })
+    }
+
+    closeRenewalModal()
+    loadPendingRenewalRequests()
+    loadOccupancies()
+  }
+
   async function loadOccupancies() {
     const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title)`).eq('landlord_id', session.user.id).eq('status', 'active')
     setOccupancies(data || [])
@@ -148,7 +291,7 @@ export default function LandlordDashboard({ session, profile }) {
       `)
       .eq('landlord_id', session.user.id)
       .eq('status', 'active')
-    
+
     // Format tenants with property info
     const formattedTenants = (data || []).map(occ => ({
       id: occ.tenant_id,
@@ -157,7 +300,7 @@ export default function LandlordDashboard({ session, profile }) {
       phone_verified: occ.tenant?.phone_verified,
       property: occ.property?.title || 'Unknown Property'
     }))
-    
+
     setAllTenants(formattedTenants)
   }
 
@@ -171,8 +314,8 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   function toggleTenantSelection(tenantId) {
-    setSelectedTenants(prev => 
-      prev.includes(tenantId) 
+    setSelectedTenants(prev =>
+      prev.includes(tenantId)
         ? prev.filter(id => id !== tenantId)
         : [...prev, tenantId]
     )
@@ -280,6 +423,13 @@ export default function LandlordDashboard({ session, profile }) {
     loadAcceptedApplicationsForProperty(property.id);
     setPenaltyDetails('');
     setStartDate(new Date().toISOString().split('T')[0]); // Default to today
+    // Default end date to 1 year from now
+    const defaultEndDate = new Date();
+    defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
+    setEndDate(defaultEndDate.toISOString().split('T')[0]);
+    setWifiDueDay(''); // Reset
+    setElectricityDueDay(''); // Reset
+    setContractFile(null); // Reset contract file
     setShowAssignModal(true)
   }
 
@@ -294,14 +444,64 @@ export default function LandlordDashboard({ session, profile }) {
       return
     }
 
-    // UPDATED: Use selected startDate
-    const { error } = await supabase.from('tenant_occupancies').insert({
+    if (!endDate) {
+      showToast.error("Please select a contract end date", { duration: 4000, transition: "bounceIn" });
+      return
+    }
+
+    if (!contractFile) {
+      showToast.error("Please upload a contract PDF file", { duration: 4000, transition: "bounceIn" });
+      return
+    }
+
+    // Security deposit equals one month's rent
+    const securityDepositAmount = selectedProperty.price || 0;
+
+    // Upload contract PDF
+    setUploadingContract(true);
+    let contractUrl = null;
+    try {
+      const fileExt = contractFile.name.split('.').pop();
+      const fileName = `${selectedProperty.id}_${candidate.tenant}_${Date.now()}.${fileExt}`;
+      const filePath = `contracts/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('contracts')
+        .upload(filePath, contractFile, { cacheControl: '3600', upsert: false });
+
+      if (uploadError) {
+        console.error('Contract upload error:', uploadError);
+        showToast.error('Failed to upload contract. Please try again.', { duration: 4000, transition: "bounceIn" });
+        setUploadingContract(false);
+        return;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath);
+      contractUrl = urlData?.publicUrl;
+    } catch (err) {
+      console.error('Contract upload exception:', err);
+      showToast.error('Failed to upload contract. Please try again.', { duration: 4000, transition: "bounceIn" });
+      setUploadingContract(false);
+      return;
+    }
+    setUploadingContract(false);
+
+    // UPDATED: Use selected startDate, endDate, security deposit, and contract URL
+    // Note: electricity_due_day is not stored - electricity reminders are always sent for 1st week of month
+    const { data: newOccupancy, error } = await supabase.from('tenant_occupancies').insert({
       property_id: selectedProperty.id,
       tenant_id: candidate.tenant,
       landlord_id: session.user.id,
       status: 'active',
-      start_date: new Date(startDate).toISOString()
-    })
+      start_date: new Date(startDate).toISOString(),
+      contract_end_date: endDate,
+      security_deposit: securityDepositAmount,
+      security_deposit_used: 0,
+      wifi_due_day: wifiDueDay ? parseInt(wifiDueDay) : null,
+      late_payment_fee: penaltyDetails ? parseFloat(penaltyDetails) : 0,
+      contract_url: contractUrl
+    }).select('id').single()
 
     if (error) {
       console.error('Assign Tenant Error:', error);
@@ -309,12 +509,14 @@ export default function LandlordDashboard({ session, profile }) {
       return
     }
 
+    const occupancyId = newOccupancy?.id
+
     await supabase.from('properties').update({ status: 'occupied' }).eq('id', selectedProperty.id)
 
-    // UPDATED: Notification message includes start date
-    let message = `You have been assigned to occupy "${selectedProperty.title}" starting from ${new Date(startDate).toLocaleDateString()}.`
-    if (penaltyDetails && penaltyDetails.trim() !== "") {
-      message += ` House rent bill due date penalty: ${penaltyDetails}`
+    // UPDATED: Notification message includes start date, end date and security deposit
+    let message = `You have been assigned to occupy "${selectedProperty.title}" from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}. Security deposit: ₱${Number(securityDepositAmount).toLocaleString()}.`
+    if (penaltyDetails && parseFloat(penaltyDetails) > 0) {
+      message += ` Late payment fee: ₱${Number(penaltyDetails).toLocaleString()}`
     }
 
     await createNotification({
@@ -347,8 +549,51 @@ export default function LandlordDashboard({ session, profile }) {
       })
     }).catch(err => console.error("Email Error:", err));
 
-    showToast.success('Tenant assigned!', { duration: 4000, transition: "bounceIn" });
+    // --- AUTO-SEND MOVE-IN PAYMENT BILL (Rent + Security Deposit) ---
+    // Newly assigned tenants only pay Rent + Security Deposit (NO Advance)
+    // Advance Payment is only for contract renewals
+    const rentAmount = selectedProperty.price || 0;
+    const dueDate = new Date(startDate); // Due date is the start date of the contract
+
+    try {
+      const { error: billError } = await supabase.from('payment_requests').insert({
+        landlord: session.user.id,
+        tenant: candidate.tenant,
+        property_id: selectedProperty.id,
+        occupancy_id: occupancyId, // Link to occupancy so it shows in TenantDashboard
+        rent_amount: rentAmount,
+        security_deposit_amount: securityDepositAmount, // New assignment = security deposit required
+        advance_amount: 0, // NO advance for new assignments (only for renewals)
+        water_bill: 0,
+        electrical_bill: 0,
+        other_bills: 0,
+        bills_description: 'Move-in Payment (Rent + Security Deposit)',
+        due_date: dueDate.toISOString(),
+        status: 'pending',
+        is_move_in_payment: true // Mark as move-in payment (new assignment)
+      });
+
+      if (billError) {
+        console.error('Auto-bill creation error:', billError);
+        // Don't block assignment, just log the error
+      } else {
+        // Notify tenant about the bill
+        const totalAmount = rentAmount + securityDepositAmount;
+        await createNotification({
+          recipient: candidate.tenant,
+          actor: session.user.id,
+          type: 'payment_request',
+          message: `Your move-in payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(securityDepositAmount).toLocaleString()} (Security Deposit) = ₱${Number(totalAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString()}`,
+          link: '/payments'
+        });
+      }
+    } catch (err) {
+      console.error('Auto-bill exception:', err);
+    }
+
+    showToast.success('Tenant assigned! Move-in payment bill sent automatically.', { duration: 4000, transition: "bounceIn" });
     setShowAssignModal(false);
+    setContractFile(null); // Reset contract file
     loadProperties();
     loadOccupancies();
   }
@@ -605,6 +850,41 @@ export default function LandlordDashboard({ session, profile }) {
                 )}
               </div>
 
+              {/* 1.5 Contract Renewal Requests */}
+              {pendingRenewalRequests.length > 0 && (
+                <div className="bg-white rounded-3xl shadow-sm border border-indigo-100 overflow-hidden h-full flex flex-col">
+                  <div className="px-5 py-4 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                      Contract Renewal Requests
+                    </h4>
+                    <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{pendingRenewalRequests.length}</span>
+                  </div>
+                  <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
+                    {pendingRenewalRequests.map(request => (
+                      <div key={request.id} className="p-4 flex flex-col gap-3">
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm mb-0.5">{request.property?.title}</p>
+                          <p className="text-xs text-gray-500 mb-2">{request.tenant?.first_name} {request.tenant?.last_name}</p>
+                          <div className="flex gap-2 flex-wrap text-xs">
+                            <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
+                              Current End: {new Date(request.contract_end_date).toLocaleDateString()}
+                            </span>
+                            <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
+                              New End: {new Date(new Date(request.contract_end_date).setFullYear(new Date(request.contract_end_date).getFullYear() + 1)).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => openRenewalModal(request, 'approve')} className="flex-1 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 cursor-pointer">Approve</button>
+                          <button onClick={() => openRenewalModal(request, 'reject')} className="flex-1 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer">Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 2. Pending Maintenance */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden h-full flex flex-col">
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -692,7 +972,7 @@ export default function LandlordDashboard({ session, profile }) {
                     className="flex items-center gap-2 px-6 py-3 bg-white text-black border-2 border-black rounded-2xl shadow-sm hover:bg-gray-50 text-sm font-bold cursor-pointer transition-all transform hover:-translate-y-0.5"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                    Email Tenants
+                    Send Message to tenants
                   </button>
                   <button
                     onClick={() => router.push('/properties/new')}
@@ -706,9 +986,9 @@ export default function LandlordDashboard({ session, profile }) {
 
               {loading ? (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-        <p className="text-gray-500 font-medium">Loading Amazing Properties...</p>
-      </div>
+                  <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+                  <p className="text-gray-500 font-medium">Loading Amazing Properties...</p>
+                </div>
               ) : properties.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100 h-[400px] flex flex-col items-center justify-center">
                   <div className="w-20 h-20 mx-auto mb-6 bg-gray-50 rounded-full flex items-center justify-center">
@@ -790,12 +1070,12 @@ export default function LandlordDashboard({ session, profile }) {
 
                           <div className="mt-auto">
                             <div className="flex items-center justify-between mb-2 sm:mb-3">
-                                <div className="flex items-baseline gap-1">
-                                  <p className="text-base sm:text-lg font-black text-black">
-                                    ₱{Number(property.price).toLocaleString()}
-                                  </p>
-                                  <span className="text-sm text-gray-600">/Monthly</span>
-                                </div>                              <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-base sm:text-lg font-black text-black">
+                                  ₱{Number(property.price).toLocaleString()}
+                                </p>
+                                <span className="text-sm text-gray-600">/Monthly</span>
+                              </div>                              <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
                                 View Details
                               </button>
                             </div>
@@ -873,54 +1153,100 @@ export default function LandlordDashboard({ session, profile }) {
       {/* Assign Modal */}
       {showAssignModal && selectedProperty && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col p-6 border border-gray-200">
-            <div className="flex justify-between items-center mb-6">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-200">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl text-gray-900">Assign Tenant</h3>
               <button onClick={() => setShowAssignModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-500 hover:text-black transition-colors">✕</button>
             </div>
 
-            {/* Start Date Input */}
+            {/* Approved Tenants List */}
             <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date</label>
-              <input
-                type="date"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Select Tenant to Assign</label>
+              <div className="space-y-2">
+                {acceptedApplications.map(app => (
+                  <div key={app.id} className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 flex justify-between items-center">
+                    <div>
+                      <p className="font-bold text-sm text-gray-900">{app.tenant_profile?.first_name} {app.tenant_profile?.last_name}</p>
+                      <p className="text-xs text-gray-500">{app.tenant_profile?.phone}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => cancelAssignment(app)} disabled={uploadingContract} className="text-xs bg-white text-red-600 border border-red-100 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-red-50 font-bold transition-colors disabled:opacity-50">Cancel</button>
+                      <button onClick={() => assignTenant(app)} disabled={uploadingContract} className="text-xs bg-black text-white px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-800 font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-1">
+                        {uploadingContract ? (
+                          <>
+                            <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span>Uploading...</span>
+                          </>
+                        ) : (
+                          <span>Assign</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {acceptedApplications.length === 0 && (
+                  <p className="text-gray-400 text-sm text-center py-2">No approved bookings found.</p>
+                )}
+              </div>
             </div>
 
-            {/* Penalty Input */}
-            <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">House Rent Bill Due Date Penalty</label>
-              <input
-                type="text"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
-                placeholder="e.g. 5% surcharge per day"
-                value={penaltyDetails}
-                onChange={(e) => setPenaltyDetails(e.target.value)}
-              />
-              <p className="text-[10px] text-gray-400 mt-1">This will be sent to the tenant in the notification.</p>
+            {/* Two column layout for dates */}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date</label>
+                <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date</label>
+                <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate} />
+              </div>
             </div>
 
-            <div className="overflow-y-auto space-y-3">
-              {acceptedApplications.map(app => (
-                <div key={app.id} className="p-4 border border-gray-100 rounded-2xl hover:bg-gray-50 flex justify-between items-center cursor-default transition-colors">
-                  <div>
-                    <p className="font-bold text-sm text-gray-900">{app.tenant_profile?.first_name} {app.tenant_profile?.last_name}</p>
-                    <p className="text-xs text-gray-500">{app.tenant_profile?.phone}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => cancelAssignment(app)} className="text-xs bg-white text-red-600 border border-red-100 px-3 py-2 rounded-xl cursor-pointer hover:bg-red-50 font-bold transition-colors">Cancel</button>
-                    <button onClick={() => assignTenant(app)} className="text-xs bg-black text-white px-3 py-2 rounded-xl cursor-pointer hover:bg-gray-800 font-bold shadow-md transition-all transform active:scale-95">Assign</button>
-                  </div>
-                </div>
-              ))}
-              {acceptedApplications.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-gray-400 text-sm">No approved bookings found.</p>
-                </div>
-              )}
+            {/* Security Deposit Info - compact */}
+            <div className="mb-3 p-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-800">Security Deposit:</span>
+              <span className="font-black text-amber-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+            </div>
+
+            {/* Contract PDF Upload */}
+            <div className="mb-3">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Contract PDF <span className="text-red-500">*</span></label>
+              <div className="border-2 border-dashed border-gray-200 rounded-lg p-3 text-center hover:border-gray-400 transition-colors">
+                <input type="file" accept=".pdf" id="contractFile" className="hidden" onChange={(e) => setContractFile(e.target.files[0])} />
+                <label htmlFor="contractFile" className="cursor-pointer">
+                  {contractFile ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <span className="text-sm font-medium text-gray-700">{contractFile.name}</span>
+                      <button type="button" onClick={(e) => { e.preventDefault(); setContractFile(null); }} className="text-red-500 hover:text-red-700">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Click to upload contract PDF</p>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            {/* Late Payment Fee */}
+            <div className="mb-3">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Late Payment Fee (₱)</label>
+              <input type="number" min="0" step="0.01" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" placeholder="e.g. 500" value={penaltyDetails} onChange={(e) => setPenaltyDetails(e.target.value)} />
+            </div>
+
+            {/* Wifi Due Day - Notification Only (No Payment Bills) */}
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
+              <p className="text-xs text-gray-600 font-medium mb-2">
+                <span className="font-bold">Utility Reminders:</span> Tenants will receive SMS & email reminders 3 days before due dates (no payment bills created).
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Wifi Due Day</label>
+                <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-white" placeholder="e.g. 10" value={wifiDueDay} onChange={(e) => setWifiDueDay(e.target.value)} />
+              </div>
+              <p className="text-[10px] text-gray-400 mt-2">
+                Note: Electricity reminders are sent automatically (due date is always 1st week of the month).
+              </p>
             </div>
           </div>
         </div>
@@ -959,6 +1285,105 @@ export default function LandlordDashboard({ session, profile }) {
         </div>
       )}
 
+      {/* Renewal Confirmation Modal */}
+      {renewalModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200">
+            {/* Warning Icon */}
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 mx-auto ${renewalModal.action === 'approve' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">
+              {renewalModal.action === 'approve' ? '⚠️ Approve Contract Renewal?' : 'Reject Renewal Request?'}
+            </h3>
+
+            {renewalModal.action === 'approve' ? (
+              <>
+                {/* Warning Message */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                  <p className="text-sm text-amber-800 font-medium mb-2">
+                    <strong>Important:</strong> Approving this renewal will:
+                  </p>
+                  <ul className="text-sm text-amber-700 list-disc list-inside space-y-1">
+                    <li>Extend the contract by 1 year</li>
+                    <li>Send a <strong>payment bill</strong> for Rent + Advance</li>
+                    <li>Notify the tenant of the signing schedule</li>
+                  </ul>
+                </div>
+
+                {/* Tenant & Property Info */}
+                <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-bold">Tenant:</span> {renewalModal.occupancy?.tenant?.first_name} {renewalModal.occupancy?.tenant?.last_name}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-bold">Property:</span> {renewalModal.occupancy?.property?.title}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <span className="font-bold">Monthly Rent:</span> ₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Payment Summary */}
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4">
+                  <p className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2">Renewal Payment Bill</p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-indigo-700">Rent:</span>
+                    <span className="font-bold text-indigo-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-indigo-700">Advance (1 Month):</span>
+                    <span className="font-bold text-indigo-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="border-t border-indigo-200 mt-2 pt-2 flex justify-between text-sm">
+                    <span className="font-bold text-indigo-800">Total:</span>
+                    <span className="font-black text-indigo-900">₱{Number((renewalModal.occupancy?.property?.price || 0) * 2).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {/* Contract Signing Date */}
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    📅 Contract Signing Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full border-2 border-gray-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-colors"
+                    value={renewalSigningDate}
+                    onChange={(e) => setRenewalSigningDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">The tenant will be notified to come for contract signing on this date.</p>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 mb-6 text-center">
+                Are you sure you want to reject the renewal request from <strong>{renewalModal.occupancy?.tenant?.first_name} {renewalModal.occupancy?.tenant?.last_name}</strong> for <strong>{renewalModal.occupancy?.property?.title}</strong>?
+              </p>
+            )}
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={closeRenewalModal}
+                className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRenewalRequest}
+                className={`flex-1 px-4 py-3 text-white font-bold rounded-xl cursor-pointer shadow-lg transition-all ${renewalModal.action === 'approve' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
+              >
+                {renewalModal.action === 'approve' ? 'Approve & Send Bill' : 'Reject Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Email Notification Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -980,7 +1405,7 @@ export default function LandlordDashboard({ session, profile }) {
                   To: Recipients
                 </label>
                 <div className="relative">
-                  <div 
+                  <div
                     onClick={() => setShowTenantDropdown(!showTenantDropdown)}
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 cursor-pointer hover:border-gray-300 transition-colors flex items-center justify-between"
                   >
@@ -1013,7 +1438,7 @@ export default function LandlordDashboard({ session, profile }) {
                   {showTenantDropdown && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-60 overflow-y-auto">
                       {/* Select All */}
-                      <div 
+                      <div
                         onClick={selectAllTenants}
                         className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 flex items-center gap-3"
                       >
@@ -1029,7 +1454,7 @@ export default function LandlordDashboard({ session, profile }) {
                         </div>
                       ) : (
                         allTenants.map(tenant => (
-                          <div 
+                          <div
                             key={tenant.id}
                             onClick={() => toggleTenantSelection(tenant.id)}
                             className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center gap-3"

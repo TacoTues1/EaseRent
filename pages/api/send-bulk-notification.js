@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin'
 import { sendNotificationEmail } from '../../lib/email'
+import { sendSMS } from '../../lib/sms'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
       .eq('id', landlordId)
       .single()
 
-    const landlordName = landlordProfile 
+    const landlordName = landlordProfile
       ? `${landlordProfile.first_name} ${landlordProfile.last_name}`
       : 'Your Landlord'
 
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
     // Process each tenant
     for (const tenant of tenants) {
       const tenantName = tenant.first_name || 'Tenant'
-      
+
       // Build email HTML
       const htmlContent = `
         <!DOCTYPE html>
@@ -108,7 +109,7 @@ ${body}
             subject: `📬 ${subject}`,
             message: htmlContent
           })
-          
+
           if (emailResult.success) {
             results.emailsSent++
             results.details.push({ tenant: tenantName, email: 'sent' })
@@ -126,24 +127,11 @@ ${body}
       // Send SMS if phone is verified
       if (tenant.phone && tenant.phone_verified) {
         const smsMessage = `[EaseRent] ${subject}\n\n${body}${ending ? `\n\n${ending}` : ''}\n\n- ${landlordName}`
-        
+
         try {
-          const smsResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/send-sms`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phoneNumber: tenant.phone,
-              message: smsMessage.substring(0, 500) // Limit SMS length
-            })
-          })
-          
-          if (smsResponse.ok) {
-            results.smsSent++
-            results.details.push({ tenant: tenantName, sms: 'sent' })
-          } else {
-            results.smsFailed++
-            results.details.push({ tenant: tenantName, sms: 'failed' })
-          }
+          await sendSMS(tenant.phone, smsMessage.substring(0, 500))
+          results.smsSent++
+          results.details.push({ tenant: tenantName, sms: 'sent' })
         } catch (err) {
           console.error(`SMS failed for ${tenantName}:`, err)
           results.smsFailed++

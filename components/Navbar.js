@@ -231,6 +231,20 @@ export default function Navbar() {
     } catch (err) { setUnreadCount(0) }
   }
 
+  async function markAllAsRead() {
+    if (!session) return
+    await supabase.from('notifications').update({ read: true }).eq('recipient', session.user.id).eq('read', false)
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    loadUnreadCount(session.user.id)
+  }
+
+  async function markAllAsUnread() {
+    if (!session) return
+    await supabase.from('notifications').update({ read: false }).eq('recipient', session.user.id).eq('read', true)
+    setNotifications(prev => prev.map(n => ({ ...n, read: false })))
+    loadUnreadCount(session.user.id)
+  }
+
   // Load actual notification items for the dropdown
   async function loadRecentNotifications(userId) {
     try {
@@ -502,7 +516,30 @@ export default function Navbar() {
                     <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white/95 backdrop-blur-md border border-gray-100 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-50">
                       <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <h3 className="font-bold text-black text-sm">Notifications</h3>
-                        <Link href="/notifications" onClick={() => setShowNotifDropdown(false)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">View All</Link>
+                        <div className="flex items-center gap-3">
+                          {unreadCount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAllAsRead();
+                              }}
+                              className="text-[10px] font-bold text-gray-500 hover:text-black cursor-pointer"
+                            >
+                              Read all
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markAllAsUnread();
+                            }}
+                            className="text-[10px] font-bold text-gray-500 hover:text-black cursor-pointer"
+                          >
+                            Unread all
+                          </button>
+                          <div className="w-px h-3 bg-gray-300"></div>
+                          <Link href="/notifications" onClick={() => setShowNotifDropdown(false)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">View All</Link>
+                        </div>
                       </div>
 
                       <div className="max-h-[80vh] overflow-y-auto">

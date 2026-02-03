@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import Link from 'next/link'
-import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
+import StripePaymentForm from '../components/StripePaymentForm'
 
 export default function PaymentsPage() {
   const router = useRouter()
@@ -31,7 +31,7 @@ export default function PaymentsPage() {
   const [showBillReceiptModal, setShowBillReceiptModal] = useState(false)
   const [selectedBillReceipt, setSelectedBillReceipt] = useState(null)
   const [paypalProcessing, setPaypalProcessing] = useState(false)
-  const [activeTab, setActiveTab] = useState('rent')
+  const [activeTab, setActiveTab] = useState('water') // Default to water since rent is automatic, wifi/electric notify tenants automatically
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingBill, setEditingBill] = useState(null)
   const [editFormData, setEditFormData] = useState({
@@ -42,9 +42,20 @@ export default function PaymentsPage() {
     bills_description: '',
     due_date: ''
   })
+  const [customAmount, setCustomAmount] = useState('')
+  const [appliedCredit, setAppliedCredit] = useState(0)
+  const [monthsCovered, setMonthsCovered] = useState(1)
+  const [contractEndDate, setContractEndDate] = useState(null)
+  const [contractStartDate, setContractStartDate] = useState(null)
+  const [monthlyRent, setMonthlyRent] = useState(0)
+  const [exceedsContract, setExceedsContract] = useState(false)
+  const [maxMonthsAllowed, setMaxMonthsAllowed] = useState(12)
+  const [isBelowMinimum, setIsBelowMinimum] = useState(false)
+  const [minimumPayment, setMinimumPayment] = useState(0)
   const [formData, setFormData] = useState({
     property_id: '',
     application_id: '',
+    occupancy_id: '', // NEW: Track current occupancy
     tenant: '',
     amount: '', // Rent Amount
     water_bill: '',
@@ -72,13 +83,11 @@ export default function PaymentsPage() {
     })
   }, [])
 
-  function getRentDateRange(dueDateString) {
+  function getRentMonth(dueDateString) {
     if (!dueDateString) return '-';
     const due = new Date(dueDateString);
-    const start = new Date(due);
-    start.setDate(due.getDate() - 30); // Calculate 30 days prior
-
-    return `${start.toLocaleDateString()} - ${due.toLocaleDateString()}`;
+    // Return month name and year (e.g., "February 2026")
+    return due.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }
 
   async function loadUserRole(userId) {
@@ -222,6 +231,7 @@ export default function PaymentsPage() {
     }
 
     // Determine values based on Active Tab
+    // Note: Electric and Wifi bills are now sent automatically 3 days before due date
     let rent = 0, water = 0, electrical = 0, wifi = 0, other = 0;
     let finalDueDate = null;
     let billTypeLabel = '';
@@ -232,25 +242,17 @@ export default function PaymentsPage() {
       rent = parseFloat(formData.amount) || 0;
       finalDueDate = formData.due_date;
       billTypeLabel = 'Rent';
-    } else if (activeTab === 'electric') {
-      electrical = parseFloat(formData.electrical_bill) || 0;
-      finalDueDate = formData.electrical_due_date;
-      billTypeLabel = 'Electricity Bill';
     } else if (activeTab === 'water') {
       water = parseFloat(formData.water_bill) || 0;
       finalDueDate = formData.water_due_date;
       billTypeLabel = 'Water Bill';
-    } else if (activeTab === 'wifi') {
-      wifi = parseFloat(formData.wifi_bill) || 0;
-      finalDueDate = formData.wifi_due_date;
-      billTypeLabel = 'Internet/Wifi Bill';
     } else if (activeTab === 'other') {
       other = parseFloat(formData.other_bills) || 0;
       finalDueDate = formData.other_due_date;
       billTypeLabel = 'Other Bill';
     }
 
-    const total = rent + water + electrical + wifi + other;
+    const total = rent + water + other;
 
     try {
       // ... (Keep existing QR code upload logic here) ...
@@ -275,6 +277,7 @@ export default function PaymentsPage() {
         .insert({
           property_id: formData.property_id,
           application_id: formData.application_id || null,
+          occupancy_id: formData.occupancy_id || null, // Link to current occupancy
           tenant: formData.tenant,
           landlord: session.user.id,
 
@@ -329,7 +332,7 @@ export default function PaymentsPage() {
 
       // Reset Form
       setFormData({
-        property_id: '', application_id: '', tenant: '',
+        property_id: '', application_id: '', occupancy_id: '', tenant: '',
         amount: '', water_bill: '', electrical_bill: '', wifi_bill: '', other_bills: '',
         bills_description: '',
         due_date: '', electrical_due_date: '', water_due_date: '', wifi_due_date: '', other_due_date: '',
@@ -348,13 +351,327 @@ export default function PaymentsPage() {
     }
   }
 
+  const [maxPaymentLimit, setMaxPaymentLimit] = useState(null)
+
   async function handlePayBill(request) {
     setSelectedBill(request)
+    const total = (
+      parseFloat(request.rent_amount || 0) +
+      parseFloat(request.security_deposit_amount || 0) +
+      parseFloat(request.water_bill || 0) +
+      parseFloat(request.electrical_bill || 0) +
+      parseFloat(request.wifi_bill || 0) +
+      parseFloat(request.other_bills || 0)
+    )
+
+    // 1. Fetch Tenant Credit (filtered by occupancy)
+    // 1. Fetch Tenant Credit (filtered by occupancy)
+    let credit = 0;
+    if (userRole === 'tenant') {
+      let query = supabase.from('tenant_balances').select('amount').eq('tenant_id', session.user.id);
+
+      let targetOccupancyId = request.occupancy_id;
+
+      // If bill has no occupancy_id (legacy/unlinked), find the current active occupancy
+      if (!targetOccupancyId) {
+        const { data: activeOcc } = await supabase
+          .from('tenant_occupancies')
+          .select('id')
+          .eq('tenant_id', session.user.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (activeOcc) targetOccupancyId = activeOcc.id;
+      }
+
+      if (targetOccupancyId) {
+        query = query.eq('occupancy_id', targetOccupancyId);
+      } else {
+        // If still no occupancy ID found, force a mismatch/empty result to avoid showing legacy global balance
+        // or filter for entries where occupancy_id IS NULL (if that's where global credit lives)
+        // But users reported seeing OLD contract credit. Old contracts usually have occupancy_ids.
+        // So simply NOT filtering was the issue. 
+        // We MUST rely on occupancy_id. If none, we assume 0 or "General" credit (null).
+        query = query.is('occupancy_id', null);
+      }
+
+      const { data } = await query.maybeSingle();
+      credit = parseFloat(data?.amount || 0);
+    }
+    setAppliedCredit(credit);
+
+    // 2. Calculate Max Payment Limit based on Contract
+    let limit = Infinity;
+    let rentPerMonth = parseFloat(request.rent_amount || 0);
+    let endDate = null;
+    let startDate = null;
+    let maxMonths = 1; // Default to 1 month only
+    
+    // Try to get occupancy_id from bill, or find active occupancy for tenant
+    let occupancyId = request.occupancy_id;
+    
+    if (!occupancyId && userRole === 'tenant') {
+      // Bill doesn't have occupancy_id, try to find tenant's active occupancy
+      const { data: activeOcc } = await supabase
+        .from('tenant_occupancies')
+        .select('id')
+        .eq('tenant_id', session.user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (activeOcc) {
+        occupancyId = activeOcc.id;
+        console.log('Found active occupancy:', occupancyId);
+      }
+    }
+    
+    console.log('Occupancy ID for calculation:', occupancyId);
+    
+    if (occupancyId) {
+      try {
+        const { data: occupancy, error: occError } = await supabase
+          .from('tenant_occupancies')
+          .select('contract_end_date, start_date')
+          .eq('id', occupancyId)
+          .single();
+        
+        console.log('Occupancy query result - data:', JSON.stringify(occupancy), 'error:', occError);
+
+        if (occupancy) {
+          // Use rent from the bill request since occupancy doesn't have rent_amount
+          rentPerMonth = parseFloat(request.rent_amount || 0);
+          endDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
+          startDate = occupancy.start_date ? new Date(occupancy.start_date) : null;
+          
+          console.log('Parsed dates - start:', startDate, 'end:', endDate);
+          
+          if (endDate && startDate) {
+            // SIMPLIFIED: Calculate total months in contract by comparing start and end dates
+            // Contract Feb 3 to Apr 3 = 2 months (Feb-Mar, Mar-Apr)
+            const startYear = startDate.getFullYear();
+            const startMonth = startDate.getMonth();
+            const endYear = endDate.getFullYear();
+            const endMonth = endDate.getMonth();
+            
+            // Total months in the contract period
+            const totalContractMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+            
+            // Minimum 1 month
+            maxMonths = Math.max(1, totalContractMonths);
+            
+            console.log('Contract calculation:', {
+              startYear, startMonth, endYear, endMonth,
+              totalContractMonths,
+              maxMonths
+            });
+            
+            // Limit cannot be negative (contract ended)
+            if (endDate < new Date()) {
+              maxMonths = 1;
+              limit = total + parseFloat(request.security_deposit_amount || 0);
+            } else {
+              // Max rent payments = months * rent per month
+              const maxContractValue = maxMonths * rentPerMonth;
+              // Add security deposit to the limit (it's separate from rent)
+              const securityDeposit = parseFloat(request.security_deposit_amount || 0);
+              limit = Math.max(0, maxContractValue + securityDeposit - credit);
+            }
+          } else {
+            console.log('Missing dates - startDate or endDate is null');
+          }
+        } else {
+          console.log('No occupancy data returned');
+        }
+      } catch (err) {
+        console.error('Error fetching occupancy:', err);
+      }
+    }
+    
+    setMonthlyRent(rentPerMonth);
+    setContractEndDate(endDate);
+    setContractStartDate(startDate);
+    setMaxMonthsAllowed(maxMonths);
+    setMaxPaymentLimit(limit);
+    setMonthsCovered(1);
+    setExceedsContract(false);
+
+    // Set minimum payment (total bill minus credit)
+    const toPay = Math.max(0, total - credit);
+    setMinimumPayment(toPay);
+    setIsBelowMinimum(false);
+    
+    // Ensure default doesn't exceed limit
+    setCustomAmount(Math.min(toPay, limit === Infinity ? toPay : limit).toFixed(2));
+
     setShowPaymentModal(true)
+  }
+
+  // Recalculate months covered when key values change (fixes React state timing issues)
+  useEffect(() => {
+    if (showPaymentModal && selectedBill && customAmount && monthlyRent > 0 && maxMonthsAllowed > 0) {
+      const amountNum = parseFloat(customAmount) || 0;
+      const currentBillRent = parseFloat(selectedBill.rent_amount || 0);
+      const securityDeposit = parseFloat(selectedBill.security_deposit_amount || 0);
+      const utilities = (
+        parseFloat(selectedBill.water_bill || 0) +
+        parseFloat(selectedBill.electrical_bill || 0) +
+        parseFloat(selectedBill.wifi_bill || 0) +
+        parseFloat(selectedBill.other_bills || 0)
+      );
+      
+      // One-time charges (security deposit + utilities) - these don't count toward months
+      const oneTimeCharges = securityDeposit + utilities;
+      
+      // Calculate rent portion only (payment minus one-time charges)
+      const rentPortion = Math.max(0, amountNum - oneTimeCharges);
+      
+      // How many months of rent does this cover?
+      const rentForCalc = currentBillRent > 0 ? currentBillRent : monthlyRent;
+      const monthsCoveredByRent = rentForCalc > 0 ? Math.ceil(rentPortion / rentForCalc) : 1;
+      
+      // Minimum 1 month if paying anything
+      const totalMonths = Math.max(1, monthsCoveredByRent);
+      
+      // Check if rent portion exceeds what contract allows
+      const maxRentAllowed = maxMonthsAllowed * rentForCalc;
+      const exceeds = rentPortion > maxRentAllowed;
+      
+      console.log('useEffect calculation:', {
+        amountNum,
+        oneTimeCharges,
+        rentPortion,
+        rentForCalc,
+        monthsCoveredByRent,
+        totalMonths,
+        maxMonthsAllowed,
+        maxRentAllowed,
+        exceeds
+      });
+      
+      setExceedsContract(exceeds);
+      setMonthsCovered(totalMonths);
+    }
+  }, [showPaymentModal, maxMonthsAllowed, monthlyRent, customAmount, selectedBill, appliedCredit]);
+
+  // Calculate how many months an amount covers
+  function calculateMonthsCovered(amount) {
+    if (!selectedBill || monthlyRent <= 0) {
+      setMonthsCovered(1);
+      setExceedsContract(false);
+      setIsBelowMinimum(false);
+      return 1;
+    }
+    
+    const amountNum = parseFloat(amount) || 0;
+    
+    const currentBillRent = parseFloat(selectedBill.rent_amount || 0);
+    const securityDeposit = parseFloat(selectedBill.security_deposit_amount || 0);
+    const utilities = (
+      parseFloat(selectedBill.water_bill || 0) +
+      parseFloat(selectedBill.electrical_bill || 0) +
+      parseFloat(selectedBill.wifi_bill || 0) +
+      parseFloat(selectedBill.other_bills || 0)
+    );
+    
+    // Total bill = rent + deposit + utilities
+    const currentBillTotal = currentBillRent + securityDeposit + utilities;
+    
+    // Calculate minimum payment (bill total minus applied credit)
+    const minPayment = Math.max(0, currentBillTotal - appliedCredit);
+    setMinimumPayment(minPayment);
+    
+    // Check if payment is below minimum
+    if (amountNum < minPayment || (amountNum === 0 && minPayment > 0)) {
+      setIsBelowMinimum(true);
+      setMonthsCovered(1);
+      setExceedsContract(false);
+      return 1;
+    }
+    setIsBelowMinimum(false);
+    
+    // One-time charges (security deposit + utilities) - these don't count toward months
+    const oneTimeCharges = securityDeposit + utilities;
+    
+    // Calculate rent portion only (payment minus one-time charges)
+    const rentPortion = Math.max(0, amountNum - oneTimeCharges);
+    
+    // How many months of rent does this cover?
+    const rentForCalc = currentBillRent > 0 ? currentBillRent : monthlyRent;
+    const monthsCoveredByRent = rentForCalc > 0 ? Math.ceil(rentPortion / rentForCalc) : 1;
+    const totalMonths = Math.max(1, monthsCoveredByRent);
+    
+    // Check if rent portion exceeds what contract allows
+    const maxRentAllowed = maxMonthsAllowed * rentForCalc;
+    const exceeds = rentPortion > maxRentAllowed;
+    
+    setExceedsContract(exceeds);
+    setMonthsCovered(totalMonths);
+    
+    return totalMonths;
+  }
+
+  // Handle custom amount change
+  function handleCustomAmountChange(value) {
+    setCustomAmount(value);
+    calculateMonthsCovered(value);
   }
 
   async function submitPayment() {
     if (!selectedBill) return
+
+    const paymentAmount = parseFloat(customAmount) || 0;
+
+    // Calculate total bill amount
+    const totalBillAmount = (
+      parseFloat(selectedBill.rent_amount || 0) +
+      parseFloat(selectedBill.security_deposit_amount || 0) +
+      parseFloat(selectedBill.water_bill || 0) +
+      parseFloat(selectedBill.electrical_bill || 0) +
+      parseFloat(selectedBill.wifi_bill || 0) +
+      parseFloat(selectedBill.other_bills || 0)
+    ) - appliedCredit;
+
+    // Block if payment amount is zero or negative
+    if (paymentAmount <= 0) {
+      showToast.error('Please enter a valid payment amount greater than ₱0.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      return
+    }
+
+    // Block if payment is less than total bill (no partial payments)
+    if (paymentAmount < totalBillAmount) {
+      showToast.error(`Payment must be at least ₱${totalBillAmount.toLocaleString()}. Partial payments are not allowed.`, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      return
+    }
+
+    // Block if payment exceeds contract limit (double check)
+    if (exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && paymentAmount > maxPaymentLimit)) {
+      showToast.error(`Payment exceeds contract period. Maximum allowed is ${maxMonthsAllowed} month${maxMonthsAllowed > 1 ? 's' : ''} (₱${maxPaymentLimit?.toLocaleString() || 0}).`, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      return
+    }
 
     // Validate QR payment requirements
     if (paymentMethod === 'qr_code') {
@@ -391,6 +708,25 @@ export default function PaymentsPage() {
         proofUrl = proofPublic.publicUrl
       }
 
+      // Calculate advance payment amount (rent paid beyond first month)
+      // Security deposit and utilities are one-time, not counted as "advance rent"
+      const oneTimeCharges = (
+        parseFloat(selectedBill.security_deposit_amount || 0) +
+        parseFloat(selectedBill.water_bill || 0) +
+        parseFloat(selectedBill.electrical_bill || 0) +
+        parseFloat(selectedBill.other_bills || 0)
+      );
+      const firstMonthRent = parseFloat(selectedBill.rent_amount || 0);
+      const amountPaid = parseFloat(customAmount) + appliedCredit;
+      
+      // Rent portion = total paid minus one-time charges
+      const rentPortion = Math.max(0, amountPaid - oneTimeCharges);
+      
+      // Advance = rent paid beyond first month
+      const advancePaymentAmount = Math.max(0, rentPortion - firstMonthRent);
+      
+      console.log('Advance calculation:', { amountPaid, oneTimeCharges, rentPortion, firstMonthRent, advancePaymentAmount });
+
       // Update payment request status to pending_confirmation
       const { error } = await supabase
         .from('payment_requests')
@@ -399,25 +735,23 @@ export default function PaymentsPage() {
           paid_at: new Date().toISOString(),
           payment_method: paymentMethod,
           tenant_proof_url: proofUrl,
-          tenant_reference_number: referenceNumber.trim() || null
+          tenant_reference_number: referenceNumber.trim() || null,
+          advance_amount: advancePaymentAmount, // Store the advance amount
+          amount_paid: amountPaid // Store total amount paid
         })
         .eq('id', selectedBill.id)
 
       if (error) throw error
 
       // Notify landlord to confirm payment
-      const total = (
-        parseFloat(selectedBill.rent_amount) +
-        parseFloat(selectedBill.water_bill || 0) +
-        parseFloat(selectedBill.electrical_bill || 0) +
-        parseFloat(selectedBill.other_bills || 0)
-      ).toLocaleString('en-US', { minimumFractionDigits: 2 })
+      const totalPaid = parseFloat(customAmount);
+      const monthsText = monthsCovered > 1 ? ` (${monthsCovered} months advance)` : '';
 
       await supabase.from('notifications').insert({
         recipient: selectedBill.landlord,
         actor: session.user.id,
         type: 'payment_confirmation_needed',
-        message: `Tenant paid ₱${total} for ${selectedBill.properties?.title || 'property'} via ${paymentMethod === 'qr_code' ? 'QR Code' : 'Cash'}. Please confirm payment receipt.`,
+        message: `Tenant paid ₱${totalPaid.toLocaleString()} for ${selectedBill.properties?.title || 'property'} via ${paymentMethod === 'qr_code' ? 'QR Code' : 'Cash'}${monthsText}. Please confirm payment receipt.`,
         link: '/payments',
         data: { payment_request_id: selectedBill.id }
       })
@@ -453,6 +787,99 @@ export default function PaymentsPage() {
     }
   }
 
+  async function handleCreditPayment() {
+    try {
+      const res = await fetch('/api/payments/pay-with-credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentRequestId: selectedBill.id, tenantId: session.user.id })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Payment failed');
+
+      // Notify landlord
+      await supabase.from('notifications').insert({
+        recipient: selectedBill.landlord,
+        actor: session.user.id,
+        type: 'payment_confirmation_needed',
+        message: `Tenant paid for ${selectedBill.properties?.title || 'property'} using Credit Balance.`,
+        link: '/payments',
+        data: { payment_request_id: selectedBill.id }
+      })
+
+      showToast.success('Paid successfully using credit balance!', { duration: 4000, transition: "bounceIn" });
+      setShowPaymentModal(false);
+      loadPaymentRequests();
+    } catch (err) {
+      console.error(err);
+      showToast.error(err.message, { duration: 4000 });
+    }
+  }
+
+  async function handleStripeSuccess(paymentIntent) {
+    try {
+      // Call backend to process payment and handle balances
+      const res = await fetch('/api/payments/process-stripe-success', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentRequestId: selectedBill.id,
+          paymentIntentId: paymentIntent.id
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to process payment')
+      }
+
+      // Notify landlord
+      const amountPaid = paymentIntent.amount / 100;
+
+      await supabase.from('notifications').insert({
+        recipient: selectedBill.landlord,
+        actor: session.user.id,
+        type: 'payment_confirmation_needed',
+        message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${selectedBill.properties?.title || 'property'} via Stripe (Transaction: ${paymentIntent.id}). Please confirm payment receipt.`,
+        link: '/payments',
+        data: { payment_request_id: selectedBill.id }
+      })
+
+      setShowPaymentModal(false)
+      setSelectedBill(null)
+      setPaymentMethod('cash')
+      loadPaymentRequests()
+
+      let successMsg = 'Stripe payment successful! Waiting for landlord confirmation.';
+      if (data.excessAmount > 0) {
+        successMsg += ` Excess of ₱${data.excessAmount.toLocaleString()} added to your credit.`;
+      }
+
+      showToast.success(successMsg, {
+        duration: 5000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    } catch (error) {
+      console.error('Stripe Success Handler Error:', error)
+      showToast.error('Payment processed but updating status failed. Please contact support.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    }
+  }
+
   async function confirmPayment(requestId) {
     setConfirmPaymentId(null)
     const request = paymentRequests.find(r => r.id === requestId)
@@ -460,7 +887,45 @@ export default function PaymentsPage() {
 
     const confirmPromise = new Promise(async (resolve, reject) => {
       try {
-        // Create payment record
+        // Get occupancy info for advance payment calculation
+        let monthlyRent = parseFloat(request.rent_amount || 0);
+        let contractEndDate = null;
+        
+        if (request.occupancy_id) {
+          const { data: occupancy } = await supabase
+            .from('tenant_occupancies')
+            .select('contract_end_date, rent_amount, start_date')
+            .eq('id', request.occupancy_id)
+            .single();
+          
+          if (occupancy) {
+            monthlyRent = parseFloat(occupancy.rent_amount || request.rent_amount || 0);
+            contractEndDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
+          }
+        }
+
+        // Calculate total amount paid by tenant
+        const billTotal = (
+          parseFloat(request.rent_amount || 0) +
+          parseFloat(request.security_deposit_amount || 0) +
+          parseFloat(request.advance_amount || 0) +
+          parseFloat(request.water_bill || 0) +
+          parseFloat(request.electrical_bill || 0) +
+          parseFloat(request.other_bills || 0)
+        );
+        
+        // Calculate how many months this payment covers
+        let extraMonths = 0;
+        if (monthlyRent > 0) {
+          const excessAmount = billTotal - parseFloat(request.rent_amount || 0) - parseFloat(request.security_deposit_amount || 0) - parseFloat(request.water_bill || 0) - parseFloat(request.electrical_bill || 0) - parseFloat(request.other_bills || 0);
+          // If there's an advance_amount field, calculate months from that
+          const advanceAmount = parseFloat(request.advance_amount || 0);
+          if (advanceAmount > 0) {
+            extraMonths = Math.floor(advanceAmount / monthlyRent);
+          }
+        }
+
+        // Create payment record for the original bill
         const { data: payment, error: paymentError } = await supabase
           .from('payments')
           .insert({
@@ -474,7 +939,8 @@ export default function PaymentsPage() {
             other_bills: request.other_bills,
             bills_description: request.bills_description,
             method: request.payment_method || 'cash',
-            status: 'recorded'
+            status: 'recorded',
+            due_date: request.due_date
           })
           .select()
           .single()
@@ -490,18 +956,61 @@ export default function PaymentsPage() {
           })
           .eq('id', requestId)
 
+        // Handle advance payment - create and mark future months as paid
+        if (extraMonths > 0 && request.due_date && request.occupancy_id) {
+          const baseDueDate = new Date(request.due_date);
+          
+          for (let i = 1; i <= extraMonths; i++) {
+            const futureDueDate = new Date(baseDueDate);
+            futureDueDate.setMonth(futureDueDate.getMonth() + i);
+            
+            // Check if this would exceed contract end date
+            if (contractEndDate && futureDueDate > contractEndDate) {
+              break; // Don't create bills beyond contract end
+            }
+            
+            // Create a new payment_request for this advance month - status is PENDING for landlord to confirm
+            const { data: advanceBill, error: advanceBillError } = await supabase
+              .from('payment_requests')
+              .insert({
+                landlord: session.user.id,
+                tenant: request.tenant,
+                property_id: request.property_id,
+                occupancy_id: request.occupancy_id,
+                rent_amount: monthlyRent,
+                water_bill: 0,
+                electrical_bill: 0,
+                other_bills: 0,
+                bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1})`,
+                due_date: futureDueDate.toISOString(),
+                status: 'pending_confirmation', // Landlord must manually confirm
+                paid_at: new Date().toISOString(),
+                payment_method: request.payment_method || 'cash',
+                is_advance_payment: true // Mark as advance payment
+              })
+              .select()
+              .single();
+
+            if (advanceBillError) {
+              console.error('Advance bill creation error:', advanceBillError);
+            }
+            // NOTE: Payment record will be created when landlord confirms the advance payment
+          }
+        }
+
         // Notify tenant that payment is confirmed
+        const monthsText = extraMonths > 0 ? ` (${extraMonths + 1} months - advance payments pending confirmation)` : '';
         await supabase.from('notifications').insert({
           recipient: request.tenant,
           actor: session.user.id,
           type: 'payment_confirmed',
-          message: `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord.`,
+          message: `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord${monthsText}.`,
           link: '/payments'
         })
 
         loadPaymentRequests()
         loadPayments()
-        resolve('Payment confirmed and recorded!')
+        resolve(extraMonths > 0 ? `Payment confirmed! ${extraMonths} advance month(s) created for your review.` : 'Payment confirmed and recorded!')
       } catch (error) {
         console.error('Payment record error:', error)
         reject('Failed to confirm payment')
@@ -515,7 +1024,6 @@ export default function PaymentsPage() {
       icon: '',
       sound: true,
     });
-
   }
 
   async function handleCancelBill(requestId) {
@@ -546,6 +1054,63 @@ export default function PaymentsPage() {
         sound: true,
       })
     }
+  }
+
+  // Reject payment request (landlord)
+  async function rejectPayment(requestId) {
+    setConfirmPaymentId(null)
+    const request = paymentRequests.find(r => r.id === requestId)
+    if (!request) return
+
+    const rejectPromise = new Promise(async (resolve, reject) => {
+      try {
+        // Update payment request status to rejected
+        const { error } = await supabase
+          .from('payment_requests')
+          .update({ status: 'rejected' })
+          .eq('id', requestId)
+
+        if (error) throw error
+
+        // Notify tenant about rejection
+        await supabase.from('notifications').insert({
+          recipient: request.tenant,
+          actor: session.user.id,
+          type: 'payment_rejected',
+          message: `Your payment of ₱${(
+            parseFloat(request.rent_amount || 0) +
+            parseFloat(request.security_deposit_amount || 0) +
+            parseFloat(request.advance_amount || 0) +
+            parseFloat(request.water_bill || 0) +
+            parseFloat(request.electrical_bill || 0) +
+            parseFloat(request.other_bills || 0)
+          ).toLocaleString()} for ${request.properties?.title || 'property'} was rejected by the landlord. Please contact your landlord for details.`,
+          link: '/payments'
+        })
+
+        await loadPaymentRequests()
+        resolve('Payment rejected')
+      } catch (err) {
+        reject(err)
+      }
+    })
+
+    showToast.promise(
+      rejectPromise,
+      {
+        pending: 'Rejecting payment...',
+        success: 'Payment rejected successfully',
+        error: 'Failed to reject payment'
+      },
+      {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      }
+    )
   }
 
   // Open edit modal with bill data
@@ -766,13 +1331,10 @@ export default function PaymentsPage() {
                 <button onClick={() => setShowFormModal(false)} className="text-gray-400 hover:text-black">✕</button>
               </div>
 
-              {/* Tabs for Bill Type */}
+              {/* Tabs for Bill Type - Rent/Wifi/Electric are automatic, only Water and Other remain */}
               <div className="flex gap-2 flex-wrap pb-2 mb-4 scrollbar-hide">
                 {[
-                  { id: 'rent', label: 'Rent', icon: '' },
-                  { id: 'electric', label: 'Electricity', icon: '' },
                   { id: 'water', label: 'Water', icon: '' },
-                  { id: 'wifi', label: 'Wifi', icon: '' },
                   { id: 'other', label: 'Other', icon: '' }
                 ].map(tab => (
                   <button
@@ -786,6 +1348,13 @@ export default function PaymentsPage() {
                     <span>{tab.icon}</span> {tab.label}
                   </button>
                 ))}
+              </div>
+
+              {/* Info about automatic billing */}
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-600">
+                  <span className="font-bold">Note:</span> House rent payment bills are sent automatically 3 days before due date. WiFi and electricity only send <strong>reminder notifications</strong> (SMS & email).
+                </p>
               </div>
 
               {approvedApplications.length === 0 ? (
@@ -831,6 +1400,7 @@ export default function PaymentsPage() {
                             setFormData({
                               ...formData,
                               application_id: selectedApp.application_id || '', // Use real app ID or empty for manual
+                              occupancy_id: selectedApp.id, // Store the occupancy ID
                               property_id: selectedApp.property_id,
                               tenant: selectedApp.tenant,
                               amount: selectedApp.price || '',
@@ -838,7 +1408,7 @@ export default function PaymentsPage() {
                             })
                           } else {
                             // Reset if empty selection
-                            setFormData({ ...formData, application_id: '', property_id: '', tenant: '', amount: '' })
+                            setFormData({ ...formData, application_id: '', occupancy_id: '', property_id: '', tenant: '', amount: '' })
                           }
                         }}
                       >
@@ -876,21 +1446,6 @@ export default function PaymentsPage() {
                       </div>
                     )}
 
-                    {activeTab === 'electric' && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Electric Amount *</label>
-                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
-                            value={formData.electrical_bill} onChange={e => setFormData({ ...formData, electrical_bill: e.target.value })} />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
-                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
-                            value={formData.electrical_due_date} onChange={e => setFormData({ ...formData, electrical_due_date: e.target.value })} />
-                        </div>
-                      </div>
-                    )}
-
                     {activeTab === 'water' && (
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -902,21 +1457,6 @@ export default function PaymentsPage() {
                           <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
                           <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
                             value={formData.water_due_date} onChange={e => setFormData({ ...formData, water_due_date: e.target.value })} />
-                        </div>
-                      </div>
-                    )}
-
-                    {activeTab === 'wifi' && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Wifi Amount *</label>
-                          <input type="number" required min="0" step="0.01" className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none" placeholder="0.00"
-                            value={formData.wifi_bill} onChange={e => setFormData({ ...formData, wifi_bill: e.target.value })} />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-500 mb-1">Due Date *</label>
-                          <input type="date" required className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 outline-none"
-                            value={formData.wifi_due_date} onChange={e => setFormData({ ...formData, wifi_due_date: e.target.value })} />
                         </div>
                       </div>
                     )}
@@ -989,9 +1529,7 @@ export default function PaymentsPage() {
                       <span className="text-sm font-bold uppercase tracking-wider">Total</span>
                       <span className="text-xl font-bold">
                         ₱{((activeTab === 'rent' ? parseFloat(formData.amount) : 0) +
-                          (activeTab === 'electric' ? parseFloat(formData.electrical_bill) : 0) +
                           (activeTab === 'water' ? parseFloat(formData.water_bill) : 0) +
-                          (activeTab === 'wifi' ? parseFloat(formData.wifi_bill) : 0) +
                           (activeTab === 'other' ? parseFloat(formData.other_bills) : 0) || 0
                         ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
@@ -1039,7 +1577,9 @@ export default function PaymentsPage() {
               <div className="sm:hidden divide-y divide-gray-100">
                 {paymentRequests.map(request => {
                   const rent = parseFloat(request.rent_amount) || 0
-                  const total = rent + (parseFloat(request.water_bill) || 0) + (parseFloat(request.electrical_bill) || 0) + (parseFloat(request.other_bills) || 0)
+                  const securityDeposit = parseFloat(request.security_deposit_amount) || 0
+                  const advance = parseFloat(request.advance_amount) || 0
+                  const total = rent + (parseFloat(request.water_bill) || 0) + (parseFloat(request.electrical_bill) || 0) + (parseFloat(request.other_bills) || 0) + securityDeposit + advance
                   const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
 
                   return (
@@ -1059,10 +1599,13 @@ export default function PaymentsPage() {
                         <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded border ${request.status === 'paid' ? 'bg-black text-white border-black' :
                           request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
                             request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                              isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                                'bg-white text-black border-black'
+                              request.status === 'rejected' ? 'bg-gray-100 text-black border-gray-400' :
+                                isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
+                                  'bg-white text-black border-black'
                           }`}>
-                          {request.status === 'pending_confirmation' ? 'Reviewing' : isPastDue ? 'Overdue' : request.status}
+                          {request.status === 'pending_confirmation' ? 'Reviewing' : 
+                            request.status === 'rejected' ? 'Rejected' :
+                              isPastDue ? 'Overdue' : request.status}
                         </span>
                       </div>
 
@@ -1098,7 +1641,7 @@ export default function PaymentsPage() {
                         {userRole === 'landlord' ? 'Tenant' : 'Landlord'}
                       </th>
                       <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bill Type</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rent Range</th>
+                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Month</th>
                       <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Message</th>
                       <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
                       <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Due Date</th>
@@ -1113,7 +1656,9 @@ export default function PaymentsPage() {
                       const electric = parseFloat(request.electrical_bill) || 0
                       const wifi = parseFloat(request.wifi_bill) || 0
                       const other = parseFloat(request.other_bills) || 0
-                      const total = rent + water + electric + wifi + other
+                      const securityDeposit = parseFloat(request.security_deposit_amount) || 0
+                      const advance = parseFloat(request.advance_amount) || 0
+                      const total = rent + water + electric + wifi + other + securityDeposit + advance
 
                       const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
 
@@ -1157,7 +1702,7 @@ export default function PaymentsPage() {
 
                           <td className="px-3 py-3">
                             <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
-                              {billType === 'House Rent' ? getRentDateRange(request.due_date) : '-'}
+                              {billType === 'House Rent' ? getRentMonth(request.due_date) : '-'}
                             </span>
                           </td>
 
@@ -1184,13 +1729,15 @@ export default function PaymentsPage() {
                             <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border whitespace-nowrap ${request.status === 'paid' ? 'bg-black text-white border-black' :
                               request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
                                 request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                                  isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                                    'bg-white text-black border-black'
+                                  request.status === 'rejected' ? 'bg-gray-100 text-black border-gray-400' :
+                                    isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
+                                      'bg-white text-black border-black'
                               }`}>
                               {request.status === 'paid' ? 'Paid' :
                                 request.status === 'pending_confirmation' ? 'Confirming' :
                                   request.status === 'cancelled' ? 'Cancelled' :
-                                    isPastDue ? 'Overdue' : 'Pending'}
+                                    request.status === 'rejected' ? 'Rejected' :
+                                      isPastDue ? 'Overdue' : 'Pending'}
                             </span>
                           </td>
 
@@ -1206,6 +1753,14 @@ export default function PaymentsPage() {
                               )}
                               {userRole === 'tenant' && request.status === 'pending_confirmation' && (
                                 <span className="text-xs font-bold text-gray-400 whitespace-nowrap">Wait for approval</span>
+                              )}
+                              {userRole === 'tenant' && request.status === 'rejected' && (
+                                <button
+                                  onClick={() => handlePayBill(request)}
+                                  className="px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap"
+                                >
+                                  Resend
+                                </button>
                               )}
                               {userRole === 'landlord' && request.status === 'pending' && (
                                 <div className="flex gap-1">
@@ -1233,16 +1788,24 @@ export default function PaymentsPage() {
                               {userRole === 'landlord' && request.status === 'pending_confirmation' && (
                                 confirmPaymentId === request.id ? (
                                   <div className="flex gap-1 items-center">
-                                    <button onClick={() => confirmPayment(request.id)} className="px-2 py-1 bg-black text-white text-xs font-bold rounded cursor-pointer">Yes</button>
-                                    <button onClick={() => setConfirmPaymentId(null)} className="px-2 py-1 border border-gray-300 text-black text-xs font-bold rounded cursor-pointer">No</button>
+                                    <button onClick={() => confirmPayment(request.id)} className="px-1.5 py-0.5 bg-black text-white text-[10px] font-bold rounded cursor-pointer">Yes</button>
+                                    <button onClick={() => setConfirmPaymentId(null)} className="px-1.5 py-0.5 border border-gray-300 text-black text-[10px] font-bold rounded cursor-pointer">No</button>
                                   </div>
                                 ) : (
-                                  <button
-                                    onClick={() => setConfirmPaymentId(request.id)}
-                                    className="px-3 py-1.5 border-2 border-black text-black hover:bg-black hover:text-white text-xs font-bold rounded cursor-pointer transition-all whitespace-nowrap"
-                                  >
-                                    Confirm
-                                  </button>
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => setConfirmPaymentId(request.id)}
+                                      className="px-2 py-1 bg-black text-white hover:bg-gray-800 text-[10px] font-bold rounded cursor-pointer transition-all"
+                                    >
+                                      ✓
+                                    </button>
+                                    <button
+                                      onClick={() => rejectPayment(request.id)}
+                                      className="px-2 py-1 border border-black text-black hover:bg-black hover:text-white text-[10px] font-bold rounded cursor-pointer transition-all"
+                                    >
+                                      ✗
+                                    </button>
+                                  </div>
                                 )
                               )}
                             </div>
@@ -1303,12 +1866,34 @@ export default function PaymentsPage() {
 
                 {/* Bill Breakdown */}
                 <div className="border-2 border-black p-4 rounded-xl">
-                  <div className="text-sm font-bold text-black mb-3 border-b border-gray-100 pb-2">Amount Details</div>
+                  <div className="text-sm font-bold text-black mb-3 border-b border-gray-100 pb-2">
+                    Amount Details
+                    {selectedBill.is_move_in_payment && (
+                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">Move-in Payment</span>
+                    )}
+                    {selectedBill.is_renewal_payment && (
+                      <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Renewal Payment</span>
+                    )}
+                  </div>
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 font-medium">House Rent</span>
-                      <span className="font-bold">₱{parseFloat(selectedBill.rent_amount || 0).toLocaleString()}</span>
-                    </div>
+                    {parseFloat(selectedBill.rent_amount || 0) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500 font-medium">House Rent</span>
+                        <span className="font-bold">₱{parseFloat(selectedBill.rent_amount || 0).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {parseFloat(selectedBill.security_deposit_amount || 0) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500 font-medium">Security Deposit</span>
+                        <span className="font-bold text-amber-600">₱{parseFloat(selectedBill.security_deposit_amount).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {parseFloat(selectedBill.advance_amount || 0) > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500 font-medium">Advance Payment</span>
+                        <span className="font-bold text-indigo-600">₱{parseFloat(selectedBill.advance_amount).toLocaleString()}</span>
+                      </div>
+                    )}
                     {parseFloat(selectedBill.water_bill || 0) > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500 font-medium">Water</span>
@@ -1332,308 +1917,292 @@ export default function PaymentsPage() {
                       <span>
                         ₱{(
                           parseFloat(selectedBill.rent_amount || 0) +
+                          parseFloat(selectedBill.security_deposit_amount || 0) +
+                          parseFloat(selectedBill.advance_amount || 0) +
                           parseFloat(selectedBill.water_bill || 0) +
                           parseFloat(selectedBill.electrical_bill || 0) +
                           parseFloat(selectedBill.other_bills || 0)
                         ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
+                    {appliedCredit > 0 && (
+                      <div className="flex justify-between text-sm text-green-600 font-bold mt-1">
+                        <span>Less Credit Balance</span>
+                        <span>-₱{appliedCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Payment Method Selection */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Payment Method</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('cash')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'cash'
-                        ? 'border-black bg-black text-white'
-                        : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                        }`}
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                      <span className="font-bold text-sm">Cash</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (selectedBill.qr_code_url) {
-                          setPaymentMethod('qr_code')
-                        } else {
-                          showToast.error('Landlord has not provided a QR code', {
-                            duration: 4000,
-                            progress: true,
-                            position: "top-center",
-                            transition: "bounceIn",
-                            icon: '',
-                            sound: true,
-                          })
-                        }
-                      }}
-                      disabled={!selectedBill.qr_code_url}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${!selectedBill.qr_code_url
-                        ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                        : paymentMethod === 'qr_code'
-                          ? 'border-black bg-black text-white'
-                          : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                        }`}
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                      <span className="font-bold text-sm">QR Code</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('paypal')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'paypal'
-                        ? 'border-[#0070ba] bg-[#0070ba] text-white'
-                        : 'border-gray-200 bg-white hover:border-[#0070ba] text-black'
-                        }`}
-                    >
-                      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c2.078 0 3.604.476 4.538 1.415.924.93 1.251 2.262.973 3.96l-.006.04v.022c-.298 1.947-1.268 3.479-2.884 4.558-1.569 1.047-3.618 1.578-6.092 1.578h-1.62a.77.77 0 0 0-.759.688l-.946 5.993a.641.641 0 0 1-.633.543h-.68zm13.795-14.2l-.006.046c-.37 2.416-1.511 4.249-3.395 5.452-1.813 1.158-4.227 1.745-7.176 1.745h-1.62c-.682 0-1.261.461-1.417 1.122l-.946 5.993a.641.641 0 0 1-.633.543H2.47a.641.641 0 0 1-.633-.74L4.944 2.43A.77.77 0 0 1 5.7 1.74h6.486c4.214 0 6.716 1.967 7.685 5.397z" />
-                      </svg>
-                      <span className="font-bold text-sm">PayPal</span>
-                    </button>
+                {/* Custom Amount Input */}
+                <div className="border-2 border-black p-4 rounded-xl">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-bold text-black">Amount to Pay</label>
+                    {/* {maxPaymentLimit !== null && maxPaymentLimit !== Infinity && (
+                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                        Max: ₱{maxPaymentLimit.toLocaleString()} ({maxMonthsAllowed} mo)
+                      </span>
+                    )} */}
                   </div>
-                </div>
-
-                {/* QR Code Payment Flow */}
-                {paymentMethod === 'qr_code' && selectedBill.qr_code_url && (
-                  <div className="space-y-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
-                    <div className="text-center">
-                      <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Scan to Pay</p>
-                      <img
-                        src={selectedBill.qr_code_url}
-                        alt="Payment QR Code"
-                        className="max-h-48 mx-auto rounded-lg shadow-sm border border-white"
-                      />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-gray-500">₱</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      value={customAmount}
+                      onChange={(e) => handleCustomAmountChange(e.target.value)}
+                      className={`w-full border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500' : 'border-gray-200'} focus:border-black rounded-lg pl-8 pr-3 py-3 font-bold text-lg outline-none transition-colors`}
+                    />
+                  </div>
+                  
+                  {/* Minimum Payment Warning */}
+                  {isBelowMinimum && (
+                    <p className="text-xs font-bold text-red-500 mt-2">
+                      Minimum payment is ₱{minimumPayment.toLocaleString()}. Partial payments are not allowed.
+                    </p>
+                  )}
+                  
+                  {/* Months Covered Display */}
+                  {monthlyRent > 0 && parseFloat(customAmount) > 0 && (
+                    <div className={`mt-3 p-3 rounded-lg ${exceedsContract ? 'bg-red-50 border border-red-200' : monthsCovered > 1 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-bold ${exceedsContract ? 'text-red-700' : monthsCovered > 1 ? 'text-green-700' : 'text-gray-700'}`}>
+                          {exceedsContract ? '⚠️ Exceeds Contract Period!' : monthsCovered > 1 ? `Covers ${monthsCovered} months` : 'Covers 1 month'}
+                        </span>
+                        {monthsCovered > 1 && !exceedsContract && contractEndDate && (
+                          <span className="text-xs text-gray-500">
+                            Until {new Date(new Date(selectedBill.due_date).setMonth(new Date(selectedBill.due_date).getMonth() + monthsCovered - 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      {exceedsContract && contractEndDate && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Your contract ends on {contractEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. 
+                          Payment covers {monthsCovered} month{monthsCovered > 1 ? 's' : ''} but contract only allows {maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''}.
+                        </p>
+                      )}
                     </div>
+                  )}
+                  
+                  {maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit && (
+                    <p className="text-xs font-bold text-red-500 mt-2">
+                      ⚠️ Amount exceeds contract limit (Max: ₱{maxPaymentLimit.toLocaleString()})
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    Enter the amount you wish to pay today. Excess amount will be stored as credit.
+                  </p>
+                </div>
 
-                    <div className="border-t border-gray-200 pt-4">
-                      <p className="text-sm font-bold text-black mb-3">Payment Proof (Required)</p>
+                {/* Check if credit actually covers the bill (minimumPayment is 0 means credit >= bill total) */}
+                {minimumPayment <= 0 && appliedCredit > 0 ? (
+                  <div className="mt-6">
+                    <div className="bg-green-50 border border-green-200 p-4 rounded-xl mb-4">
+                      <p className="text-green-800 font-bold text-center">✨ Your credit balance covers this bill!</p>
+                    </div>
+                    <button
+                      onClick={handleCreditPayment}
+                      className="w-full bg-black text-white p-4 rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg"
+                    >
+                      Pay with Credit Balance
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Payment Method</label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('cash')}
+                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
+                          ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : paymentMethod === 'cash'
+                            ? 'border-black bg-black text-white'
+                            : 'border-gray-200 bg-white hover:border-gray-400 text-black'
+                          }`}
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        <span className="font-bold text-sm">Cash</span>
+                      </button>
 
-                      <div className="mb-3">
-                        <input
-                          type="text"
-                          value={referenceNumber}
-                          onChange={e => setReferenceNumber(e.target.value)}
-                          placeholder="Enter Ref/Transaction No."
-                          className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium outline-none transition-colors"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedBill.qr_code_url) {
+                            setPaymentMethod('qr_code')
+                          } else {
+                            showToast.error('Landlord has not provided a QR code', {
+                              duration: 4000,
+                              progress: true,
+                              position: "top-center",
+                              transition: "bounceIn",
+                              icon: '',
+                              sound: true,
+                            })
+                          }
+                        }}
+                        disabled={!selectedBill.qr_code_url || isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${!selectedBill.qr_code_url || isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
+                          ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                          : paymentMethod === 'qr_code'
+                            ? 'border-black bg-black text-white'
+                            : 'border-gray-200 bg-white hover:border-gray-400 text-black'
+                          }`}
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                        <span className="font-bold text-sm">QR Code</span>
+                      </button>
 
-                      <div>
-                        <div className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer bg-white transition-colors ${proofPreview ? 'border-black' : 'border-gray-300 hover:border-gray-400'}`}>
-                          {proofPreview ? (
-                            <div className="relative inline-block">
-                              <img src={proofPreview} alt="Payment Proof" className="max-h-32 rounded shadow-sm" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setProofFile(null)
-                                  setProofPreview(null)
-                                }}
-                                className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full hover:bg-gray-800"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="cursor-pointer block w-full h-full">
-                              <span className="text-xs font-bold text-black">Upload Screenshot</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={e => {
-                                  const file = e.target.files[0]
-                                  if (file) {
-                                    setProofFile(file)
-                                    setProofPreview(URL.createObjectURL(file))
-                                  }
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('stripe')}
+                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'stripe'
+                          ? 'border-[#6772e5] bg-[#6772e5] text-white'
+                          : 'border-gray-200 bg-white hover:border-[#6772e5] text-black'
+                          } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200`}
+                      >
+                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.768-1.435 1.834-1.435 1.412 0 2.615.696 3.774 1.562l-3.242-4.197C11.83.748 10.155 0 8.528 0 5.093 0 2.502 2.659 2.502 6.52c0 6.641 8.816 6.307 8.816 9.389 0 .884-.79 1.462-1.954 1.462-1.636 0-3.098-.823-4.322-1.859l3.359 4.385c1.464 1.054 3.09 1.558 4.708 1.558 3.596 0 6.138-2.585 6.138-6.425 0-6.738-8.852-6.27-8.852-9.406 0-.825.797-1.412 1.833-1.412 1.348 0 2.559.637 3.66 1.488l1.458-2.146c-1.282-1.1-2.934-1.688-4.664-1.688-2.673 0-4.523 1.36-4.523 3.329 0 2.946 4.09 4.384 4.09 6.685 0 1.583-1.42 2.457-3.031 2.457-1.487 0-2.844-.657-3.924-1.666l-1.378 2.029c1.605 1.636 3.67 2.375 5.765 2.375 2.828 0 4.795-1.418 4.795-3.484 0-3.08-4.09-4.512-4.09-6.792z" />
+                        </svg>
+                        <span className="font-bold text-sm">Stripe</span>
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* PayPal Payment Flow */}
-                {paymentMethod === 'paypal' && (
-                  <div className="space-y-4 bg-[#ffc439]/10 border border-[#0070ba]/30 p-4 rounded-xl">
-                    <div className="text-center mb-4">
-                      <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with PayPal</p>
-                      <p className="text-xs text-gray-500">Secure payment powered by PayPal</p>
-                    </div>
-
-                    <PayPalScriptProvider options={{
-                      clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID,
-                      currency: 'PHP'
-                    }}>
-                      <PayPalButtons
-                        style={{
-                          layout: 'vertical',
-                          color: 'blue',
-                          shape: 'rect',
-                          label: 'pay'
-                        }}
-                        disabled={paypalProcessing}
-                        createOrder={async () => {
-                          setPaypalProcessing(true)
-                          try {
-                            const total = (
-                              parseFloat(selectedBill.rent_amount || 0) +
-                              parseFloat(selectedBill.water_bill || 0) +
-                              parseFloat(selectedBill.electrical_bill || 0) +
-                              parseFloat(selectedBill.other_bills || 0)
-                            ).toFixed(2)
-
-                            const response = await fetch('/api/paypal/create-order', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                amount: total,
-                                currency: 'PHP',
-                                description: `EaseRent Payment - ${selectedBill.properties?.title}`,
-                                paymentRequestId: selectedBill.id
-                              })
-                            })
-
-                            const data = await response.json()
-                            if (data.orderId) {
-                              return data.orderId
-                            }
-                            throw new Error(data.error || 'Failed to create order')
-                          } catch (error) {
-                            console.error('PayPal Create Order Error:', error)
-                            showToast.error('Failed to initialize PayPal payment', {
-                              duration: 4000,
-                              progress: true,
-                              position: "top-center",
-                              transition: "bounceIn",
-                              icon: '',
-                              sound: true,
-                            })
-                            setPaypalProcessing(false)
-                            throw error
-                          }
-                        }}
-                        onApprove={async (data) => {
-                          try {
-                            const response = await fetch('/api/paypal/capture-order', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ orderId: data.orderID })
-                            })
-
-                            const captureData = await response.json()
-
-                            if (captureData.success) {
-                              // Update payment request status
-                              await supabase
-                                .from('payment_requests')
-                                .update({
-                                  status: 'pending_confirmation',
-                                  paid_at: new Date().toISOString(),
-                                  payment_method: 'paypal',
-                                  tenant_reference_number: captureData.transactionId
-                                })
-                                .eq('id', selectedBill.id)
-
-                              // Notify landlord
-                              const total = (
-                                parseFloat(selectedBill.rent_amount || 0) +
-                                parseFloat(selectedBill.water_bill || 0) +
-                                parseFloat(selectedBill.electrical_bill || 0) +
-                                parseFloat(selectedBill.other_bills || 0)
-                              ).toLocaleString('en-US', { minimumFractionDigits: 2 })
-
-                              await supabase.from('notifications').insert({
-                                recipient: selectedBill.landlord,
-                                actor: session.user.id,
-                                type: 'payment_confirmation_needed',
-                                message: `Tenant paid ₱${total} for ${selectedBill.properties?.title || 'property'} via PayPal (Transaction: ${captureData.transactionId}). Please confirm payment receipt.`,
-                                link: '/payments',
-                                data: { payment_request_id: selectedBill.id }
-                              })
-
-                              setShowPaymentModal(false)
-                              setSelectedBill(null)
-                              setPaymentMethod('cash')
-                              loadPaymentRequests()
-                              showToast.success('PayPal payment successful! Waiting for landlord confirmation.', {
-                                duration: 4000,
-                                progress: true,
-                                position: "top-center",
-                                transition: "bounceIn",
-                                icon: '',
-                                sound: true,
-                              })
-                            } else {
-                              throw new Error(captureData.error || 'Payment capture failed')
-                            }
-                          } catch (error) {
-                            console.error('PayPal Capture Error:', error)
-                            showToast.error('Payment failed. Please try again.', {
-                              duration: 4000,
-                              progress: true,
-                              position: "top-center",
-                              transition: "bounceIn",
-                              icon: '',
-                              sound: true,
-                            })
-                          } finally {
-                            setPaypalProcessing(false)
-                          }
-                        }}
-                        onError={(err) => {
-                          console.error('PayPal Error:', err)
-                          showToast.error('PayPal payment failed', {
-                            duration: 4000,
-                            progress: true,
-                            position: "top-center",
-                            transition: "bounceIn",
-                            icon: '',
-                            sound: true,
-                          })
-                          setPaypalProcessing(false)
-                        }}
-                        onCancel={() => {
-                          showToast.error('Payment cancelled', {
-                            duration: 4000,
-                            progress: true,
-                            position: "top-center",
-                            transition: "bounceIn",
-                            icon: '',
-                            sound: true,
-                          })
-                          setPaypalProcessing(false)
-                        }}
-                      />
-                    </PayPalScriptProvider>
-
-                    {paypalProcessing && (
-                      <div className="text-center py-2">
-                        <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-[#0070ba]"></div>
-                        <p className="text-xs text-gray-500 mt-2">Processing payment...</p>
+                {/* QR Code Payment Flow */}
+                {paymentMethod === 'qr_code' && (
+                  <div className="space-y-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
+                    {isBelowMinimum ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
+                        <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
+                        <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
                       </div>
+                    ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
+                        <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
+                        <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
+                      </div>
+                    ) : selectedBill.qr_code_url ? (
+                      <>
+                        <div className="text-center">
+                          <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Scan to Pay</p>
+                          <img
+                            src={selectedBill.qr_code_url}
+                            alt="Payment QR Code"
+                            className="max-h-48 mx-auto rounded-lg shadow-sm border border-white"
+                          />
+                        </div>
+
+                        <div className="border-t border-gray-200 pt-4">
+                          <p className="text-sm font-bold text-black mb-3">Payment Proof (Required)</p>
+
+                          <div className="mb-3">
+                            <input
+                              type="text"
+                              value={referenceNumber}
+                              onChange={e => setReferenceNumber(e.target.value)}
+                              placeholder="Enter Ref/Transaction No."
+                              className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium outline-none transition-colors"
+                            />
+                          </div>
+
+                          <div>
+                            <div className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer bg-white transition-colors ${proofPreview ? 'border-black' : 'border-gray-300 hover:border-gray-400'}`}>
+                              {proofPreview ? (
+                                <div className="relative inline-block">
+                                  <img src={proofPreview} alt="Payment Proof" className="max-h-32 rounded shadow-sm" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setProofFile(null)
+                                      setProofPreview(null)
+                                    }}
+                                    className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full hover:bg-gray-800"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                  </button>
+                                </div>
+                              ) : (
+                                <label className="cursor-pointer block w-full h-full">
+                                  <span className="text-xs font-bold text-black">Upload Screenshot</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={e => {
+                                      const file = e.target.files[0]
+                                      if (file) {
+                                        setProofFile(file)
+                                        setProofPreview(URL.createObjectURL(file))
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center text-gray-500 py-4">
+                        <p className="text-sm">No QR code available from landlord</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stripe Payment Flow */}
+                {paymentMethod === 'stripe' && (
+                  <div className="space-y-4 bg-[#6772e5]/10 border border-[#6772e5]/30 p-4 rounded-xl">
+                    {isBelowMinimum ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
+                        <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
+                        <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
+                      </div>
+                    ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
+                        <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
+                        <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-center mb-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with Stripe</p>
+                          <p className="text-xs text-gray-500">Secure payment powered by Stripe</p>
+                        </div>
+
+                        <StripePaymentForm
+                          amount={parseFloat(customAmount || 0).toFixed(2)}
+                          description={`EaseRent Payment - ${selectedBill.properties?.title}`}
+                          paymentRequestId={selectedBill.id}
+                          onSuccess={handleStripeSuccess}
+                          onCancel={() => {
+                            showToast.error('Payment cancelled', { duration: 4000, transition: "bounceIn" });
+                          }}
+                        />
+                      </>
                     )}
                   </div>
                 )}
 
                 {/* Buttons */}
                 <div className="flex gap-3 pt-2">
-                  {paymentMethod !== 'paypal' && (
+                  {paymentMethod !== 'stripe' && parseFloat(customAmount) > 0 && (
                     <button
                       onClick={submitPayment}
-                      disabled={uploadingProof}
+                      disabled={uploadingProof || isBelowMinimum || (maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit)}
                       className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
                     >
                       {uploadingProof ? 'Submitting...' : 'Submit Payment'}
@@ -1646,7 +2215,7 @@ export default function PaymentsPage() {
                       setPaymentMethod('cash')
                       setPaypalProcessing(false)
                     }}
-                    className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'paypal' ? 'flex-1' : ''}`}
+                    className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'stripe' || parseFloat(customAmount) <= 0 ? 'flex-1' : ''}`}
                   >
                     Cancel
                   </button>
@@ -1728,6 +2297,6 @@ export default function PaymentsPage() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   )
 }

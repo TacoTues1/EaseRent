@@ -34,6 +34,11 @@ export default function MaintenancePage() {
   const [requestForFeedback, setRequestForFeedback] = useState(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
+  // Maintenance cost states
+  const [showCostModal, setShowCostModal] = useState(false)
+  const [requestToComplete, setRequestToComplete] = useState(null)
+  const [maintenanceCost, setMaintenanceCost] = useState('')
+  const [deductFromDeposit, setDeductFromDeposit] = useState(true)
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800',
     scheduled: 'bg-blue-100 text-blue-800',
@@ -180,6 +185,100 @@ export default function MaintenancePage() {
     } else {
       showToast.error("Failed to update status");
     }
+  }
+
+  // Open cost modal before completing maintenance
+  function openCostModal(request) {
+    setRequestToComplete(request)
+    setMaintenanceCost('')
+    setDeductFromDeposit(true)
+    setShowCostModal(true)
+  }
+
+  // Complete maintenance with cost
+  async function completeWithCost() {
+    if (!requestToComplete) return
+
+    const cost = parseFloat(maintenanceCost) || 0
+
+    // Update maintenance request with cost
+    const { error: updateError } = await supabase
+      .from('maintenance_requests')
+      .update({
+        status: 'completed',
+        resolved_at: new Date().toISOString(),
+        maintenance_cost: cost,
+        cost_deducted_from_deposit: deductFromDeposit && cost > 0
+      })
+      .eq('id', requestToComplete.id)
+
+    if (updateError) {
+      showToast.error("Failed to complete maintenance");
+      return
+    }
+
+    // If deducting from security deposit
+    if (deductFromDeposit && cost > 0 && requestToComplete.tenant) {
+      // Find the tenant's active occupancy
+      const { data: occupancy } = await supabase
+        .from('tenant_occupancies')
+        .select('id, security_deposit, security_deposit_used')
+        .eq('tenant_id', requestToComplete.tenant)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (occupancy) {
+        const newUsed = (occupancy.security_deposit_used || 0) + cost
+        await supabase
+          .from('tenant_occupancies')
+          .update({ security_deposit_used: newUsed })
+          .eq('id', occupancy.id)
+
+        // Notify tenant about deduction
+        await createNotification({
+          recipient: requestToComplete.tenant,
+          actor: session.user.id,
+          type: 'security_deposit_deduction',
+          message: `₱${cost.toLocaleString()} has been deducted from your security deposit for maintenance: "${requestToComplete.title}"`,
+          link: '/dashboard'
+        })
+      }
+    }
+
+    // Send regular completion notification
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'maintenance_status',
+        recordId: requestToComplete.id,
+        actorId: session.user.id
+      })
+    })
+
+    if (requestToComplete.tenant) {
+      const costMessage = cost > 0 
+        ? ` Maintenance cost: ₱${cost.toLocaleString()}${deductFromDeposit ? ' (deducted from security deposit)' : ''}.`
+        : ''
+      await createNotification({
+        recipient: requestToComplete.tenant,
+        actor: session.user.id,
+        type: 'maintenance',
+        message: `Maintenance "${requestToComplete.title}" has been completed.${costMessage}`,
+        link: '/maintenance'
+      })
+    }
+
+    showToast.success('Maintenance completed!', {
+      duration: 4000,
+      progress: true,
+      position: "top-center",
+      transition: "bounceIn",
+    });
+
+    setShowCostModal(false)
+    setRequestToComplete(null)
+    loadRequests()
   }
 
   async function addResponse(requestId) {
@@ -598,7 +697,7 @@ export default function MaintenancePage() {
                                 <button onClick={() => openStartWorkModal(req)} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100 cursor-pointer">Start Working</button>
                               )}
                               {req.status === 'in_progress' && (
-                                <button onClick={() => updateRequestStatus(req.id, 'completed')} className="px-4 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 cursor-pointer">Mark Completed</button>
+                                <button onClick={() => openCostModal(req)} className="px-4 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 cursor-pointer">Mark Completed</button>
                               )}
                               {(req.status === 'completed' || req.status === 'resolved') && (
                                 <button onClick={() => updateRequestStatus(req.id, 'closed')} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer">Archive/Close</button>
@@ -844,6 +943,72 @@ export default function MaintenancePage() {
             <div className="flex gap-3">
               <button onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 border rounded-xl font-bold">Cancel</button>
               <button onClick={confirmStartWork} className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance Cost Modal */}
+      {showCostModal && requestToComplete && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Complete Maintenance</h3>
+                <p className="text-sm text-gray-500">{requestToComplete.title}</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Maintenance Cost / Expense</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">₱</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  className="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-lg font-bold focus:outline-none focus:border-black transition-colors"
+                  value={maintenanceCost}
+                  onChange={(e) => setMaintenanceCost(e.target.value)}
+                />
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">Leave as 0 if there&apos;s no cost to the tenant.</p>
+            </div>
+
+            {parseFloat(maintenanceCost) > 0 && (
+              <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={deductFromDeposit}
+                    onChange={(e) => setDeductFromDeposit(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <span className="text-sm font-bold text-amber-800">Deduct from Security Deposit</span>
+                    <p className="text-[10px] text-amber-600 mt-0.5">This amount will be deducted from the tenant&apos;s security deposit.</p>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowCostModal(false); setRequestToComplete(null); }}
+                className="flex-1 py-3 border border-gray-200 rounded-xl font-bold cursor-pointer hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={completeWithCost}
+                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold cursor-pointer hover:bg-green-700 shadow-lg"
+              >
+                Complete
+              </button>
             </div>
           </div>
         </div>

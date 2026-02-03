@@ -27,7 +27,7 @@ export default function NotificationsPage() {
       .eq('recipient', session.user.id)
       .order('created_at', { ascending: false })
       .limit(50)
-    
+
     setNotifications(data || [])
     setLoading(false)
   }
@@ -43,7 +43,7 @@ export default function NotificationsPage() {
       .from('notifications')
       .update({ read: true })
       .eq('id', id)
-    
+
     setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: true } : n)
     )
@@ -55,18 +55,18 @@ export default function NotificationsPage() {
       .from('notifications')
       .update({ read: false })
       .eq('id', id)
-    
+
     setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: false } : n)
     )
     showToast.success("Marked as unread", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+      duration: 4000,
+      progress: true,
+      position: "top-center",
+      transition: "bounceIn",
+      icon: '',
+      sound: true,
+    });
 
   }
 
@@ -77,7 +77,7 @@ export default function NotificationsPage() {
       .from('notifications')
       .update({ read: newStatus })
       .eq('id', id)
-    
+
     setNotifications(prev =>
       prev.map(n => n.id === id ? { ...n, read: newStatus } : n)
     )
@@ -127,47 +127,57 @@ export default function NotificationsPage() {
       .update({ read: true })
       .eq('recipient', session.user.id)
       .eq('read', false)
-    
+
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  }
+
+  async function markAllAsUnread() {
+    await supabase
+      .from('notifications')
+      .update({ read: false })
+      .eq('recipient', session.user.id)
+      .eq('read', true)
+
+    setNotifications(prev => prev.map(n => ({ ...n, read: false })))
   }
 
   async function deleteNotification(id, e) {
     e.stopPropagation() // Prevent triggering the notification click
-    
+
     // Show confirmation modal
     setDeleteConfirm({ id })
   }
 
   async function confirmDelete() {
     if (!deleteConfirm) return
-    
+
     const { error } = await supabase
       .from('notifications')
       .delete()
       .eq('id', deleteConfirm.id)
-    
+
     if (!error) {
       setNotifications(prev => prev.filter(n => n.id !== deleteConfirm.id))
       showToast.success("Notification deleted", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
     } else {
       showToast.error("Failed to delete", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     }
-    
+
     setDeleteConfirm(null)
   }
 
@@ -182,6 +192,7 @@ export default function NotificationsPage() {
   )
 
   const unreadCount = notifications.filter(n => !n.read).length
+  const readCount = notifications.length - unreadCount
 
   return (
     <div className="min-h-screen bg-white">
@@ -194,14 +205,26 @@ export default function NotificationsPage() {
               You have {unreadCount} unread {unreadCount === 1 ? 'update' : 'updates'}
             </p>
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="text-xs font-bold text-black border-b border-black cursor-pointer pb-0.5"
-            >
-              Mark all read
-            </button>
-          )}
+          <div className="flex gap-4">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllAsRead}
+                className="text-xs font-bold text-black border-b border-black cursor-pointer pb-0.5 hover:text-gray-600 hover:border-gray-600 transition-colors"
+                title="Mark all notifications as read"
+              >
+                Read all
+              </button>
+            )}
+            {readCount > 0 && (
+              <button
+                onClick={markAllAsUnread}
+                className="text-xs font-bold text-black border-b border-black cursor-pointer pb-0.5 hover:text-gray-600 hover:border-gray-600 transition-colors"
+                title="Mark all notifications as unread"
+              >
+                Unread all
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -209,7 +232,7 @@ export default function NotificationsPage() {
         <div className="flex flex-col gap-3">
           {loading ? (
             <div className="flex justify-center py-10">
-               <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
             </div>
           ) : notifications.length === 0 ? (
             <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-xl">
@@ -224,11 +247,10 @@ export default function NotificationsPage() {
               <div
                 key={notif.id}
                 onClick={() => handleNotificationClick(notif)}
-                className={`group relative p-5 rounded-xl border transition-all cursor-pointer ${
-                  !notif.read 
-                    ? 'bg-white border-black shadow-sm' 
+                className={`group relative p-5 rounded-xl border transition-all cursor-pointer ${!notif.read
+                    ? 'bg-white border-black shadow-sm'
                     : 'bg-gray-50 border-transparent hover:bg-white hover:border-gray-200'
-                }`}
+                  }`}
               >
                 <div className="flex justify-between items-start gap-4">
                   <div className="flex-1">
@@ -236,16 +258,15 @@ export default function NotificationsPage() {
                       {!notif.read && (
                         <span className="w-2 h-2 rounded-full bg-black flex-shrink-0"></span>
                       )}
-                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${
-                        !notif.read ? 'border-black text-black' : 'border-gray-300 text-gray-500'
-                      }`}>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${!notif.read ? 'border-black text-black' : 'border-gray-300 text-gray-500'
+                        }`}>
                         {notif.type?.replace(/_/g, ' ') || 'General'}
                       </span>
                       <span className="text-[10px] text-gray-400">
                         {new Date(notif.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} • {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    
+
                     <p className={`text-sm mb-1 ${!notif.read ? 'font-bold text-black' : 'font-medium text-gray-600'}`}>
                       {notif.message}
                     </p>
@@ -255,11 +276,10 @@ export default function NotificationsPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={(e) => toggleReadStatus(notif.id, notif.read, e)}
-                      className={`p-2 rounded-lg transition-colors cursor-pointer ${
-                        notif.read 
-                          ? 'text-gray-400 hover:text-black hover:bg-gray-100' 
+                      className={`p-2 rounded-lg transition-colors cursor-pointer ${notif.read
+                          ? 'text-gray-400 hover:text-black hover:bg-gray-100'
                           : 'text-green-500 hover:text-green-600 hover:bg-green-50'
-                      }`}
+                        }`}
                       title={notif.read ? 'Mark as unread' : 'Mark as read'}
                     >
                       {notif.read ? (

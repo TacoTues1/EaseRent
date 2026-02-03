@@ -45,7 +45,9 @@ export default function TenantDashboard({ session, profile }) {
   const [activePropertyImageIndex, setActivePropertyImageIndex] = useState(0)
   const [tenantOccupancy, setTenantOccupancy] = useState(null)
   const [lastPayment, setLastPayment] = useState(null)
-  const [pendingPayments, setPendingPayments] = useState([]) // New State for Pending
+  const [tenantBalance, setTenantBalance] = useState(0)
+  const [pendingPayments, setPendingPayments] = useState([])
+  const [paymentHistory, setPaymentHistory] = useState([]) // NEW: Payment History State
   const [showEndRequestModal, setShowEndRequestModal] = useState(false)
   const [endRequestDate, setEndRequestDate] = useState('')
   const [endRequestReason, setEndRequestReason] = useState('')
@@ -65,6 +67,10 @@ export default function TenantDashboard({ session, profile }) {
   const [topRated, setTopRated] = useState([])
   const [nextPaymentDate, setNextPaymentDate] = useState(null)
   const [lastRentPeriod, setLastRentPeriod] = useState(null)
+  const [showRenewalModal, setShowRenewalModal] = useState(false)
+  const [renewalRequested, setRenewalRequested] = useState(false)
+  const [daysUntilContractEnd, setDaysUntilContractEnd] = useState(null)
+  const [canRenew, setCanRenew] = useState(false)
   const maxDisplayItems = 8
   const router = useRouter()
 
@@ -111,6 +117,8 @@ export default function TenantDashboard({ session, profile }) {
   useEffect(() => {
     if (profile) {
       loadInitialData()
+      // Check for reminders (only sends at 8:00 AM, once per day)
+      fetch('/api/manual-reminders').catch(err => console.error("Reminder check failed", err));
     }
   }, [profile])
 
@@ -120,100 +128,166 @@ export default function TenantDashboard({ session, profile }) {
     await loadProperties()
     await loadPropertyStats()
     const occupancy = await loadTenantOccupancy() // Modified to return occupancy
-    await loadPendingPayments()
+    await loadTenantBalance(occupancy?.id) // Pass occupancy id
+    await loadPendingPayments(occupancy?.id) // Pass occupancy id
+    await loadPaymentHistory(occupancy?.id) // Pass occupancy id
     await checkPendingReviews(session.user.id)
     await loadUserFavorites()
     await loadFeaturedSections()
 
     // Calculate the next date after data is loaded
     if (occupancy) {
-      calculateNextPayment(occupancy.id)
+      calculateNextPayment(occupancy.id, occupancy)
     }
     setLoading(false)
   }
 
-  async function loadPendingPayments() {
-    // Corrected table name to 'payment_request'
-    const { data, error } = await supabase
+  async function loadPendingPayments(occupancyId) {
+    // Load pending payments for this tenant
+    let query = supabase
       .from('payment_requests')
       .select('*')
       .eq('tenant', session.user.id)
-      .neq('status', 'paid')      // Exclude paid bills
-      .neq('status', 'cancelled') // Exclude cancelled bills
+      .neq('status', 'paid')
+      .neq('status', 'cancelled')
       .order('due_date', { ascending: true })
 
-    if (error) {
-      console.error("Error fetching pending payments:", error)
+    if (occupancyId) {
+      // Allow specific occupancy match OR null (legacy/general)
+      query = query.or(`occupancy_id.eq.${occupancyId},occupancy_id.is.null`)
     }
 
+    const { data, error } = await query
+
+    if (error) console.error("Error fetching pending payments:", error)
     if (data) setPendingPayments(data)
   }
 
-  async function calculateNextPayment(occupancyId) {
-    // 1. Check for strict "pending" (unpaid) bills first
-    const { data: pendingBill } = await supabase
+  async function loadPaymentHistory(occupancyId) {
+    // Fetch PAID bills for Rent History
+    let query = supabase
       .from('payment_requests')
-      .select('due_date')
+      .select('*')
+      .eq('tenant', session.user.id)
+      .eq('status', 'paid')
+      .order('due_date', { ascending: true })
+
+    if (occupancyId) {
+      query = query.eq('occupancy_id', occupancyId)
+    }
+
+    const { data } = await query
+    if (data) setPaymentHistory(data)
+  }
+
+  async function calculateNextPayment(occupancyId, occupancy = null) {
+    // Use passed occupancy or fall back to state
+    const currentOccupancy = occupancy || tenantOccupancy;
+    
+    // 1. Check for strict "pending" (unpaid) RENT bills first (exclude move-in payments)
+    let pendingQuery = supabase
+      .from('payment_requests')
+      .select('due_date, is_move_in_payment')
       .eq('tenant', session.user.id)
       .eq('status', 'pending')
+      .gt('rent_amount', 0) // Only rent bills
       .order('due_date', { ascending: true })
       .limit(1)
       .maybeSingle()
 
-    if (pendingBill && pendingBill.due_date) {
-      // FIX: Added timeZone: 'UTC' to prevent -1 day error
+    if (occupancyId) {
+      pendingQuery = pendingQuery.or(`occupancy_id.eq.${occupancyId},occupancy_id.is.null`)
+    }
+
+    const { data: pendingBill } = await pendingQuery
+
+    // If there's a pending bill that is NOT a move-in payment, use its due date
+    if (pendingBill && pendingBill.due_date && !pendingBill.is_move_in_payment) {
       setNextPaymentDate(new Date(pendingBill.due_date).toLocaleDateString('en-US', {
         month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
       }))
       return
     }
 
-    // 2. Find the LATEST bill you interacted with (paid or confirming)
+    // 2. If no pending bill, use LEASE START DATE and LAST PAID BILL to project next due
     const { data: lastBill } = await supabase
       .from('payment_requests')
-      .select('due_date, rent_amount')
+      .select('due_date, rent_amount, advance_amount')
       .eq('tenant', session.user.id)
+      .eq('occupancy_id', occupancyId) // Filter by current occupancy
       .in('status', ['paid', 'pending_confirmation'])
+      .gt('rent_amount', 0) // Only look at RENT bills
       .order('due_date', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    if (lastBill && lastBill.due_date) {
-      const lastDue = new Date(lastBill.due_date)
-      const nextDue = new Date(lastDue)
-      nextDue.setDate(lastDue.getDate() + 30)
+    console.log('Last paid bill for next due calc:', lastBill);
 
-      // FIX: Added timeZone: 'UTC'
+    const baseDateString = currentOccupancy?.start_date;
+
+    if (baseDateString) {
+      const startDate = new Date(baseDateString); // This is usually UTC YYYY-MM-DD
+      const startDay = startDate.getUTCDate(); // e.g. 4
+
+      // Determine the reference date to project FROM.
+      // If we have a last paid bill, we project forward from it.
+      // If no last paid bill, we project from Start Date.
+      let nextDue;
+
+      if (lastBill && lastBill.due_date) {
+        // Calculate how many months the last payment covered
+        const rentAmount = parseFloat(lastBill.rent_amount || 0);
+        const advanceAmount = parseFloat(lastBill.advance_amount || 0);
+        
+        // Months covered = 1 (current month) + advance months (full months only)
+        let monthsCovered = 1;
+        if (rentAmount > 0 && advanceAmount > 0) {
+          // Only count FULL months of advance (partial goes to credit, not months)
+          monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
+        }
+        
+        console.log('Next due calculation:', { rentAmount, advanceAmount, monthsCovered, billDueDate: lastBill.due_date });
+        
+        // Next Due is last bill's date + months covered
+        nextDue = new Date(lastBill.due_date);
+        nextDue.setMonth(nextDue.getMonth() + monthsCovered);
+      } else {
+        // No payment history - Next Due is the START DATE (the date tenant begins occupancy)
+        // This is when the tenant's first payment is due
+        nextDue = new Date(startDate);
+      }
+
+      // Force Day Alignment to match START DAY (e.g. 4th)
+      // Careful with shorter months (Feb 30 -> Feb 28/29)
+      // But if startDay is 4, it is safe in all months.
+      // We assume start day is valid.
+      nextDue.setUTCDate(startDay);
+
       setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
         month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
       }))
 
-      // --- ADDED: Calculate Period for the Last Bill ---
-      if (parseFloat(lastBill.rent_amount) > 0) {
-        const start = new Date(lastDue);
-        start.setDate(lastDue.getDate() - 30);
-
-        // FIX: Added timeZone: 'UTC' for period display as well
-        const startStr = start.toLocaleDateString('en-US', { timeZone: 'UTC' })
-        const endStr = lastDue.toLocaleDateString('en-US', { timeZone: 'UTC' })
-        setLastRentPeriod(`${startStr} - ${endStr}`);
+      if (lastBill) {
+        const lastDate = new Date(lastBill.due_date);
+        setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+      } else {
+        setLastRentPeriod("N/A");
       }
-      // ------------------------------------------------
-      return
-    }
 
-    // 3. Fallback
-    // FIX: Check for 'start_date' first, then 'created_at'. Use UTC formatting.
-    const baseDate = tenantOccupancy?.start_date || tenantOccupancy?.created_at
-    if (baseDate) {
-      setNextPaymentDate(new Date(baseDate).toLocaleDateString('en-US', {
-        month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
-      }))
+    } else {
+      // Fallback if NO start_date (legacy data?)
+      if (lastBill && lastBill.due_date) {
+        const d = new Date(lastBill.due_date);
+        d.setMonth(d.getMonth() + 1);
+        setNextPaymentDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
+      } else {
+        setNextPaymentDate("N/A");
+      }
     }
   }
 
   useEffect(() => {
-    if (tenantOccupancy) calculateNextPayment(tenantOccupancy.id)
+    if (tenantOccupancy) calculateNextPayment(tenantOccupancy.id, tenantOccupancy)
   }, [pendingPayments, tenantOccupancy])
 
   async function checkPendingReviews(userId) {
@@ -289,6 +363,8 @@ export default function TenantDashboard({ session, profile }) {
       .select(`*, property:properties(id, title, address, city, images, price), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (error) {
@@ -299,15 +375,83 @@ export default function TenantDashboard({ session, profile }) {
     setTenantOccupancy(occupancy)
 
     if (occupancy) {
-      const { data: payment } = await supabase
-        .from('payments')
+      // Calculate days until contract end for renewal
+      if (occupancy.contract_end_date) {
+        const endDate = new Date(occupancy.contract_end_date)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        endDate.setHours(0, 0, 0, 0)
+        const diffTime = endDate - today
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        setDaysUntilContractEnd(diffDays)
+        // Can only renew if 30 or more days remain
+        setCanRenew(diffDays >= 30 && !occupancy.renewal_requested)
+        setRenewalRequested(occupancy.renewal_requested || false)
+      }
+
+      // Fetch the LAST PAID BILL from payment_requests for proper due_date display
+      const { data: lastPaidBill } = await supabase
+        .from('payment_requests')
         .select('*')
         .eq('tenant', session.user.id)
-        .order('paid_at', { ascending: false })
+        .eq('occupancy_id', occupancy.id)
+        .eq('status', 'paid')
+        .gt('rent_amount', 0) // Only rent bills
+        .order('due_date', { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      setLastPayment(payment)
+      setLastPayment(lastPaidBill)
+    }
+
+    return occupancy
+  }
+
+  async function requestContractRenewal() {
+    if (!tenantOccupancy || !canRenew) return
+
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({
+        renewal_requested: true,
+        renewal_requested_at: new Date().toISOString(),
+        renewal_status: 'pending'
+      })
+      .eq('id', tenantOccupancy.id)
+
+    if (error) {
+      showToast.error('Failed to request renewal')
+      return
+    }
+
+    // Notify landlord
+    await createNotification({
+      recipient: tenantOccupancy.landlord_id,
+      actor: session.user.id,
+      type: 'contract_renewal_request',
+      message: `${profile.first_name} ${profile.last_name} has requested to renew their contract for "${tenantOccupancy.property?.title}".`,
+      link: '/dashboard'
+    })
+
+    showToast.success('Renewal request submitted!')
+    setRenewalRequested(true)
+    setCanRenew(false)
+    setShowRenewalModal(false)
+    loadTenantOccupancy()
+  }
+
+  async function loadTenantBalance(occupancyId) {
+    if (!session || !occupancyId) {
+      setTenantBalance(0)
+      return
+    }
+    // Try to get balance for current occupancy first
+    const { data } = await supabase.from('tenant_balances').select('amount').eq('tenant_id', session.user.id).eq('occupancy_id', occupancyId).maybeSingle()
+    if (data) {
+      setTenantBalance(data.amount || 0)
+    } else {
+      // Fallback: no occupancy-specific balance, start fresh
+      setTenantBalance(0)
     }
   }
 
@@ -540,10 +684,65 @@ export default function TenantDashboard({ session, profile }) {
                       </p>
                     </div>
                   </div>
-                  <div className="p-4 flex gap-2 bg-white border-t border-gray-100">
-                    <button onClick={() => router.push(`/properties/${tenantOccupancy.property?.id}`)} className="flex-1 py-2 text-sm bg-slate-50 text-slate-700 font-bold rounded-lg hover:bg-slate-100 border border-slate-200/50 cursor-pointer">View Details</button>
-                    <button onClick={() => setShowEndRequestModal(true)} className="px-4 py-2 text-sm border border-red-100 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors cursor-pointer">End Contract</button>
+                  <div className="p-4 bg-white border-t border-gray-100">
+                    <div className="flex flex-col gap-1.5 mb-4 px-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-500 font-semibold uppercase tracking-wide">Lease Start</span>
+                        <span className="font-bold text-gray-900 font-mono">{new Date(tenantOccupancy.start_date || tenantOccupancy.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span>
+                      </div>
+                      {tenantOccupancy.contract_end_date && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-500 font-semibold uppercase tracking-wide">Lease End</span>
+                          <span className="font-bold text-gray-900 font-mono">{new Date(tenantOccupancy.contract_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => router.push(`/properties/${tenantOccupancy.property?.id}`)} className="py-2 text-sm bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 border border-gray-200 cursor-pointer">View Details</button>
+                      {tenantOccupancy?.contract_url && (
+                        <a href={tenantOccupancy.contract_url} target="_blank" rel="noopener noreferrer" className="py-2 text-sm bg-black text-white font-bold rounded-lg hover:bg-gray-800 cursor-pointer text-center flex items-center justify-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          View Contract
+                        </a>
+                      )}
+                      {canRenew && (
+                        <button onClick={() => setShowRenewalModal(true)} className="py-2 text-sm bg-white text-black font-bold rounded-lg hover:bg-gray-50 border border-gray-300 cursor-pointer flex items-center justify-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          Renew Contract
+                        </button>
+                      )}
+                      <button onClick={() => setShowEndRequestModal(true)} className="py-2 text-sm border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">End Contract</button>
+                    </div>
                   </div>
+                </div>
+
+                {/* Security Deposit Card */}
+                <div className="bg-white rounded-3xl p-5 border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    </div>
+                    <h3 className="font-bold text-gray-900 text-sm">Security Deposit</h3>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Total Deposit</span>
+                      <span className="font-black text-gray-900">₱{Number(tenantOccupancy?.security_deposit || tenantOccupancy?.property?.price || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Used for Maintenance</span>
+                      <span className="font-bold text-gray-600">₱{Number(tenantOccupancy?.security_deposit_used || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
+                      <span className="text-xs font-bold text-gray-700">Remaining Balance</span>
+                      <span className="font-black text-lg text-black">₱{Number((tenantOccupancy?.security_deposit || tenantOccupancy?.property?.price || 0) - (tenantOccupancy?.security_deposit_used || 0)).toLocaleString()}</span>
+                    </div>
+                  </div>
+                  {daysUntilContractEnd !== null && daysUntilContractEnd <= 30 && daysUntilContractEnd > 0 && (
+                    <p className="text-[10px] text-gray-600 mt-3 bg-gray-100 p-2 rounded-lg">
+                      💡 Your security deposit can be used as payment in your last month if unused.
+                    </p>
+                  )}
                 </div>
 
                 <div className="bg-black rounded-3xl p-6 text-white relative overflow-hidden shadow-lg">
@@ -643,93 +842,210 @@ export default function TenantDashboard({ session, profile }) {
 
                     {/* 2. Next Due Date & Last Payment Date Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+                      {/* Advance Payment / Credit Balance Card */}
+                      {tenantBalance > 0 && (
+                        <div className="col-span-1 md:col-span-2 bg-green-50/50 rounded-2xl p-4 border border-green-100 flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Advance Payment / Credit</p>
+                            <p className="text-sm text-green-700 font-medium">Available for next bill</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-green-700">₱{tenantBalance.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Breakdown - Safely Rendered */}
+                      {lastPayment && (
+                        <div className="col-span-1 md:col-span-2 bg-white border border-gray-100 rounded-xl overflow-hidden p-0">
+                          <div className="flex flex-wrap sm:flex-nowrap divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+                            {Number(lastPayment.rent_amount) > 0 && (
+                              <div className="flex-1 p-3 text-center">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">House Rent</span>
+                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.rent_amount).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.electrical_bill) > 0 && (
+                              <div className="flex-1 p-3 text-center">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Elec.</span>
+                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.electrical_bill).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.water_bill) > 0 && (
+                              <div className="flex-1 p-3 text-center">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Water</span>
+                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.water_bill).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.other_bills) > 0 && (
+                              <div className="flex-1 p-3 text-center">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Wifi</span>
+                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.other_bills).toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Next Due Date */}
-                      <div className="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-50">
-                        <p className="text-xs text-indigo-400 font-bold uppercase tracking-wider mb-1">Next House Due Date</p>
+                      <div className="bg-gray-50/50 rounded-2xl p-4 border border-indigo-50">
+                        <p className="text-xs text-black-400 font-bold uppercase tracking-wider mb-1">Next House Due Date</p>
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-black-100 text-white-600 flex items-center justify-center shrink-0">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                           </div>
-                          <p className="text-lg font-black text-slate-900">{nextPaymentDate || 'Loading...'}</p>
+                          <div>
+                            <p className="text-lg font-black text-slate-900">{nextPaymentDate || 'Loading...'}</p>
+                            {tenantOccupancy?.property?.price && (
+                              <p className="text-xs text-black-500 font-semibold mt-0.5">Expected Bill: ₱{Math.max(0, Number(tenantOccupancy.property.price) - (tenantBalance || 0)).toLocaleString()}</p>
+                            )}
+                            {/* Contract Expiry Warning */}
+                            {tenantOccupancy?.contract_end_date && (() => {
+                              const endDate = new Date(tenantOccupancy.contract_end_date);
+                              const today = new Date();
+                              const daysUntilEnd = Math.floor((endDate - today) / (1000 * 60 * 60 * 24));
+                              
+                              // Next payment date from the displayed value
+                              const nextDue = nextPaymentDate && nextPaymentDate !== 'N/A' && nextPaymentDate !== 'Loading...' 
+                                ? new Date(nextPaymentDate) 
+                                : null;
+                              
+                              if (nextDue) {
+                                const nextDueMonth = nextDue.getFullYear() * 12 + nextDue.getMonth();
+                                const endMonth = endDate.getFullYear() * 12 + endDate.getMonth();
+                                const monthsRemaining = endMonth - nextDueMonth;
+                                
+                                // Show warning if next payment is within 2 months of contract end
+                                if (monthsRemaining <= 1) {
+                                  const isLastPayment = monthsRemaining <= 0;
+                                  return (
+                                    <p className={`text-xs font-bold mt-1 flex items-center gap-1 ${isLastPayment ? 'text-red-600' : 'text-orange-600'}`}>
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                      {isLastPayment ? 'Last payment before contract ends' : `Contract ends ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                                      <span className="ml-1 text-slate-500">• {daysUntilEnd} day{daysUntilEnd !== 1 ? 's' : ''} remaining</span>
+                                    </p>
+                                  );
+                                }
+                              }
+                              
+                              // Also warn if contract ends within 60 days from today
+                              if (daysUntilEnd <= 60 && daysUntilEnd > 0) {
+                                return (
+                                  <p className="text-xs text-orange-600 font-bold mt-1 flex items-center gap-1">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                    Contract ends in {daysUntilEnd} day{daysUntilEnd > 1 ? 's' : ''}
+                                  </p>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Last Payment Date */}
+                      {/* Last House Due Date */}
                       <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Last Payment Date</p>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Last House Due Date</p>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           </div>
-                          <p className="text-lg font-black text-slate-900">
-                            {lastPayment ? new Date(lastPayment.paid_at).toLocaleDateString() : 'N/A'}
-                          </p>
+                          <div>
+                            <p className="text-lg font-black text-slate-900">
+                              {lastPayment ? new Date(lastPayment.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'N/A'}
+                            </p>
+                            {lastPayment && (
+                              <p className="text-xs text-slate-500 font-semibold">
+                                Total Paid: ₱{(
+                                  parseFloat(lastPayment.amount_paid || 0) > 0 
+                                    ? parseFloat(lastPayment.amount_paid) 
+                                    : (parseFloat(lastPayment.rent_amount || 0) + 
+                                       parseFloat(lastPayment.security_deposit_amount || 0) + 
+                                       parseFloat(lastPayment.water_bill || 0) + 
+                                       parseFloat(lastPayment.electrical_bill || 0) + 
+                                       parseFloat(lastPayment.other_bills || 0) +
+                                       parseFloat(lastPayment.advance_amount || 0))
+                                ).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* 3. Last Payment Details */}
-                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                    {/* 3. Rent Payment History (Visual Tracker) */}
+                    <div className="bg-gray-50 rounded-2xl p-5 border border-slate-100">
                       <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                           <div className="p-1.5 bg-white text-slate-600 rounded-lg shadow-sm">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                           </div>
-                          <h3 className="font-bold text-slate-900 text-sm">Last Payment Details</h3>
+                          <h3 className="font-bold text-slate-900 text-sm">Rent Payment History ({new Date().getFullYear()})</h3>
                         </div>
-                        {lastPayment && (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-                            Settled
-                          </span>
-                        )}
                       </div>
 
-                      {lastPayment ? (
-                        <>
-                          {/* ADDED: Rent Period Display */}
-                          {lastRentPeriod && (
-                            <div className="mb-4 bg-white/50 p-2 rounded-lg">
-                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">House Rent Range</p>
-                              <p className="text-xs font-bold text-slate-700">{lastRentPeriod}</p>
+                      {/* Month Tracker */}
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-6">
+                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
+                          // Check if any paid bill covers this month (simplistic check based on due_date month)
+                          // Note: A more robust check might look at start_date/end_date of the bill period.
+                          // For now, checks if there is a paid bill with due_date in this month (current year or recent).
+
+                          const currentYear = new Date().getFullYear();
+                          const isPaid = paymentHistory.some(p => {
+                            if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
+                            const d = new Date(p.due_date);
+                            return d.getMonth() === index && d.getFullYear() === currentYear;
+                          });
+
+                          return (
+                            <div key={month} className={`flex flex-col items-center justify-center p-2 rounded-xl border ${isPaid ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100 opacity-60'}`}>
+                              <span className={`text-[10px] font-bold uppercase mb-1 ${isPaid ? 'text-green-700' : 'text-gray-400'}`}>{month}</span>
+                              {isPaid ? (
+                                <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg shadow-green-200">
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                </div>
+                              ) : (
+                                <div className="w-6 h-6 rounded-full bg-gray-100 border border-gray-200"></div>
+                              )}
                             </div>
-                          )}
-                          <div className="flex items-end justify-between mb-4">
+                          )
+                        })}
+                      </div>
+
+                      {/* 4. Utility Reminders (Elec & Wifi) */}
+                      <div className="space-y-3 border-t border-slate-200 pt-5">
+                        <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2">Utility Reminders</h4>
+
+                        {/* Electricity */}
+                        <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl border border-black-100">
+                          <div className="p-2 bg-yellow-100 text-white-600 rounded-lg shrink-0">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">Electricity Bill</p>
+                            <p className="text-xs text-slate-600 leading-snug mt-0.5">
+                              Only a friendly reminder: The electricity receipt usually arrives during the <strong>1st week of the month</strong>.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Wifi */}
+                        {tenantOccupancy?.wifi_due_day && (
+                          <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl border border-black-100">
+                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg>
+                            </div>
                             <div>
-                              <p className="text-xs text-slate-500 font-medium mb-0.5">Total Amount Paid</p>
-                              <p className="text-2xl font-black text-slate-900 tracking-tight">
-                                ₱{(
-                                  (lastPayment.amount || 0) +
-                                  (lastPayment.electrical_bill || 0) +
-                                  (lastPayment.water_bill || 0) +
-                                  (lastPayment.other_bills || 0)
-                                ).toLocaleString()}
+                              <p className="text-sm font-bold text-slate-800">Internet Bill</p>
+                              <p className="text-xs text-slate-600 leading-snug mt-0.5">
+                                Your Wifi bill is typically due on the <strong>{tenantOccupancy.wifi_due_day}{[11, 12, 13].includes(tenantOccupancy.wifi_due_day) ? 'th' : ['st', 'nd', 'rd'][tenantOccupancy.wifi_due_day % 10 - 1] || 'th'}</strong> of the month.
                               </p>
                             </div>
                           </div>
-
-                          {/* UPDATED: Divided Layout for Breakdown */}
-                          <div className="flex flex-wrap sm:flex-nowrap divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-t border-slate-200 pt-4">
-                            <div className="w-1/2 sm:w-1/4 p-2 text-center pb-4 sm:pb-2">
-                              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1">House Rent</span>
-                              <span className="text-sm font-black text-slate-900 block">₱{Number(lastPayment.amount || 0).toLocaleString()}</span>
-                            </div>
-                            <div className="w-1/2 sm:w-1/4 p-2 text-center pb-4 sm:pb-2">
-                              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1">Elec.</span>
-                              <span className="text-sm font-black text-slate-900 block">₱{Number(lastPayment.electrical_bill || 0).toLocaleString()}</span>
-                            </div>
-                            <div className="w-1/2 sm:w-1/4 p-2 text-center">
-                              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1">Water</span>
-                              <span className="text-sm font-black text-slate-900 block">₱{Number(lastPayment.water_bill || 0).toLocaleString()}</span>
-                            </div>
-                            <div className="w-1/2 sm:w-1/4 p-2 text-center">
-                              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-1">Wifi</span>
-                              <span className="text-sm font-black text-slate-900 block">₱{Number(lastPayment.other_bills || 0).toLocaleString()}</span>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-sm text-slate-400 font-medium text-center py-4">No payment history available.</p>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1014,6 +1330,53 @@ export default function TenantDashboard({ session, profile }) {
             >
               {submittingReview ? 'Submitting...' : 'Submit Review'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Contract Renewal Modal */}
+      {showRenewalModal && tenantOccupancy && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Request Contract Renewal</h3>
+                <p className="text-sm text-gray-500">{tenantOccupancy.property?.title}</p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50 rounded-xl p-4 mb-4 border border-indigo-100">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-indigo-600 font-bold">Current Contract Ends</span>
+                <span className="font-bold text-indigo-900">{new Date(tenantOccupancy.contract_end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-indigo-600 font-bold">Days Remaining</span>
+                <span className="font-bold text-indigo-900">{daysUntilContractEnd} days</span>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              By requesting a renewal, your landlord will be notified and can approve or propose new terms for your continued stay.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowRenewalModal(false)}
+                className="flex-1 py-3 border border-gray-200 rounded-xl font-bold cursor-pointer hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={requestContractRenewal}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold cursor-pointer hover:bg-indigo-700 shadow-lg"
+              >
+                Submit Request
+              </button>
+            </div>
           </div>
         </div>
       )}
