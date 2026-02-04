@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
   try {
     const { tenantId } = req.query
-    
+
     if (!tenantId) {
       return res.status(400).json({ error: 'tenantId is required' })
     }
@@ -53,7 +53,43 @@ export default async function handler(req, res) {
 
     const rentAmount = occupancy.property?.price || 0
     const startDate = new Date(occupancy.start_date)
-    const dueDate = new Date(startDate) // First rent is due on start date
+
+    // --- FIX: Calculate next due date based on last paid bill, not start_date ---
+    // 1. Look for the most recent paid bill with rent_amount > 0
+    const { data: lastPaidBill } = await supabaseAdmin
+      .from('payment_requests')
+      .select('due_date, rent_amount, advance_amount')
+      .eq('occupancy_id', occupancy.id)
+      .eq('status', 'paid')
+      .gt('rent_amount', 0)
+      .order('due_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let dueDate
+
+    if (lastPaidBill && lastPaidBill.due_date) {
+      // Calculate months covered by the last payment (including any advance)
+      const paidRent = parseFloat(lastPaidBill.rent_amount || 0)
+      const paidAdvance = parseFloat(lastPaidBill.advance_amount || 0)
+
+      let monthsCovered = 1
+      if (paidRent > 0 && paidAdvance > 0) {
+        monthsCovered = 1 + Math.floor(paidAdvance / rentAmount)
+      }
+
+      // Next due is monthsCovered months after the last paid bill's due date
+      dueDate = new Date(lastPaidBill.due_date)
+      dueDate.setMonth(dueDate.getMonth() + monthsCovered)
+
+      // Preserve the original day of month from the start_date
+      const startDay = startDate.getUTCDate()
+      dueDate.setUTCDate(startDay)
+    } else {
+      // No paid bills yet - use start date
+      dueDate = new Date(startDate)
+    }
+
     dueDate.setHours(23, 59, 59, 999)
     const dueDateStr = dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const monthName = dueDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })

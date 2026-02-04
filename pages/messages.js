@@ -917,7 +917,7 @@ export default function Messages() {
                 <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
         <p className="text-gray-500 font-medium">Loading Users...</p>
-      </div>
+      </div> 
               ) : showNewConversation ? (
                 <div className="flex-1 overflow-y-auto">
                   {filteredUsers.length === 0 ? (

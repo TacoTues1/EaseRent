@@ -24,6 +24,7 @@ export default function MaintenancePage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [requestToSchedule, setRequestToSchedule] = useState(null)
   const [scheduleDate, setScheduleDate] = useState('')
+  const [repairmanName, setRepairmanName] = useState('')
   const [formData, setFormData] = useState({
     property_id: '',
     title: '',
@@ -257,7 +258,7 @@ export default function MaintenancePage() {
     })
 
     if (requestToComplete.tenant) {
-      const costMessage = cost > 0 
+      const costMessage = cost > 0
         ? ` Maintenance cost: ₱${cost.toLocaleString()}${deductFromDeposit ? ' (deducted from security deposit)' : ''}.`
         : ''
       await createNotification({
@@ -388,17 +389,26 @@ export default function MaintenancePage() {
       if (insertData && insertData[0]) {
         const property = insertData[0].properties
 
-        // --- SMS NOTIFICATION LOGIC (Only SMS for Landlord) ---
+        // --- NOTIFICATION LOGIC (SMS + In-App) ---
         if (property && property.landlord) {
 
-          // 1. Fetch Landlord Phone Number
+          // 1. In-App Notification
+          await createNotification({
+            recipient: property.landlord,
+            actor: session.user.id,
+            type: 'maintenance_request',
+            message: `${profile.first_name} ${profile.last_name} submitted a new maintenance request: "${formData.title}"`,
+            link: '/dashboard' // or /maintenance
+          })
+
+          // 2. Fetch Landlord Phone Number for SMS
           const { data: landlordProfile } = await supabase
             .from('profiles')
             .select('phone')
             .eq('id', property.landlord)
             .single()
 
-          // 2. Send SMS if phone exists
+          // 3. Send SMS if phone exists
           if (landlordProfile?.phone) {
             await fetch('/api/send-sms', {
               method: 'POST',
@@ -483,6 +493,7 @@ export default function MaintenancePage() {
   function openStartWorkModal(request) {
     setRequestToSchedule(request)
     setScheduleDate('') // Reset date
+    setRepairmanName('') // Reset repairman name
     setShowScheduleModal(true)
   }
 
@@ -493,7 +504,8 @@ export default function MaintenancePage() {
       .from('maintenance_requests')
       .update({
         status: 'in_progress',
-        scheduled_date: new Date(scheduleDate).toISOString()
+        scheduled_date: new Date(scheduleDate).toISOString(),
+        repairman_name: repairmanName.trim() || null
       })
       .eq('id', requestToSchedule.id)
 
@@ -501,17 +513,19 @@ export default function MaintenancePage() {
       showToast.success("Work started & date set!");
 
       const formattedDate = new Date(scheduleDate).toLocaleString();
+      const repairmanInfo = repairmanName.trim() ? ` Assigned repairman: ${repairmanName.trim()}.` : '';
       await createNotification({
         recipient: requestToSchedule.tenant,
         actor: session.user.id,
         type: 'maintenance',
-        message: `Work on "${requestToSchedule.title}" is scheduled to start on ${formattedDate}.`,
+        message: `Work on "${requestToSchedule.title}" is scheduled to start on ${formattedDate}.${repairmanInfo}`,
         link: '/maintenance'
       })
 
       loadRequests()
       setShowScheduleModal(false)
       setRequestToSchedule(null)
+      setRepairmanName('')
     } else {
       showToast.error("Failed to update request");
     }
@@ -581,23 +595,23 @@ export default function MaintenancePage() {
         {/* Requests List */}
         <div className="space-y-4">
           {loading ? (
-<div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-        <p className="text-gray-500 font-medium">Loading Maintenance Requests...</p>
-      </div>          ) : filteredRequests.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-              <p className="text-gray-900 font-bold mb-1">
-                {requests.length === 0
-                  ? (profile?.role === 'landlord' ? 'All caught up!' : 'No requests yet.')
-                  : 'No matching requests found.'}
-              </p>
-              <p className="text-sm text-gray-500">
-                {requests.length === 0
-                  ? (profile?.role === 'landlord' ? 'No open maintenance requests.' : 'Click "+ New Request" to submit one.')
-                  : 'Try adjusting your search or filter.'}
-              </p>
-            </div>
-          ) : (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
+              <p className="text-gray-500 font-medium">Loading Maintenance Requests...</p>
+            </div>) : filteredRequests.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
+                <p className="text-gray-900 font-bold mb-1">
+                  {requests.length === 0
+                    ? (profile?.role === 'landlord' ? 'All caught up!' : 'No requests yet.')
+                    : 'No matching requests found.'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {requests.length === 0
+                    ? (profile?.role === 'landlord' ? 'No open maintenance requests.' : 'Click "+ New Request" to submit one.')
+                    : 'Try adjusting your search or filter.'}
+                </p>
+              </div>
+            ) : (
             filteredRequests.map(req => (
               <div key={req.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                 {/* Header Strip */}
@@ -637,20 +651,30 @@ export default function MaintenancePage() {
                           </span>
                         )}
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${req.priority === 'high' ? 'bg-red-50 text-red-700 border-red-100' :
-                            req.priority === 'normal' ? 'bg-green-50 text-green-700 border-green-100' :
-                              q.priority === 'low' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                'bgray-50 text-gray-700 border-gray-200'
+                          req.priority === 'normal' ? 'bg-green-50 text-green-700 border-green-100' :
+                            q.priority === 'low' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                              'bgray-50 text-gray-700 border-gray-200'
                           }`}>
                           {req.priority} Priority
                         </span>
                       </div>
 
                       {req.scheduled_date && (
-                        <div className="mt-2 mb-3 inline-flex items-center gap-2 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
-                          <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                          <span className="text-xs font-bold text-orange-800">
-                            Work starts: {new Date(req.scheduled_date).toLocaleString()}
-                          </span>
+                        <div className="mt-2 mb-3 flex flex-wrap gap-2">
+                          <div className="inline-flex items-center gap-2 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">
+                            <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <span className="text-xs font-bold text-orange-800">
+                              Work starts: {new Date(req.scheduled_date).toLocaleString()}
+                            </span>
+                          </div>
+                          {req.repairman_name && (
+                            <div className="inline-flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                              <span className="text-xs font-bold text-blue-800">
+                                Repairman: {req.repairman_name}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -938,8 +962,24 @@ export default function MaintenancePage() {
       {showScheduleModal && requestToSchedule && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
           <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-bold mb-4">Set Start Date</h3>
-            <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 mb-6" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} />
+            <h3 className="text-lg font-bold mb-4">Set Start Date & Assign Repairman</h3>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Start Date & Time</label>
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Repairman Name (Optional)</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-xl px-3 py-2"
+                  placeholder="e.g. Juan Dela Cruz"
+                  value={repairmanName}
+                  onChange={e => setRepairmanName(e.target.value)}
+                />
+                <p className="text-[10px] text-gray-400 mt-1">Tenant will see this name on their maintenance request.</p>
+              </div>
+            </div>
             <div className="flex gap-3">
               <button onClick={() => setShowScheduleModal(false)} className="flex-1 py-2.5 border rounded-xl font-bold">Cancel</button>
               <button onClick={confirmStartWork} className="flex-1 py-2.5 bg-black text-white rounded-xl font-bold">Confirm</button>

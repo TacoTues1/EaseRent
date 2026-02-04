@@ -57,6 +57,7 @@ export default function TenantDashboard({ session, profile }) {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+  const [submittingRenewal, setSubmittingRenewal] = useState(false)
   const [cleanlinessRating, setCleanlinessRating] = useState(5)
   const [communicationRating, setCommunicationRating] = useState(5)
   const [locationRating, setLocationRating] = useState(5)
@@ -115,6 +116,19 @@ export default function TenantDashboard({ session, profile }) {
     return () => clearInterval(interval)
   }, [properties, guestFavorites, topRated])
 
+  // Auto-slide images for active property in left panel
+  useEffect(() => {
+    if (!tenantOccupancy?.property?.images || tenantOccupancy.property.images.length <= 1) return
+
+    const interval = setInterval(() => {
+      setActivePropertyImageIndex(prev =>
+        (prev + 1) % tenantOccupancy.property.images.length
+      )
+    }, 3000) // Change image every 3 seconds
+
+    return () => clearInterval(interval)
+  }, [tenantOccupancy])
+
   useEffect(() => {
     if (profile) {
       loadInitialData()
@@ -156,9 +170,19 @@ export default function TenantDashboard({ session, profile }) {
     const diffTime = endDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // LOGIC: Only affect when "exceed the date (28 days before end)" => implies <= 28 days remaining.
-    // And Renewal NOT requested.
-    if (diffDays <= 28 && diffDays > 0 && !occupancy.renewal_requested) {
+    // LOGIC: Only consume security deposit for the LAST month of the contract
+    // Security deposit should NOT be consumed if:
+    // 1. Renewal has been requested (pending)
+    // 2. Renewal has been approved (contract was extended)
+    // The deposit should ONLY be consumed at the true final month when no renewal is active
+
+    // Check if renewal is pending or approved - if so, don't consume deposit
+    const renewalPendingOrApproved = occupancy.renewal_requested ||
+      occupancy.renewal_status === 'pending' ||
+      occupancy.renewal_status === 'approved';
+
+    // Only proceed if: 28 days or less remaining AND NO renewal active
+    if (diffDays <= 28 && diffDays > 0 && !renewalPendingOrApproved) {
 
       // Check if a "Last Month" bill already exists to prevent duplicate processing
       // We look for a bill with due_date within the last 45 days of contract? 
@@ -328,14 +352,13 @@ export default function TenantDashboard({ session, profile }) {
       return
     }
 
-    // 2. If no pending bill, use LEASE START DATE and LAST PAID BILL to project next due
     const { data: lastBill } = await supabase
       .from('payment_requests')
       .select('due_date, rent_amount, advance_amount')
       .eq('tenant', session.user.id)
-      .eq('occupancy_id', occupancyId) // Filter by current occupancy
+      .eq('occupancy_id', occupancyId)
       .in('status', ['paid', 'pending_confirmation'])
-      .gt('rent_amount', 0) // Only look at RENT bills
+      .gt('rent_amount', 0)
       .order('due_date', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -345,50 +368,30 @@ export default function TenantDashboard({ session, profile }) {
     const baseDateString = currentOccupancy?.start_date;
 
     if (baseDateString) {
-      const startDate = new Date(baseDateString); // This is usually UTC YYYY-MM-DD
-      const startDay = startDate.getUTCDate(); // e.g. 4
-
-      // Determine the reference date to project FROM.
-      // If we have a last paid bill, we project forward from it.
-      // If no last paid bill, we project from Start Date.
+      const startDate = new Date(baseDateString);
+      const startDay = startDate.getUTCDate();
       let nextDue;
 
       if (lastBill && lastBill.due_date) {
-        // Calculate how many months the last payment covered
         const rentAmount = parseFloat(lastBill.rent_amount || 0);
         const advanceAmount = parseFloat(lastBill.advance_amount || 0);
 
-        // Months covered = 1 (current month) + advance months (full months only)
         let monthsCovered = 1;
         if (rentAmount > 0 && advanceAmount > 0) {
-          // Only count FULL months of advance (partial goes to credit, not months)
           monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
         }
 
         console.log('Next due calculation:', { rentAmount, advanceAmount, monthsCovered, billDueDate: lastBill.due_date });
-
-        // Next Due is last bill's date + months covered
         nextDue = new Date(lastBill.due_date);
         nextDue.setMonth(nextDue.getMonth() + monthsCovered);
       } else {
-        // No payment history - Next Due is the START DATE (the date tenant begins occupancy)
-        // This is when the tenant's first payment is due
         nextDue = new Date(startDate);
+        nextDue.setUTCDate(startDay);
       }
 
-      // Force Day Alignment to match START DAY (e.g. 4th)
-      // Careful with shorter months (Feb 30 -> Feb 28/29)
-      // But if startDay is 4, it is safe in all months.
-      // We assume start day is valid.
-      nextDue.setUTCDate(startDay);
-
-      // Check if next payment date is PAST the contract end date
       if (currentOccupancy.contract_end_date) {
-        // contract_end_date is usually YYYY-MM-DD
         const endDate = new Date(currentOccupancy.contract_end_date);
 
-        // Ensure accurate comparison
-        // If nextDue >= endDate, then no more payments are due (unless we extend)
         if (nextDue >= endDate) {
           setNextPaymentDate("All Paid - Contract Ending");
           setLastRentPeriod(lastBill ? new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : "N/A");
@@ -408,12 +411,10 @@ export default function TenantDashboard({ session, profile }) {
       }
 
     } else {
-      // Fallback if NO start_date (legacy data?)
       if (lastBill && lastBill.due_date) {
         const d = new Date(lastBill.due_date);
         d.setMonth(d.getMonth() + 1);
 
-        // Also check legacy contract end if possible (though we used occupancy above)
         if (currentOccupancy?.contract_end_date) {
           const endDate = new Date(currentOccupancy.contract_end_date);
           if (d > endDate) {
@@ -445,7 +446,6 @@ export default function TenantDashboard({ session, profile }) {
   async function submitReview() {
     if (!reviewTarget) return
     setSubmittingReview(true)
-    // Calculate overall rating as average of 3 categories
     const overallRating = Math.round((cleanlinessRating + communicationRating + locationRating) / 3)
     const { error } = await supabase.from('reviews').insert({
       property_id: reviewTarget.property_id,
@@ -576,15 +576,19 @@ export default function TenantDashboard({ session, profile }) {
       return;
     }
 
+    setSubmittingRenewal(true)
+
     const { error } = await supabase
       .from('tenant_occupancies')
       .update({
         renewal_requested: true,
         renewal_requested_at: new Date().toISOString(),
         renewal_status: 'pending',
-        // renewal_meeting_date: renewalMeetingDate // Try to save to DB (if column exists)
+        renewal_meeting_date: renewalMeetingDate
       })
       .eq('id', tenantOccupancy.id)
+
+    setSubmittingRenewal(false)
 
     if (error) {
       showToast.error('Failed to request renewal')
@@ -811,9 +815,20 @@ export default function TenantDashboard({ session, profile }) {
                   <div className="relative w-full h-48 bg-gray-100 group">
                     {tenantOccupancy.property?.images?.length > 0 ? (
                       <>
-                        <img src={tenantOccupancy.property.images[activePropertyImageIndex || 0]}
-                          className="absolute inset-0 w-full h-full object-cover" alt="Property"
+                        <img src={tenantOccupancy.property.images[activePropertyImageIndex]}
+                          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500" alt="Property"
                         />
+                        {/* Image slider dots indicator */}
+                        {tenantOccupancy.property.images.length > 1 && (
+                          <div className="absolute top-3 right-3 flex gap-1 z-20">
+                            {tenantOccupancy.property.images.map((_, idx) => (
+                              <div
+                                key={idx}
+                                className={`h-1.5 rounded-full transition-all duration-300 shadow-sm ${idx === activePropertyImageIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
+                              />
+                            ))}
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent">
                           <span
                             className={`absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-0.5
@@ -921,7 +936,7 @@ export default function TenantDashboard({ session, profile }) {
 
                 <div className="bg-black rounded-3xl p-6 text-white relative overflow-hidden shadow-lg">
                   <h3 className="text-lg font-bold mb-1">Help & Support</h3>
-                  <p className="text-white/70 text-sm mb-4">Need assistance? Contact your landlord.</p>
+                  <p className="text-white/70 text-sm mb-4">Need assistance? Contact your landlord via our build-in message.</p>
                   <button onClick={() => router.push('/messages')} className="w-full bg-white text-black px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors cursor-pointer">Message Landlord</button>
                 </div>
               </div>
@@ -935,9 +950,9 @@ export default function TenantDashboard({ session, profile }) {
                   {/* Header */}
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-900 text-lg">All Payments</h3>
+                      <h3 className="font-bold text-slate-900 text-lg">Recent Payments</h3>
                       {pendingPayments.length > 0 && (
-                        <span className="bg-red-50 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full border border-red-100">
+                        <span className="bg-red-50 text-orange-600 text-xs font-bold px-2.5 py-1 rounded-full border border-red-100">
                           {pendingPayments.length} Pending
                         </span>
                       )}
@@ -952,7 +967,7 @@ export default function TenantDashboard({ session, profile }) {
 
                   {/* 1. Pending Bills List */}
                   {pendingPayments.length > 0 ? (
-                    <div className="space-y-3 mb-8">
+                    <div className="space-y-3 mb-9">
                       {pendingPayments.map((bill) => {
                         const rent = parseFloat(bill.rent_amount) || 0;
                         const water = parseFloat(bill.water_bill) || 0;
@@ -975,7 +990,7 @@ export default function TenantDashboard({ session, profile }) {
                         return (
                           <div key={bill.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-slate-400 border border-slate-100 shadow-sm shrink-0">
+                              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-black border border-slate-100 shadow-sm shrink-0">
                                 {billType === 'House Rent' ? (
                                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                                 ) : (
@@ -1006,14 +1021,14 @@ export default function TenantDashboard({ session, profile }) {
                       })}
                     </div>
                   ) : (
-                    <div className="text-center py-8 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 mb-8">
-                      <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <div className="text-center py-3 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 mb-4">
+                      <div className="w-12 h-12 bg-gray-300 text-black-600 rounded-full flex items-center justify-center mx-auto mb-2">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                       </div>
                       <p className="text-sm text-slate-500 font-medium">No pending payments. You're all caught up!</p>
                     </div>
                   )}
-                  <p className="text-sm text-slate-500 font-medium">Note: Please ensure all bills are paid before the due date. The landlord is not liable for late payments.</p>
+                  <p className="text-sm text-slate-500 font-medium">Note: Please ensure all electricity and wifi bills are paid before the due date. The landlord is not liable for late payments.</p>
 
 
                   <div className="border-t border-gray-100 pt-6">
@@ -1203,10 +1218,10 @@ export default function TenantDashboard({ session, profile }) {
                           });
 
                           return (
-                            <div key={month} className={`flex flex-col items-center justify-center p-2 rounded-xl border ${isPaid ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100 opacity-60'}`}>
-                              <span className={`text-[10px] font-bold uppercase mb-1 ${isPaid ? 'text-green-700' : 'text-gray-400'}`}>{month}</span>
+                            <div key={month} className={`flex flex-col items-center justify-center p-2 rounded-xl border ${isPaid ? 'bg-green-50 border-green' : 'bg-white border-green-100 opacity-60'}`}>
+                              <span className={`text-[10px] font-bold uppercase mb-1 ${isPaid ? 'text-black-700' : 'text-gray-400'}`}>{month}</span>
                               {isPaid ? (
-                                <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg shadow-green-200">
+                                <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg shadow-gray-200">
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                                 </div>
                               ) : (

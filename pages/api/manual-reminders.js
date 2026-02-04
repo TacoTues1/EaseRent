@@ -498,9 +498,9 @@ export default async function handler(req, res) {
     console.log(`[Contract Expiry] Checking for contracts expiring in 29 days...`);
 
     try {
-      // Calculate the date 29 days from now
+      // Calculate the date 32 days from now (3 days before the 29-day mark)
       const reminderDate = new Date();
-      reminderDate.setDate(reminderDate.getDate() + 29);
+      reminderDate.setDate(reminderDate.getDate() + 32);
       const reminderDateStr = reminderDate.toISOString().split('T')[0];
 
       // Find active occupancies expiring in 29 days
@@ -550,7 +550,7 @@ export default async function handler(req, res) {
             recipient: occupancy.tenant_id,
             actor: occupancy.landlord_id,
             type: 'contract_expiry_reminder',
-            message: `Your rental contract for "${propertyTitle}" will expire on ${endDate} (29 days from now). Please contact your landlord if you wish to extend or renew your contract.`,
+            message: `Your rental contract for "${propertyTitle}" will expire on ${endDate} (32 days from now). Please contact your landlord if you wish to extend or renew your contract.`,
             link: '/dashboard'
           });
 
@@ -558,7 +558,7 @@ export default async function handler(req, res) {
           const phone = formatPhoneNumber(occupancy.tenant?.phone);
           if (phone) {
             try {
-              const smsMsg = `Hi ${tenantName}! Your rental contract for "${propertyTitle}" expires on ${endDate} (29 days). Contact your landlord to renew or extend. - EaseRent`;
+              const smsMsg = `Hi ${tenantName}! Your rental contract for "${propertyTitle}" expires on ${endDate} (32 days). Contact your landlord to renew or extend. - EaseRent`;
               await sendSMS(phone, smsMsg);
               console.log(`[Contract Expiry] SMS sent to ${phone}`);
             } catch (smsErr) {
@@ -578,7 +578,7 @@ export default async function handler(req, res) {
                     <div style="padding: 20px; background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;">
                       <h2 style="color: #92400e; margin-top: 0;">📅 Contract Expiry Reminder</h2>
                       <p>Dear <strong>${tenantName}</strong>,</p>
-                      <p>This is a friendly reminder that your rental contract for <strong>"${propertyTitle}"</strong> will expire on <strong>${endDate}</strong> (29 days from now).</p>
+                      <p>This is a friendly reminder that your rental contract for <strong>"${propertyTitle}"</strong> will expire on <strong>${endDate}</strong> (32 days from now).</p>
                       <p>If you wish to extend your stay or renew your contract, please contact your landlord as soon as possible to discuss the terms.</p>
                       <p>Thank you for being a valued tenant!</p>
                       <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/dashboard" 

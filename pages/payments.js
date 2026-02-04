@@ -905,193 +905,228 @@ export default function PaymentsPage() {
     const request = paymentRequests.find(r => r.id === requestId)
     if (!request) return
 
-    const confirmPromise = new Promise(async (resolve, reject) => {
-      try {
-        // Get occupancy info for advance payment calculation
-        let monthlyRent = parseFloat(request.rent_amount || 0);
-        let contractEndDate = null;
-
-        if (request.occupancy_id) {
-          const { data: occupancy } = await supabase
-            .from('tenant_occupancies')
-            .select('contract_end_date, rent_amount, start_date')
-            .eq('id', request.occupancy_id)
-            .single();
-
-          if (occupancy) {
-            monthlyRent = parseFloat(occupancy.rent_amount || request.rent_amount || 0);
-            contractEndDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
-          }
-        }
-
-        // Calculate total amount paid by tenant
-        const billTotal = (
-          parseFloat(request.rent_amount || 0) +
-          parseFloat(request.security_deposit_amount || 0) +
-          parseFloat(request.advance_amount || 0) +
-          parseFloat(request.water_bill || 0) +
-          parseFloat(request.electrical_bill || 0) +
-          parseFloat(request.other_bills || 0)
-        );
-
-        // Calculate how many months this payment covers
-        let extraMonths = 0;
-        if (monthlyRent > 0) {
-          const excessAmount = billTotal - parseFloat(request.rent_amount || 0) - parseFloat(request.security_deposit_amount || 0) - parseFloat(request.water_bill || 0) - parseFloat(request.electrical_bill || 0) - parseFloat(request.other_bills || 0);
-          // If there's an advance_amount field, calculate months from that
-          const advanceAmount = parseFloat(request.advance_amount || 0);
-          if (advanceAmount > 0) {
-            extraMonths = Math.floor(advanceAmount / monthlyRent);
-          }
-        }
-
-        // Create payment record for the original bill
-        const { data: payment, error: paymentError } = await supabase
-          .from('payments')
-          .insert({
-            property_id: request.property_id,
-            application_id: request.application_id,
-            tenant: request.tenant,
-            landlord: session.user.id,
-            amount: billTotal, // Record the TOTAL amount paid (Rent + Advance + Utilities + etc)
-            water_bill: request.water_bill,
-            electrical_bill: request.electrical_bill,
-            other_bills: request.other_bills,
-            bills_description: request.bills_description,
-            method: request.payment_method || 'cash',
-            status: 'recorded',
-            due_date: request.due_date,
-            currency: 'PHP'
-          })
-          .select()
-          .single()
-
-        if (paymentError) throw paymentError
-
-        // Update payment request status to paid
-        await supabase
-          .from('payment_requests')
-          .update({
-            status: 'paid',
-            payment_id: payment.id
-          })
-          .eq('id', requestId)
-
-        // Handle advance payment - create and mark future months as paid
-        if (extraMonths > 0 && request.due_date && request.occupancy_id) {
-          const baseDueDate = new Date(request.due_date);
-
-          for (let i = 1; i <= extraMonths; i++) {
-            const futureDueDate = new Date(baseDueDate);
-            futureDueDate.setMonth(futureDueDate.getMonth() + i);
-
-            // Check if this would exceed contract end date
-            if (contractEndDate && futureDueDate > contractEndDate) {
-              break; // Don't create bills beyond contract end
-            }
-
-            // Create a new payment_request for this advance month - status is PENDING for landlord to confirm
-            const { data: advanceBill, error: advanceBillError } = await supabase
-              .from('payment_requests')
-              .insert({
-                landlord: session.user.id,
-                tenant: request.tenant,
-                property_id: request.property_id,
-                occupancy_id: request.occupancy_id,
-                rent_amount: monthlyRent,
-                water_bill: 0,
-                electrical_bill: 0,
-                other_bills: 0,
-                bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1})`,
-                due_date: futureDueDate.toISOString(),
-                status: 'paid', // Mark as PAID immediately since it's covered by the advance payment
-                paid_at: new Date().toISOString(),
-                payment_method: request.payment_method || 'cash',
-                is_advance_payment: true, // Mark as advance payment
-                payment_id: payment.id // Link to the same payment record
-              })
-              .select()
-              .single();
-
-            if (advanceBillError) {
-              console.error('Advance bill creation error:', advanceBillError);
-            }
-            // NOTE: Payment record will be created when landlord confirms the advance payment
-          }
-        }
-
-        // Calculate remaining credit after advance months
-        // Total paid amount from the request
-        const totalPaidByTenant = parseFloat(request.amount_paid || 0);
-
-        // If amount_paid is stored, calculate actual excess
-        if (totalPaidByTenant > 0) {
-          // Bill amount (what was owed)
-          const billOwed = (
-            parseFloat(request.rent_amount || 0) +
-            parseFloat(request.security_deposit_amount || 0) +
-            parseFloat(request.water_bill || 0) +
-            parseFloat(request.electrical_bill || 0) +
-            parseFloat(request.wifi_bill || 0) +
-            parseFloat(request.other_bills || 0)
-          );
-
-          // Amount used for advance months (full months only)
-          const usedForAdvance = extraMonths * monthlyRent;
-
-          // Remaining credit = Total Paid - Bill Owed - Advance Used
-          const remainingCredit = totalPaidByTenant - billOwed - usedForAdvance;
-
-          if (remainingCredit > 0 && request.occupancy_id) {
-            // Save excess to tenant_balances
-            const { data: existingBalance } = await supabase
-              .from('tenant_balances')
-              .select('amount')
-              .eq('tenant_id', request.tenant)
-              .eq('occupancy_id', request.occupancy_id)
-              .maybeSingle();
-
-            const newBalance = (existingBalance?.amount || 0) + remainingCredit;
-
-            await supabase
-              .from('tenant_balances')
-              .upsert({
-                tenant_id: request.tenant,
-                occupancy_id: request.occupancy_id,
-                amount: newBalance,
-                last_updated: new Date().toISOString()
-              }, { onConflict: 'tenant_id,occupancy_id' });
-
-            console.log(`Added ₱${remainingCredit.toLocaleString()} to tenant credit balance`);
-          }
-        }
-
-        // Notify tenant that payment is confirmed
-        const monthsText = extraMonths > 0 ? ` (${extraMonths + 1} months - advance payments pending confirmation)` : '';
-        await supabase.from('notifications').insert({
-          recipient: request.tenant,
-          actor: session.user.id,
-          type: 'payment_confirmed',
-          message: `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord${monthsText}.`,
-          link: '/payments'
-        })
-
-        loadPaymentRequests()
-        loadPayments()
-        resolve(extraMonths > 0 ? `Payment confirmed! ${extraMonths} advance month(s) created for your review.` : 'Payment confirmed and recorded!')
-      } catch (error) {
-        console.error('Payment record error:', error)
-        reject('Failed to confirm payment')
-      }
-    })
     showToast.info("Confirming payment...", {
-      duration: 4000,
+      duration: 2000,
       progress: true,
       position: "top-center",
-      transition: "topBounce",
+      transition: "bounceIn",
       icon: '',
       sound: true,
     });
+
+    try {
+      // Get occupancy info for advance payment calculation
+      let monthlyRent = parseFloat(request.rent_amount || 0);
+      let contractEndDate = null;
+
+      if (request.occupancy_id) {
+        const { data: occupancy } = await supabase
+          .from('tenant_occupancies')
+          .select('contract_end_date, rent_amount, start_date')
+          .eq('id', request.occupancy_id)
+          .single();
+
+        if (occupancy) {
+          monthlyRent = parseFloat(occupancy.rent_amount || request.rent_amount || 0);
+          contractEndDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
+        }
+      }
+
+      // Calculate total amount paid by tenant
+      const billTotal = (
+        parseFloat(request.rent_amount || 0) +
+        parseFloat(request.security_deposit_amount || 0) +
+        parseFloat(request.advance_amount || 0) +
+        parseFloat(request.water_bill || 0) +
+        parseFloat(request.electrical_bill || 0) +
+        parseFloat(request.other_bills || 0)
+      );
+
+      // Calculate how many months this payment covers
+      // For renewal payments: rent_amount (1 month) + advance_amount (1 month) = 2 months total
+      // The original bill covers month 1, extraMonths creates additional "paid" bills for month 2+
+      let extraMonths = 0;
+      if (monthlyRent > 0) {
+        // If there's an advance_amount field, calculate additional months from that
+        // For renewals: advance_amount = 1 month rent, so extraMonths = 1
+        const advanceAmount = parseFloat(request.advance_amount || 0);
+        if (advanceAmount > 0) {
+          extraMonths = Math.floor(advanceAmount / monthlyRent);
+        }
+      }
+
+      // Create payment record for the original bill
+      const { data: payment, error: paymentError } = await supabase
+        .from('payments')
+        .insert({
+          property_id: request.property_id,
+          application_id: request.application_id,
+          tenant: request.tenant,
+          landlord: session.user.id,
+          amount: billTotal, // Record the TOTAL amount paid (Rent + Advance + Utilities + etc)
+          water_bill: request.water_bill,
+          electrical_bill: request.electrical_bill,
+          other_bills: request.other_bills,
+          bills_description: request.bills_description,
+          method: request.payment_method || 'cash',
+          status: 'recorded',
+          due_date: request.due_date,
+          currency: 'PHP'
+        })
+        .select()
+        .single()
+
+      if (paymentError) throw paymentError
+
+      // Update payment request status to paid
+      await supabase
+        .from('payment_requests')
+        .update({
+          status: 'paid',
+          payment_id: payment.id
+        })
+        .eq('id', requestId)
+
+      // Handle advance payment - create and mark future months as paid
+      if (extraMonths > 0 && request.due_date && request.occupancy_id) {
+        const baseDueDate = new Date(request.due_date);
+
+        for (let i = 1; i <= extraMonths; i++) {
+          const futureDueDate = new Date(baseDueDate);
+          futureDueDate.setMonth(futureDueDate.getMonth() + i);
+
+          // Check if this would exceed contract end date
+          if (contractEndDate && futureDueDate > contractEndDate) {
+            break; // Don't create bills beyond contract end
+          }
+
+          // Create a new payment_request for this advance month - status is PAID
+          const { error: advanceBillError } = await supabase
+            .from('payment_requests')
+            .insert({
+              landlord: session.user.id,
+              tenant: request.tenant,
+              property_id: request.property_id,
+              occupancy_id: request.occupancy_id,
+              rent_amount: monthlyRent,
+              water_bill: 0,
+              electrical_bill: 0,
+              other_bills: 0,
+              bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1})`,
+              due_date: futureDueDate.toISOString(),
+              status: 'paid', // Mark as PAID immediately since it's covered by the advance payment
+              paid_at: new Date().toISOString(),
+              payment_method: request.payment_method || 'cash',
+              is_advance_payment: true, // Mark as advance payment
+              payment_id: payment.id // Link to the same payment record
+            })
+            .select()
+            .single();
+
+          if (advanceBillError) {
+            console.error('Advance bill creation error:', advanceBillError);
+          }
+        }
+      }
+
+      // Calculate remaining credit after advance months
+      const totalPaidByTenant = parseFloat(request.amount_paid || 0);
+
+      if (totalPaidByTenant > 0) {
+        const billOwed = (
+          parseFloat(request.rent_amount || 0) +
+          parseFloat(request.security_deposit_amount || 0) +
+          parseFloat(request.water_bill || 0) +
+          parseFloat(request.electrical_bill || 0) +
+          parseFloat(request.wifi_bill || 0) +
+          parseFloat(request.other_bills || 0)
+        );
+
+        const usedForAdvance = extraMonths * monthlyRent;
+        const remainingCredit = totalPaidByTenant - billOwed - usedForAdvance;
+
+        if (remainingCredit > 0 && request.occupancy_id) {
+          const { data: existingBalance } = await supabase
+            .from('tenant_balances')
+            .select('amount')
+            .eq('tenant_id', request.tenant)
+            .eq('occupancy_id', request.occupancy_id)
+            .maybeSingle();
+
+          const newBalance = (existingBalance?.amount || 0) + remainingCredit;
+
+          await supabase
+            .from('tenant_balances')
+            .upsert({
+              tenant_id: request.tenant,
+              occupancy_id: request.occupancy_id,
+              amount: newBalance,
+              last_updated: new Date().toISOString()
+            }, { onConflict: 'tenant_id,occupancy_id' });
+
+          console.log(`Added ₱${remainingCredit.toLocaleString()} to tenant credit balance`);
+        }
+      }
+
+      // Reset renewal_status after renewal payment is confirmed
+      // This allows tenant to request renewal again for the NEXT contract end
+      // And allows security deposit to be consumed at the actual final month
+      if (request.is_renewal_payment && request.occupancy_id) {
+        await supabase
+          .from('tenant_occupancies')
+          .update({
+            renewal_status: null,  // Reset so deposit logic works for next contract end
+            renewal_requested: false
+          })
+          .eq('id', request.occupancy_id);
+
+        console.log('Renewal status reset after renewal payment confirmation');
+      }
+
+      // Notify tenant that payment is confirmed
+      let notificationMessage = `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord.`;
+      if (request.is_renewal_payment && extraMonths > 0) {
+        notificationMessage = `Your renewal payment for ${request.properties?.title || 'property'} has been confirmed! This covers ${extraMonths + 1} months - your next due date has been advanced accordingly.`;
+      } else if (extraMonths > 0) {
+        notificationMessage += ` This includes ${extraMonths} advance month(s).`;
+      }
+
+      await supabase.from('notifications').insert({
+        recipient: request.tenant,
+        actor: session.user.id,
+        type: 'payment_confirmed',
+        message: notificationMessage,
+        link: '/payments'
+      })
+
+      loadPaymentRequests()
+      loadPayments()
+
+      let successMsg = 'Payment confirmed and recorded!';
+      if (request.is_renewal_payment) {
+        successMsg = `Renewal payment confirmed! Covers ${extraMonths + 1} months. Next due date advanced.`;
+      } else if (extraMonths > 0) {
+        successMsg = `Payment confirmed! ${extraMonths} advance month(s) created.`;
+      }
+      showToast.success(successMsg, {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
+    } catch (error) {
+      console.error('Payment record error:', error)
+      showToast.error('Failed to confirm payment. Please try again.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
+    }
   }
 
   async function handleCancelBill(requestId) {
@@ -1669,7 +1704,7 @@ export default function PaymentsPage() {
                             request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
                               request.status === 'rejected' ? 'bg-gray-100 text-black border-gray-400' :
                                 isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                                  'bg-white text-black border-black'
+                                  'bg-yellow-50 text-yellow-700 border-yellow-100'
                           }`}>
                           {request.status === 'pending_confirmation' ? 'Reviewing' :
                             request.status === 'rejected' ? 'Rejected' :
@@ -1727,6 +1762,32 @@ export default function PaymentsPage() {
                               >
                                 Cancel
                               </button>
+                            )}
+                          </div>
+                        )}
+                        {/* Add confirm/reject buttons for pending_confirmation status on mobile */}
+                        {userRole === 'landlord' && request.status === 'pending_confirmation' && (
+                          <div className="flex gap-2 w-full mt-2">
+                            {confirmPaymentId === request.id ? (
+                              <div className="flex gap-2 flex-1">
+                                <button onClick={() => confirmPayment(request.id)} className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer">Confirm</button>
+                                <button onClick={() => setConfirmPaymentId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">Cancel</button>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => setConfirmPaymentId(request.id)}
+                                  className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
+                                >
+                                  Confirm Payment
+                                </button>
+                                <button
+                                  onClick={() => rejectPayment(request.id)}
+                                  className="px-3 py-2 bg-red-50 text-red-600 text-xs font-bold rounded cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
                             )}
                           </div>
                         )}
@@ -1832,12 +1893,12 @@ export default function PaymentsPage() {
                           </td>
 
                           <td className="px-3 py-3">
-                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border whitespace-nowrap ${request.status === 'paid' ? 'bg-black text-white border-black' :
-                              request.status === 'pending_confirmation' ? 'bg-white text-black border-black border-dashed' :
-                                request.status === 'cancelled' ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                                  request.status === 'rejected' ? 'bg-gray-100 text-black border-gray-400' :
+                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border whitespace-nowrap ${request.status === 'paid' ? 'bg-green-50 text-green-700 border-green-100' :
+                              request.status === 'pending_confirmation' ? 'bg-yellow-50 text-yellow-700 border-yellow-100 border-dashed' :
+                                request.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-100' :
+                                  request.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-100' :
                                     isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
-                                      'bg-white text-black border-black'
+                                      'bg-yellow-50 text-yellow-700 border-yellow-100'
                               }`}>
                               {request.status === 'paid' ? 'Paid' :
                                 request.status === 'pending_confirmation' ? 'Confirming' :
