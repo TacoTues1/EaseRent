@@ -407,10 +407,10 @@ export default function PaymentsPage() {
     let endDate = null;
     let startDate = null;
     let maxMonths = 1; // Default to 1 month only
-    
+
     // Try to get occupancy_id from bill, or find active occupancy for tenant
     let occupancyId = request.occupancy_id;
-    
+
     if (!occupancyId && userRole === 'tenant') {
       // Bill doesn't have occupancy_id, try to find tenant's active occupancy
       const { data: activeOcc } = await supabase
@@ -421,15 +421,15 @@ export default function PaymentsPage() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      
+
       if (activeOcc) {
         occupancyId = activeOcc.id;
         console.log('Found active occupancy:', occupancyId);
       }
     }
-    
+
     console.log('Occupancy ID for calculation:', occupancyId);
-    
+
     if (occupancyId) {
       try {
         const { data: occupancy, error: occError } = await supabase
@@ -437,7 +437,7 @@ export default function PaymentsPage() {
           .select('contract_end_date, start_date')
           .eq('id', occupancyId)
           .single();
-        
+
         console.log('Occupancy query result - data:', JSON.stringify(occupancy), 'error:', occError);
 
         if (occupancy) {
@@ -445,9 +445,9 @@ export default function PaymentsPage() {
           rentPerMonth = parseFloat(request.rent_amount || 0);
           endDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
           startDate = occupancy.start_date ? new Date(occupancy.start_date) : null;
-          
+
           console.log('Parsed dates - start:', startDate, 'end:', endDate);
-          
+
           if (endDate && startDate) {
             // SIMPLIFIED: Calculate total months in contract by comparing start and end dates
             // Contract Feb 3 to Apr 3 = 2 months (Feb-Mar, Mar-Apr)
@@ -455,19 +455,30 @@ export default function PaymentsPage() {
             const startMonth = startDate.getMonth();
             const endYear = endDate.getFullYear();
             const endMonth = endDate.getMonth();
-            
+
             // Total months in the contract period
             const totalContractMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
-            
+
+            // ADJUSTMENT: If Security Deposit covers payment for the last month,
+            // we should not allow paying for that last month in advance via cash.
+            // Check if there is a security deposit in the request or occupancy
+            const depositAmount = parseFloat(request.security_deposit_amount || occupancy?.security_deposit || 0);
+            let adjustedTotalKey = totalContractMonths;
+
+            // If deposit is sufficient to cover one month rent, effectively the last month is "pre-paid" by deposit
+            if (rentPerMonth > 0 && depositAmount >= (rentPerMonth * 0.9)) { // Allow small difference
+              adjustedTotalKey = Math.max(1, totalContractMonths - 1);
+            }
+
             // Minimum 1 month
-            maxMonths = Math.max(1, totalContractMonths);
-            
+            maxMonths = Math.max(1, adjustedTotalKey);
+
             console.log('Contract calculation:', {
               startYear, startMonth, endYear, endMonth,
               totalContractMonths,
               maxMonths
             });
-            
+
             // Limit cannot be negative (contract ended)
             if (endDate < new Date()) {
               maxMonths = 1;
@@ -489,7 +500,7 @@ export default function PaymentsPage() {
         console.error('Error fetching occupancy:', err);
       }
     }
-    
+
     setMonthlyRent(rentPerMonth);
     setContractEndDate(endDate);
     setContractStartDate(startDate);
@@ -502,7 +513,7 @@ export default function PaymentsPage() {
     const toPay = Math.max(0, total - credit);
     setMinimumPayment(toPay);
     setIsBelowMinimum(false);
-    
+
     // Ensure default doesn't exceed limit
     setCustomAmount(Math.min(toPay, limit === Infinity ? toPay : limit).toFixed(2));
 
@@ -521,24 +532,24 @@ export default function PaymentsPage() {
         parseFloat(selectedBill.wifi_bill || 0) +
         parseFloat(selectedBill.other_bills || 0)
       );
-      
+
       // One-time charges (security deposit + utilities) - these don't count toward months
       const oneTimeCharges = securityDeposit + utilities;
-      
+
       // Calculate rent portion only (payment minus one-time charges)
       const rentPortion = Math.max(0, amountNum - oneTimeCharges);
-      
+
       // How many months of rent does this cover?
       const rentForCalc = currentBillRent > 0 ? currentBillRent : monthlyRent;
       const monthsCoveredByRent = rentForCalc > 0 ? Math.ceil(rentPortion / rentForCalc) : 1;
-      
+
       // Minimum 1 month if paying anything
       const totalMonths = Math.max(1, monthsCoveredByRent);
-      
+
       // Check if rent portion exceeds what contract allows
       const maxRentAllowed = maxMonthsAllowed * rentForCalc;
       const exceeds = rentPortion > maxRentAllowed;
-      
+
       console.log('useEffect calculation:', {
         amountNum,
         oneTimeCharges,
@@ -550,7 +561,7 @@ export default function PaymentsPage() {
         maxRentAllowed,
         exceeds
       });
-      
+
       setExceedsContract(exceeds);
       setMonthsCovered(totalMonths);
     }
@@ -564,9 +575,9 @@ export default function PaymentsPage() {
       setIsBelowMinimum(false);
       return 1;
     }
-    
+
     const amountNum = parseFloat(amount) || 0;
-    
+
     const currentBillRent = parseFloat(selectedBill.rent_amount || 0);
     const securityDeposit = parseFloat(selectedBill.security_deposit_amount || 0);
     const utilities = (
@@ -575,14 +586,14 @@ export default function PaymentsPage() {
       parseFloat(selectedBill.wifi_bill || 0) +
       parseFloat(selectedBill.other_bills || 0)
     );
-    
+
     // Total bill = rent + deposit + utilities
     const currentBillTotal = currentBillRent + securityDeposit + utilities;
-    
+
     // Calculate minimum payment (bill total minus applied credit)
     const minPayment = Math.max(0, currentBillTotal - appliedCredit);
     setMinimumPayment(minPayment);
-    
+
     // Check if payment is below minimum
     if (amountNum < minPayment || (amountNum === 0 && minPayment > 0)) {
       setIsBelowMinimum(true);
@@ -591,25 +602,25 @@ export default function PaymentsPage() {
       return 1;
     }
     setIsBelowMinimum(false);
-    
+
     // One-time charges (security deposit + utilities) - these don't count toward months
     const oneTimeCharges = securityDeposit + utilities;
-    
+
     // Calculate rent portion only (payment minus one-time charges)
     const rentPortion = Math.max(0, amountNum - oneTimeCharges);
-    
+
     // How many months of rent does this cover?
     const rentForCalc = currentBillRent > 0 ? currentBillRent : monthlyRent;
     const monthsCoveredByRent = rentForCalc > 0 ? Math.ceil(rentPortion / rentForCalc) : 1;
     const totalMonths = Math.max(1, monthsCoveredByRent);
-    
+
     // Check if rent portion exceeds what contract allows
     const maxRentAllowed = maxMonthsAllowed * rentForCalc;
     const exceeds = rentPortion > maxRentAllowed;
-    
+
     setExceedsContract(exceeds);
     setMonthsCovered(totalMonths);
-    
+
     return totalMonths;
   }
 
@@ -718,13 +729,13 @@ export default function PaymentsPage() {
       );
       const firstMonthRent = parseFloat(selectedBill.rent_amount || 0);
       const amountPaid = parseFloat(customAmount) + appliedCredit;
-      
+
       // Rent portion = total paid minus one-time charges
       const rentPortion = Math.max(0, amountPaid - oneTimeCharges);
-      
+
       // Advance = rent paid beyond first month
       const advancePaymentAmount = Math.max(0, rentPortion - firstMonthRent);
-      
+
       console.log('Advance calculation:', { amountPaid, oneTimeCharges, rentPortion, firstMonthRent, advancePaymentAmount });
 
       // Update payment request status to pending_confirmation
@@ -854,12 +865,21 @@ export default function PaymentsPage() {
       setPaymentMethod('cash')
       loadPaymentRequests()
 
-      let successMsg = 'Stripe payment successful! Waiting for landlord confirmation.';
+      let successMsg = 'Stripe payment successful!';
+      let successMsg2 = 'Waiting for landlord confirmation.';
       if (data.excessAmount > 0) {
         successMsg += ` Excess of ₱${data.excessAmount.toLocaleString()} added to your credit.`;
       }
 
       showToast.success(successMsg, {
+        duration: 5000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      showToast.success(successMsg2, {
         duration: 5000,
         progress: true,
         position: "top-center",
@@ -890,14 +910,14 @@ export default function PaymentsPage() {
         // Get occupancy info for advance payment calculation
         let monthlyRent = parseFloat(request.rent_amount || 0);
         let contractEndDate = null;
-        
+
         if (request.occupancy_id) {
           const { data: occupancy } = await supabase
             .from('tenant_occupancies')
             .select('contract_end_date, rent_amount, start_date')
             .eq('id', request.occupancy_id)
             .single();
-          
+
           if (occupancy) {
             monthlyRent = parseFloat(occupancy.rent_amount || request.rent_amount || 0);
             contractEndDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
@@ -913,7 +933,7 @@ export default function PaymentsPage() {
           parseFloat(request.electrical_bill || 0) +
           parseFloat(request.other_bills || 0)
         );
-        
+
         // Calculate how many months this payment covers
         let extraMonths = 0;
         if (monthlyRent > 0) {
@@ -933,14 +953,15 @@ export default function PaymentsPage() {
             application_id: request.application_id,
             tenant: request.tenant,
             landlord: session.user.id,
-            amount: request.rent_amount,
+            amount: billTotal, // Record the TOTAL amount paid (Rent + Advance + Utilities + etc)
             water_bill: request.water_bill,
             electrical_bill: request.electrical_bill,
             other_bills: request.other_bills,
             bills_description: request.bills_description,
             method: request.payment_method || 'cash',
             status: 'recorded',
-            due_date: request.due_date
+            due_date: request.due_date,
+            currency: 'PHP'
           })
           .select()
           .single()
@@ -959,16 +980,16 @@ export default function PaymentsPage() {
         // Handle advance payment - create and mark future months as paid
         if (extraMonths > 0 && request.due_date && request.occupancy_id) {
           const baseDueDate = new Date(request.due_date);
-          
+
           for (let i = 1; i <= extraMonths; i++) {
             const futureDueDate = new Date(baseDueDate);
             futureDueDate.setMonth(futureDueDate.getMonth() + i);
-            
+
             // Check if this would exceed contract end date
             if (contractEndDate && futureDueDate > contractEndDate) {
               break; // Don't create bills beyond contract end
             }
-            
+
             // Create a new payment_request for this advance month - status is PENDING for landlord to confirm
             const { data: advanceBill, error: advanceBillError } = await supabase
               .from('payment_requests')
@@ -983,10 +1004,11 @@ export default function PaymentsPage() {
                 other_bills: 0,
                 bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1})`,
                 due_date: futureDueDate.toISOString(),
-                status: 'pending_confirmation', // Landlord must manually confirm
+                status: 'paid', // Mark as PAID immediately since it's covered by the advance payment
                 paid_at: new Date().toISOString(),
                 payment_method: request.payment_method || 'cash',
-                is_advance_payment: true // Mark as advance payment
+                is_advance_payment: true, // Mark as advance payment
+                payment_id: payment.id // Link to the same payment record
               })
               .select()
               .single();
@@ -995,6 +1017,52 @@ export default function PaymentsPage() {
               console.error('Advance bill creation error:', advanceBillError);
             }
             // NOTE: Payment record will be created when landlord confirms the advance payment
+          }
+        }
+
+        // Calculate remaining credit after advance months
+        // Total paid amount from the request
+        const totalPaidByTenant = parseFloat(request.amount_paid || 0);
+
+        // If amount_paid is stored, calculate actual excess
+        if (totalPaidByTenant > 0) {
+          // Bill amount (what was owed)
+          const billOwed = (
+            parseFloat(request.rent_amount || 0) +
+            parseFloat(request.security_deposit_amount || 0) +
+            parseFloat(request.water_bill || 0) +
+            parseFloat(request.electrical_bill || 0) +
+            parseFloat(request.wifi_bill || 0) +
+            parseFloat(request.other_bills || 0)
+          );
+
+          // Amount used for advance months (full months only)
+          const usedForAdvance = extraMonths * monthlyRent;
+
+          // Remaining credit = Total Paid - Bill Owed - Advance Used
+          const remainingCredit = totalPaidByTenant - billOwed - usedForAdvance;
+
+          if (remainingCredit > 0 && request.occupancy_id) {
+            // Save excess to tenant_balances
+            const { data: existingBalance } = await supabase
+              .from('tenant_balances')
+              .select('amount')
+              .eq('tenant_id', request.tenant)
+              .eq('occupancy_id', request.occupancy_id)
+              .maybeSingle();
+
+            const newBalance = (existingBalance?.amount || 0) + remainingCredit;
+
+            await supabase
+              .from('tenant_balances')
+              .upsert({
+                tenant_id: request.tenant,
+                occupancy_id: request.occupancy_id,
+                amount: newBalance,
+                last_updated: new Date().toISOString()
+              }, { onConflict: 'tenant_id,occupancy_id' });
+
+            console.log(`Added ₱${remainingCredit.toLocaleString()} to tenant credit balance`);
           }
         }
 
@@ -1603,7 +1671,7 @@ export default function PaymentsPage() {
                                 isPastDue ? 'bg-red-50 text-red-600 border-red-200' :
                                   'bg-white text-black border-black'
                           }`}>
-                          {request.status === 'pending_confirmation' ? 'Reviewing' : 
+                          {request.status === 'pending_confirmation' ? 'Reviewing' :
                             request.status === 'rejected' ? 'Rejected' :
                               isPastDue ? 'Overdue' : request.status}
                         </span>
@@ -1624,6 +1692,44 @@ export default function PaymentsPage() {
                           </button>
                         )}
                         {/* Add other mobile buttons here similar to desktop */}
+                        {userRole === 'landlord' && request.status === 'pending' && (
+                          <div className="flex gap-2 w-full mt-2">
+                            {confirmPaymentId === request.id ? (
+                              <div className="flex gap-2 flex-1">
+                                <button onClick={() => confirmPayment(request.id)} className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer">Confirm</button>
+                                <button onClick={() => setConfirmPaymentId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">Cancel</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmPaymentId(request.id)}
+                                className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleEditBill(request)}
+                              className="px-3 py-2 border border-gray-300 text-black text-xs font-bold rounded cursor-pointer"
+                            >
+                              Edit
+                            </button>
+
+                            {cancelBillId === request.id ? (
+                              <div className="flex gap-1">
+                                <button onClick={() => handleCancelBill(request.id)} className="px-3 py-2 bg-red-600 text-white text-xs font-bold rounded">Confirm Cancel</button>
+                                <button onClick={() => setCancelBillId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded">Back</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setCancelBillId(request.id)}
+                                className="px-3 py-2 text-red-600 bg-red-50 text-xs font-bold rounded cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1764,6 +1870,21 @@ export default function PaymentsPage() {
                               )}
                               {userRole === 'landlord' && request.status === 'pending' && (
                                 <div className="flex gap-1">
+                                  {confirmPaymentId === request.id ? (
+                                    <div className="flex gap-1 items-center mr-1">
+                                      <button onClick={() => confirmPayment(request.id)} className="px-1.5 py-1 bg-green-600 text-white text-[10px] font-bold rounded cursor-pointer shadow-sm">Confirm</button>
+                                      <button onClick={() => setConfirmPaymentId(null)} className="px-1.5 py-1 bg-gray-200 text-black text-[10px] font-bold rounded cursor-pointer shadow-sm">✕</button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setConfirmPaymentId(request.id)}
+                                      className="px-2 py-1 bg-green-600 text-white hover:bg-green-700 text-xs font-bold rounded cursor-pointer transition-all shadow-sm flex items-center gap-1"
+                                      title="Mark as Paid (Cash)"
+                                    >
+                                      <span>✓</span>
+                                      <span className="hidden xl:inline">Paid</span>
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => handleEditBill(request)}
                                     className="px-2 py-1 border border-gray-300 hover:border-black text-black text-xs font-bold rounded cursor-pointer transition-colors"
@@ -1955,20 +2076,20 @@ export default function PaymentsPage() {
                       className={`w-full border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500' : 'border-gray-200'} focus:border-black rounded-lg pl-8 pr-3 py-3 font-bold text-lg outline-none transition-colors`}
                     />
                   </div>
-                  
+
                   {/* Minimum Payment Warning */}
                   {isBelowMinimum && (
                     <p className="text-xs font-bold text-red-500 mt-2">
                       Minimum payment is ₱{minimumPayment.toLocaleString()}. Partial payments are not allowed.
                     </p>
                   )}
-                  
+
                   {/* Months Covered Display */}
                   {monthlyRent > 0 && parseFloat(customAmount) > 0 && (
                     <div className={`mt-3 p-3 rounded-lg ${exceedsContract ? 'bg-red-50 border border-red-200' : monthsCovered > 1 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
                       <div className="flex items-center justify-between">
                         <span className={`text-sm font-bold ${exceedsContract ? 'text-red-700' : monthsCovered > 1 ? 'text-green-700' : 'text-gray-700'}`}>
-                          {exceedsContract ? '⚠️ Exceeds Contract Period!' : monthsCovered > 1 ? `Covers ${monthsCovered} months` : 'Covers 1 month'}
+                          {exceedsContract ? 'Exceeds Contract Period!' : monthsCovered > 1 ? `Covers ${monthsCovered} months` : 'Covers 1 month'}
                         </span>
                         {monthsCovered > 1 && !exceedsContract && contractEndDate && (
                           <span className="text-xs text-gray-500">
@@ -1978,16 +2099,16 @@ export default function PaymentsPage() {
                       </div>
                       {exceedsContract && contractEndDate && (
                         <p className="text-xs text-red-600 mt-1">
-                          Your contract ends on {contractEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. 
+                          Your contract ends on {contractEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
                           Payment covers {monthsCovered} month{monthsCovered > 1 ? 's' : ''} but contract only allows {maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''}.
                         </p>
                       )}
                     </div>
                   )}
-                  
+
                   {maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit && (
                     <p className="text-xs font-bold text-red-500 mt-2">
-                      ⚠️ Amount exceeds contract limit (Max: ₱{maxPaymentLimit.toLocaleString()})
+                      Amount exceeds contract limit (Max: ₱{maxPaymentLimit.toLocaleString()})
                     </p>
                   )}
                   <p className="text-xs text-gray-500 mt-2">

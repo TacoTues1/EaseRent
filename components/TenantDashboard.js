@@ -71,6 +71,7 @@ export default function TenantDashboard({ session, profile }) {
   const [renewalRequested, setRenewalRequested] = useState(false)
   const [daysUntilContractEnd, setDaysUntilContractEnd] = useState(null)
   const [canRenew, setCanRenew] = useState(false)
+  const [securityDepositPaid, setSecurityDepositPaid] = useState(false)
   const maxDisplayItems = 8
   const router = useRouter()
 
@@ -135,11 +136,129 @@ export default function TenantDashboard({ session, profile }) {
     await loadUserFavorites()
     await loadFeaturedSections()
 
-    // Calculate the next date after data is loaded
+    // SCRIPT: Check Last Month Security Deposit Logic (Auto-run)
     if (occupancy) {
+      await checkLastMonthDepositLogic(occupancy)
       calculateNextPayment(occupancy.id, occupancy)
     }
     setLoading(false)
+  }
+
+  async function checkLastMonthDepositLogic(occupancy) {
+    if (!occupancy.contract_end_date) return;
+
+    const endDate = new Date(occupancy.contract_end_date);
+    const today = new Date();
+    // Normalize to start of day
+    endDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    const diffTime = endDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // LOGIC: Only affect when "exceed the date (28 days before end)" => implies <= 28 days remaining.
+    // And Renewal NOT requested.
+    if (diffDays <= 28 && diffDays > 0 && !occupancy.renewal_requested) {
+
+      // Check if a "Last Month" bill already exists to prevent duplicate processing
+      // We look for a bill with due_date within the last 45 days of contract? 
+      // Or explicitly check for a payment request covering this period.
+      // Let's look for any bill generated recently for this property context.
+
+      // Define a window for "Last Month Bill". E.g. Due date is between (EndDate - 35 days) and (EndDate).
+      const windowStart = new Date(endDate);
+      windowStart.setDate(windowStart.getDate() - 40);
+
+      const { data: existingBills } = await supabase
+        .from('payment_requests')
+        .select('*')
+        .eq('occupancy_id', occupancy.id)
+        .gte('due_date', windowStart.toISOString().split('T')[0])
+        // We assume last month bill would be Rent.
+        .gt('rent_amount', 0);
+
+      // If we find a bill in this window, we assume the system (or this script previously) handled it.
+      if (existingBills && existingBills.length > 0) {
+        return;
+      }
+
+      // NO BILL FOUND. EXECUTE DEPOSIT LOGIC.
+      console.log('Executing Last Month Deposit Logic...');
+
+      const rentAmount = Number(occupancy.property?.price || 0);
+      const depositTotal = Number(occupancy.security_deposit || 0);
+      const depositUsed = Number(occupancy.security_deposit_used || 0);
+      const availableDeposit = depositTotal - depositUsed;
+
+      if (availableDeposit >= rentAmount) {
+        // CASE 1: Deposit covers full rent.
+        // 1. Mark as "Paid" immediately via Deposit
+        await supabase.from('payment_requests').insert({
+          tenant: session.user.id,
+          property_id: occupancy.property_id,
+          occupancy_id: occupancy.id,
+          rent_amount: rentAmount,
+          status: 'paid', // Directly Paid
+          due_date: new Date().toISOString(), // Due now/today
+          bills_description: 'Last Month Rent (Paid via Security Deposit)',
+          is_move_in_payment: false
+        });
+
+        // 2. Update Deposit Used
+        await supabase.from('tenant_occupancies')
+          .update({ security_deposit_used: depositUsed + rentAmount })
+          .eq('id', occupancy.id);
+
+        // 3. Notify
+        showToast.success("Last month rent paid using Security Deposit");
+        await createNotification({
+          recipient: session.user.id,
+          actor: session.user.id, // System action really
+          type: 'payment_paid',
+          message: 'Your last month rent has been automatically paid using your Security Deposit.',
+          link: '/payments'
+        });
+
+      } else {
+        // CASE 2: Deposit is INSUFFICIENT (or 0).
+        // 1. Consume remaining deposit (if any)
+        if (availableDeposit > 0) {
+          // Record the partial usage? 
+          // The prompt says "send the exact amount of the lack only".
+          // So we just bill the difference. We implicitly "use" the deposit.
+          await supabase.from('tenant_occupancies')
+            .update({ security_deposit_used: depositUsed + availableDeposit }) // Use it all
+            .eq('id', occupancy.id);
+        }
+
+        const lackAmount = rentAmount - availableDeposit;
+
+        // 2. Create "Emergency Bill" for the Lack Amount
+        await supabase.from('payment_requests').insert({
+          tenant: session.user.id,
+          property_id: occupancy.property_id,
+          occupancy_id: occupancy.id,
+          rent_amount: lackAmount, // The "Lack"
+          status: 'pending',
+          due_date: new Date().toISOString(), // Due immediately
+          bills_description: `Emergency Bill: Last Month Balance (Deposit Insufficient)`,
+          is_move_in_payment: false
+        });
+
+        showToast.error(`Emergency Bill generated: ₱${lackAmount.toLocaleString()}`);
+        await createNotification({
+          recipient: session.user.id,
+          actor: session.user.id,
+          type: 'payment_pending',
+          message: `An emergency bill for ₱${lackAmount.toLocaleString()} has been generated for your last month (Security Deposit was insufficient).`,
+          link: '/payments'
+        });
+      }
+
+      // Refresh data
+      loadPendingPayments(occupancy.id);
+      loadTenantOccupancy();
+    }
   }
 
   async function loadPendingPayments(occupancyId) {
@@ -183,7 +302,7 @@ export default function TenantDashboard({ session, profile }) {
   async function calculateNextPayment(occupancyId, occupancy = null) {
     // Use passed occupancy or fall back to state
     const currentOccupancy = occupancy || tenantOccupancy;
-    
+
     // 1. Check for strict "pending" (unpaid) RENT bills first (exclude move-in payments)
     let pendingQuery = supabase
       .from('payment_requests')
@@ -238,16 +357,16 @@ export default function TenantDashboard({ session, profile }) {
         // Calculate how many months the last payment covered
         const rentAmount = parseFloat(lastBill.rent_amount || 0);
         const advanceAmount = parseFloat(lastBill.advance_amount || 0);
-        
+
         // Months covered = 1 (current month) + advance months (full months only)
         let monthsCovered = 1;
         if (rentAmount > 0 && advanceAmount > 0) {
           // Only count FULL months of advance (partial goes to credit, not months)
           monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
         }
-        
+
         console.log('Next due calculation:', { rentAmount, advanceAmount, monthsCovered, billDueDate: lastBill.due_date });
-        
+
         // Next Due is last bill's date + months covered
         nextDue = new Date(lastBill.due_date);
         nextDue.setMonth(nextDue.getMonth() + monthsCovered);
@@ -262,6 +381,20 @@ export default function TenantDashboard({ session, profile }) {
       // But if startDay is 4, it is safe in all months.
       // We assume start day is valid.
       nextDue.setUTCDate(startDay);
+
+      // Check if next payment date is PAST the contract end date
+      if (currentOccupancy.contract_end_date) {
+        // contract_end_date is usually YYYY-MM-DD
+        const endDate = new Date(currentOccupancy.contract_end_date);
+
+        // Ensure accurate comparison
+        // If nextDue >= endDate, then no more payments are due (unless we extend)
+        if (nextDue >= endDate) {
+          setNextPaymentDate("All Paid - Contract Ending");
+          setLastRentPeriod(lastBill ? new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : "N/A");
+          return;
+        }
+      }
 
       setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
         month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
@@ -279,6 +412,16 @@ export default function TenantDashboard({ session, profile }) {
       if (lastBill && lastBill.due_date) {
         const d = new Date(lastBill.due_date);
         d.setMonth(d.getMonth() + 1);
+
+        // Also check legacy contract end if possible (though we used occupancy above)
+        if (currentOccupancy?.contract_end_date) {
+          const endDate = new Date(currentOccupancy.contract_end_date);
+          if (d > endDate) {
+            setNextPaymentDate("All Paid - Contract Ending");
+            return;
+          }
+        }
+
         setNextPaymentDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
       } else {
         setNextPaymentDate("N/A");
@@ -384,8 +527,10 @@ export default function TenantDashboard({ session, profile }) {
         const diffTime = endDate - today
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
         setDaysUntilContractEnd(diffDays)
-        // Can only renew if 30 or more days remain
-        setCanRenew(diffDays >= 30 && !occupancy.renewal_requested)
+        // Can only renew if:
+        // 1. More than 29 days remaining (not in the last month block)
+        // 2. Not already requested
+        setCanRenew(diffDays > 29 && !occupancy.renewal_requested)
         setRenewalRequested(occupancy.renewal_requested || false)
       }
 
@@ -402,20 +547,42 @@ export default function TenantDashboard({ session, profile }) {
         .maybeSingle()
 
       setLastPayment(lastPaidBill)
+
+      // Check if security deposit was actually paid (look for any paid payment with security_deposit_amount > 0)
+      const { data: paidSecurityDeposit } = await supabase
+        .from('payment_requests')
+        .select('security_deposit_amount')
+        .eq('tenant', session.user.id)
+        .eq('occupancy_id', occupancy.id)
+        .eq('status', 'paid')
+        .gt('security_deposit_amount', 0)
+        .limit(1)
+        .maybeSingle()
+
+      setSecurityDepositPaid(!!paidSecurityDeposit)
     }
 
     return occupancy
   }
 
+  // --- RENEWAL MEETING DATE STATE ---
+  const [renewalMeetingDate, setRenewalMeetingDate] = useState('')
+
   async function requestContractRenewal() {
     if (!tenantOccupancy || !canRenew) return
+
+    if (!renewalMeetingDate) {
+      showToast.error("Please select a date to meet the landlord");
+      return;
+    }
 
     const { error } = await supabase
       .from('tenant_occupancies')
       .update({
         renewal_requested: true,
         renewal_requested_at: new Date().toISOString(),
-        renewal_status: 'pending'
+        renewal_status: 'pending',
+        // renewal_meeting_date: renewalMeetingDate // Try to save to DB (if column exists)
       })
       .eq('id', tenantOccupancy.id)
 
@@ -429,7 +596,7 @@ export default function TenantDashboard({ session, profile }) {
       recipient: tenantOccupancy.landlord_id,
       actor: session.user.id,
       type: 'contract_renewal_request',
-      message: `${profile.first_name} ${profile.last_name} has requested to renew their contract for "${tenantOccupancy.property?.title}".`,
+      message: `${profile.first_name} ${profile.last_name} has requested to renew contract. PROPOSED SIGNING DATE: ${new Date(renewalMeetingDate).toLocaleDateString()}.`,
       link: '/dashboard'
     })
 
@@ -724,21 +891,28 @@ export default function TenantDashboard({ session, profile }) {
                     </div>
                     <h3 className="font-bold text-gray-900 text-sm">Security Deposit</h3>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">Total Deposit</span>
-                      <span className="font-black text-gray-900">₱{Number(tenantOccupancy?.security_deposit || tenantOccupancy?.property?.price || 0).toLocaleString()}</span>
+                  {securityDepositPaid ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Total Deposit</span>
+                        <span className="font-black text-gray-900">₱{Number(tenantOccupancy?.security_deposit || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Used for Maintenance</span>
+                        <span className="font-bold text-gray-600">₱{Number(tenantOccupancy?.security_deposit_used || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
+                        <span className="text-xs font-bold text-gray-700">Remaining Balance</span>
+                        <span className="font-black text-lg text-black">₱{Number((tenantOccupancy?.security_deposit || 0) - (tenantOccupancy?.security_deposit_used || 0)).toLocaleString()}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">Used for Maintenance</span>
-                      <span className="font-bold text-gray-600">₱{Number(tenantOccupancy?.security_deposit_used || 0).toLocaleString()}</span>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-gray-500">No security deposit paid yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Required: ₱{Number(tenantOccupancy?.security_deposit || 0).toLocaleString()}</p>
                     </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between items-center">
-                      <span className="text-xs font-bold text-gray-700">Remaining Balance</span>
-                      <span className="font-black text-lg text-black">₱{Number((tenantOccupancy?.security_deposit || tenantOccupancy?.property?.price || 0) - (tenantOccupancy?.security_deposit_used || 0)).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  {daysUntilContractEnd !== null && daysUntilContractEnd <= 30 && daysUntilContractEnd > 0 && (
+                  )}
+                  {securityDepositPaid && daysUntilContractEnd !== null && daysUntilContractEnd <= 30 && daysUntilContractEnd > 0 && (
                     <p className="text-[10px] text-gray-600 mt-3 bg-gray-100 p-2 rounded-lg">
                       💡 Your security deposit can be used as payment in your last month if unused.
                     </p>
@@ -785,10 +959,15 @@ export default function TenantDashboard({ session, profile }) {
                         const electric = parseFloat(bill.electrical_bill) || 0;
                         const wifi = parseFloat(bill.wifi_bill) || 0;
                         const other = parseFloat(bill.other_bills) || 0;
-                        const total = rent + water + electric + wifi + other;
+                        const security = parseFloat(bill.security_deposit_amount) || 0;
+                        const advance = parseFloat(bill.advance_amount) || 0;
+
+                        // FIX: Include security and advance in total
+                        const total = rent + water + electric + wifi + other + security + advance;
 
                         let billType = 'Other Bill';
                         if (rent > 0) billType = 'House Rent';
+                        else if (security > 0 && rent > 0) billType = 'Move-In Bill'; // Special case
                         else if (electric > 0) billType = 'Electric Bill';
                         else if (water > 0) billType = 'Water Bill';
                         else if (wifi > 0) billType = 'Wifi Bill';
@@ -843,50 +1022,18 @@ export default function TenantDashboard({ session, profile }) {
                     {/* 2. Next Due Date & Last Payment Date Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
-                      {/* Advance Payment / Credit Balance Card */}
-                      {tenantBalance > 0 && (
-                        <div className="col-span-1 md:col-span-2 bg-green-50/50 rounded-2xl p-4 border border-green-100 flex items-center justify-between">
-                          <div>
-                            <p className="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Advance Payment / Credit</p>
-                            <p className="text-sm text-green-700 font-medium">Available for next bill</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-2xl font-black text-green-700">₱{tenantBalance.toLocaleString()}</p>
-                          </div>
+                      {/* Advance Payment / Credit Balance Card - Always visible */}
+                      <div className={`col-span-1 md:col-span-2 rounded-2xl p-4 border flex items-center justify-between ${tenantBalance > 0 ? 'bg-gray-50/50 border-black-100' : 'bg-gray-50/50 border-gray-100'}`}>
+                        <div>
+                          <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${tenantBalance > 0 ? 'text-black-600' : 'text-gray-500'}`}>Credit Balance</p>
+                          <p className={`text-sm font-medium ${tenantBalance > 0 ? 'text-black-700' : 'text-gray-500'}`}>
+                            {tenantBalance > 0 ? 'Available for next bill' : 'No credit available'}
+                          </p>
                         </div>
-                      )}
-
-                      {/* Breakdown - Safely Rendered */}
-                      {lastPayment && (
-                        <div className="col-span-1 md:col-span-2 bg-white border border-gray-100 rounded-xl overflow-hidden p-0">
-                          <div className="flex flex-wrap sm:flex-nowrap divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
-                            {Number(lastPayment.rent_amount) > 0 && (
-                              <div className="flex-1 p-3 text-center">
-                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">House Rent</span>
-                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.rent_amount).toLocaleString()}</span>
-                              </div>
-                            )}
-                            {Number(lastPayment.electrical_bill) > 0 && (
-                              <div className="flex-1 p-3 text-center">
-                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Elec.</span>
-                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.electrical_bill).toLocaleString()}</span>
-                              </div>
-                            )}
-                            {Number(lastPayment.water_bill) > 0 && (
-                              <div className="flex-1 p-3 text-center">
-                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Water</span>
-                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.water_bill).toLocaleString()}</span>
-                              </div>
-                            )}
-                            {Number(lastPayment.other_bills) > 0 && (
-                              <div className="flex-1 p-3 text-center">
-                                <span className="text-[10px] text-gray-400 font-bold uppercase block mb-1">Wifi</span>
-                                <span className="text-sm font-black text-gray-900 block">₱{Number(lastPayment.other_bills).toLocaleString()}</span>
-                              </div>
-                            )}
-                          </div>
+                        <div className="text-right">
+                          <p className={`text-2xl font-black ${tenantBalance > 0 ? 'text-black-700' : 'text-gray-400'}`}>₱{tenantBalance.toLocaleString()}</p>
                         </div>
-                      )}
+                      </div>
 
                       {/* Next Due Date */}
                       <div className="bg-gray-50/50 rounded-2xl p-4 border border-indigo-50">
@@ -897,39 +1044,47 @@ export default function TenantDashboard({ session, profile }) {
                           </div>
                           <div>
                             <p className="text-lg font-black text-slate-900">{nextPaymentDate || 'Loading...'}</p>
-                            {tenantOccupancy?.property?.price && (
-                              <p className="text-xs text-black-500 font-semibold mt-0.5">Expected Bill: ₱{Math.max(0, Number(tenantOccupancy.property.price) - (tenantBalance || 0)).toLocaleString()}</p>
+                            {tenantOccupancy?.property?.price && !String(nextPaymentDate).includes('All Paid') && (
+                              <div className="mt-0.5">
+                                <p className="text-xs text-black-500 font-semibold">
+                                  Expected Bill: ₱{Math.max(0, Number(tenantOccupancy.property.price) - (tenantBalance || 0)).toLocaleString()}
+                                </p>
+                                {tenantBalance > 0 && (
+                                  <p className="text-[10px] text-green-600 font-medium">
+                                    (₱{Number(tenantOccupancy.property.price).toLocaleString()} - ₱{tenantBalance.toLocaleString()} credit)
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {tenantOccupancy?.property?.price && String(nextPaymentDate).includes('All Paid') && (
+                              <p className="text-xs text-green-600 font-semibold mt-0.5">All bills settled!</p>
                             )}
                             {/* Contract Expiry Warning */}
                             {tenantOccupancy?.contract_end_date && (() => {
                               const endDate = new Date(tenantOccupancy.contract_end_date);
                               const today = new Date();
                               const daysUntilEnd = Math.floor((endDate - today) / (1000 * 60 * 60 * 24));
-                              
-                              // Next payment date from the displayed value
-                              const nextDue = nextPaymentDate && nextPaymentDate !== 'N/A' && nextPaymentDate !== 'Loading...' 
-                                ? new Date(nextPaymentDate) 
-                                : null;
-                              
-                              if (nextDue) {
-                                const nextDueMonth = nextDue.getFullYear() * 12 + nextDue.getMonth();
-                                const endMonth = endDate.getFullYear() * 12 + endDate.getMonth();
-                                const monthsRemaining = endMonth - nextDueMonth;
-                                
-                                // Show warning if next payment is within 2 months of contract end
-                                if (monthsRemaining <= 1) {
-                                  const isLastPayment = monthsRemaining <= 0;
-                                  return (
-                                    <p className={`text-xs font-bold mt-1 flex items-center gap-1 ${isLastPayment ? 'text-red-600' : 'text-orange-600'}`}>
+
+                              // Check if we are in the renewal window (at least 29 days before end)
+                              if (daysUntilEnd > 29) {
+                                return (
+                                  <div className="mt-1">
+                                    <p className="text-xs text-orange-600 font-bold flex items-center gap-1 mb-1">
                                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                      {isLastPayment ? 'Last payment before contract ends' : `Contract ends ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
-                                      <span className="ml-1 text-slate-500">• {daysUntilEnd} day{daysUntilEnd !== 1 ? 's' : ''} remaining</span>
+                                      Contract ends in {daysUntilEnd} days
                                     </p>
-                                  );
-                                }
+                                    <p
+                                      onClick={() => setShowRenewalModal(true)}
+                                      className="text-xs font-bold flex items-center gap-1 text-indigo-600 animate-pulse cursor-pointer hover:underline"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                      Renew Contract Available
+                                    </p>
+                                  </div>
+                                );
                               }
-                              
-                              // Also warn if contract ends within 60 days from today
+
+                              // Fallback normal warning
                               if (daysUntilEnd <= 60 && daysUntilEnd > 0) {
                                 return (
                                   <p className="text-xs text-orange-600 font-bold mt-1 flex items-center gap-1">
@@ -944,33 +1099,58 @@ export default function TenantDashboard({ session, profile }) {
                         </div>
                       </div>
 
-                      {/* Last House Due Date */}
-                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">Last House Due Date</p>
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                          </div>
-                          <div>
-                            <p className="text-lg font-black text-slate-900">
-                              {lastPayment ? new Date(lastPayment.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'N/A'}
-                            </p>
-                            {lastPayment && (
-                              <p className="text-xs text-slate-500 font-semibold">
-                                Total Paid: ₱{(
-                                  parseFloat(lastPayment.amount_paid || 0) > 0 
-                                    ? parseFloat(lastPayment.amount_paid) 
-                                    : (parseFloat(lastPayment.rent_amount || 0) + 
-                                       parseFloat(lastPayment.security_deposit_amount || 0) + 
-                                       parseFloat(lastPayment.water_bill || 0) + 
-                                       parseFloat(lastPayment.electrical_bill || 0) + 
-                                       parseFloat(lastPayment.other_bills || 0) +
-                                       parseFloat(lastPayment.advance_amount || 0))
-                                ).toLocaleString()}
+                      {/* Last House Due Date - ENHANCED with breakdown inside */}
+                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex flex-col justify-between">
+                        <div>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Last House Due Date</p>
+                          <div className="flex items-start gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+                            <div>
+                              <p className="text-lg font-black text-slate-900">
+                                {lastPayment ? new Date(lastPayment.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'N/A'}
                               </p>
-                            )}
+                              <p className="text-xs text-slate-500 font-semibold">Total Paid: ₱{lastPayment ? Number(lastPayment.amount_paid || (parseFloat(lastPayment.rent_amount || 0) + parseFloat(lastPayment.security_deposit_amount || 0) + parseFloat(lastPayment.advance_amount || 0) + parseFloat(lastPayment.water_bill || 0) + parseFloat(lastPayment.electrical_bill || 0) + parseFloat(lastPayment.wifi_bill || 0) + parseFloat(lastPayment.other_bills || 0))).toLocaleString() : '0'}</p>
+                            </div>
                           </div>
                         </div>
+
+                        {/* Breakdown List INSIDE the card */}
+                        {lastPayment && (
+                          <div className="mt-2 space-y-1 bg-white/50 p-2 rounded-lg border border-slate-100/50">
+                            {Number(lastPayment.rent_amount) > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500 font-medium">House Rent</span>
+                                <span className="font-bold text-slate-700">₱{Number(lastPayment.rent_amount).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.security_deposit_amount) > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Sec. Dep.</span>
+                                <span className="font-bold text-slate-700">₱{Number(lastPayment.security_deposit_amount).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.advance_amount) > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Advance</span>
+                                <span className="font-bold text-slate-700">₱{Number(lastPayment.advance_amount).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {(Number(lastPayment.water_bill) > 0 || Number(lastPayment.electrical_bill) > 0) && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Utilities</span>
+                                <span className="font-bold text-slate-700">₱{(Number(lastPayment.water_bill || 0) + Number(lastPayment.electrical_bill || 0)).toLocaleString()}</span>
+                              </div>
+                            )}
+                            {Number(lastPayment.other_bills) > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-500 font-medium">Other / Penalty</span>
+                                <span className="font-bold text-slate-700">₱{Number(lastPayment.other_bills).toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -995,8 +1175,31 @@ export default function TenantDashboard({ session, profile }) {
                           const currentYear = new Date().getFullYear();
                           const isPaid = paymentHistory.some(p => {
                             if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
+
                             const d = new Date(p.due_date);
-                            return d.getMonth() === index && d.getFullYear() === currentYear;
+                            const pMonth = d.getMonth();
+                            const pYear = d.getFullYear();
+
+                            // Use advance_amount to determine if this bill covers future months
+                            const advance = parseFloat(p.advance_amount || 0);
+                            const rent = parseFloat(p.rent_amount || 0);
+                            let monthsCovered = 1; // Default covers the due_date month
+
+                            if (advance > 0 && rent > 0) {
+                              monthsCovered += Math.floor(advance / rent);
+                            }
+
+                            // If payment year is different, we need more logic, 
+                            // but assuming most advances are within a year or cross over simply.
+                            // Simplified check: is the current 'index' month covered by this payment?
+
+                            // Calculate start and end month indices relative to the payment start
+                            // We normalize years to months for comparison: year * 12 + month
+                            const targetAbsoluteMonth = currentYear * 12 + index;
+                            const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
+                            const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
+
+                            return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
                           });
 
                           return (
@@ -1357,6 +1560,19 @@ export default function TenantDashboard({ session, profile }) {
                 <span className="text-xs text-indigo-600 font-bold">Days Remaining</span>
                 <span className="font-bold text-indigo-900">{daysUntilContractEnd} days</span>
               </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-700 mb-2">Select Meeting Date for Contract Signing <span className="text-red-500">*</span></label>
+              <input
+                type="date"
+                required
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full border-2 border-gray-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-colors"
+                value={renewalMeetingDate}
+                onChange={(e) => setRenewalMeetingDate(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-1">Please choose a date to meet the landlord for signing the new contract.</p>
             </div>
 
             <p className="text-sm text-gray-600 mb-6">

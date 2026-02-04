@@ -21,7 +21,7 @@ create table if not exists properties (
   state text,
   zip text,
   price numeric(12,2) not null,
-  currency text default 'USD',
+  currency text default 'PHP',
   bedrooms int default 1,
   bathrooms numeric(3,1) default 1,
   area_sqft int,
@@ -71,7 +71,7 @@ create table if not exists payments (
   tenant uuid references profiles(id) on delete set null,
   landlord uuid references profiles(id) on delete set null,
   amount numeric(12,2) not null,
-  currency text default 'USD',
+  currency text default 'PHP',
   method text, -- e.g., 'stripe', 'bank_transfer', 'cash'
   status text default 'recorded', -- recorded / pending / failed
   paid_at timestamp with time zone default timezone('utc'::text, now())

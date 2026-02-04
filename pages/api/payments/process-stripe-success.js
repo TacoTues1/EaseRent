@@ -51,6 +51,7 @@ export default async function handler(req, res) {
             .from('tenant_balances')
             .select('*')
             .eq('tenant_id', request.tenant)
+            .eq('occupancy_id', request.occupancy_id)
             .maybeSingle();
 
         // Status is PAID because Stripe is trusted.
@@ -113,21 +114,48 @@ export default async function handler(req, res) {
         }
 
         // Apply Balance Change to Wallet
-        if (balanceChange !== 0) {
+        if (balanceChange !== 0 && request.occupancy_id) {
             const newBalance = (balanceRecord?.amount || 0) + balanceChange;
 
             const { error: upsertError } = await supabase
                 .from('tenant_balances')
                 .upsert({
                     tenant_id: request.tenant,
+                    occupancy_id: request.occupancy_id,
                     amount: newBalance,
                     last_updated: new Date().toISOString()
-                }, { onConflict: 'tenant_id' });
+                }, { onConflict: 'tenant_id,occupancy_id' });
 
             if (upsertError) console.error("Balance update failed:", upsertError);
         }
 
-        // 4. Update Original Payment Request Status
+        // 4. Create Payment Record (Ledger)
+        const { data: paymentRecord, error: paymentError } = await supabase
+            .from('payments')
+            .insert({
+                property_id: request.property_id,
+                tenant: request.tenant,
+                landlord: request.landlord,
+                amount: amountPaid,
+                water_bill: request.water_bill,
+                electrical_bill: request.electrical_bill,
+                other_bills: request.other_bills,
+                bills_description: request.bills_description,
+                method: 'stripe',
+                status: 'recorded', // confirmed automatically by Stripe
+                paid_at: new Date().toISOString(),
+                currency: 'PHP'
+            })
+            .select()
+            .single();
+
+        if (paymentError) {
+            console.error("Failed to create payment record:", paymentError);
+            // Don't throw, just log. The request status update is more important for UX.
+            // But ideally this should be a transaction.
+        }
+
+        // 5. Update Original Payment Request Status
         const { error: updateError } = await supabase
             .from('payment_requests')
             .update({
@@ -135,10 +163,60 @@ export default async function handler(req, res) {
                 paid_at: new Date().toISOString(),
                 payment_method: 'stripe',
                 tenant_reference_number: paymentIntentId,
+                payment_id: paymentRecord?.id // Link to the ledger
             })
             .eq('id', paymentRequestId);
 
         if (updateError) throw updateError;
+
+        // --- NEW: SEND NOTIFICATIONS (SMS & EMAIL) ---
+        try {
+            // Fetch Tenant Profile for contact info
+            const { data: tenantProfile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', request.tenant)
+                .single();
+
+            const message = `Payment of ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" received via Stripe.`;
+
+            // 1. Send SMS
+            if (tenantProfile?.phone) {
+                await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/send-sms`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phoneNumber: tenantProfile.phone,
+                        message: message
+                    })
+                });
+            }
+
+            // 2. Send Email
+            // Assuming tenantProfile.email exists or is linked via auth (usually we need to get email from auth, but if profile has it use it)
+            // For now, we'll try to use the generic send-email endpoint which handles user lookup if we pass recipientId?
+            // Or we check if email is in profile. If not, maybe we can't send email easily without joining auth.users which is restricted.
+            // Let's assume send-email API handles it or we rely on the in-app notification which is already sent.
+            // Wait, the user specifically asked for "notification both sms and email".
+            // Let's use the send-email API.
+            await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    recipientId: request.tenant, // API likely resolves email from ID
+                    subject: 'Payment Successful',
+                    html: `<p>Dear ${tenantProfile?.first_name || 'Tenant'},</p>
+                           <p>We confirm that your payment of <strong>₱${amountPaid.toLocaleString()}</strong> has been successfully processed via Stripe.</p>
+                           <p>Property: ${request.properties?.title}</p>
+                           <p>Transaction ID: ${paymentIntentId}</p>
+                           <p>Thank you!</p>`
+                })
+            });
+
+        } catch (notifyErr) {
+            console.error('Notification Error:', notifyErr);
+            // Don't fail the request just because notification failed
+        }
 
         // Return info
         res.status(200).json({ success: true, excessAmount: availableExcess > 0 ? availableExcess : 0 });

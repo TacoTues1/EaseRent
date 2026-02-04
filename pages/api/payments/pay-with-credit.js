@@ -26,18 +26,24 @@ export default async function handler(req, res) {
 
         const totalBill = (
             parseFloat(request.rent_amount || 0) +
+            parseFloat(request.security_deposit_amount || 0) +
             parseFloat(request.water_bill || 0) +
             parseFloat(request.electrical_bill || 0) +
             parseFloat(request.wifi_bill || 0) +
             parseFloat(request.other_bills || 0)
         );
 
-        // 2. Get Tenant Balance
-        const { data: balanceRecord, error: balanceError } = await supabase
+        // 2. Get Tenant Balance (filtered by occupancy_id)
+        let balanceQuery = supabase
             .from('tenant_balances')
             .select('*')
-            .eq('tenant_id', tenantId)
-            .maybeSingle();
+            .eq('tenant_id', tenantId);
+        
+        if (request.occupancy_id) {
+            balanceQuery = balanceQuery.eq('occupancy_id', request.occupancy_id);
+        }
+
+        const { data: balanceRecord, error: balanceError } = await balanceQuery.maybeSingle();
 
         const currentBalance = balanceRecord?.amount || 0;
 
@@ -48,10 +54,16 @@ export default async function handler(req, res) {
         // 3. Deduct Balance
         const newBalance = currentBalance - totalBill;
 
-        const { error: updateBalanceError } = await supabase
+        let updateBalanceQuery = supabase
             .from('tenant_balances')
             .update({ amount: newBalance, last_updated: new Date().toISOString() })
             .eq('tenant_id', tenantId);
+        
+        if (request.occupancy_id) {
+            updateBalanceQuery = updateBalanceQuery.eq('occupancy_id', request.occupancy_id);
+        }
+
+        const { error: updateBalanceError } = await updateBalanceQuery;
 
         if (updateBalanceError) throw updateBalanceError;
 

@@ -2,8 +2,8 @@
 // Set your PayPal credentials in environment variables:
 // PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET
 
-const PAYPAL_API_URL = process.env.PAYPAL_MODE === 'live' 
-  ? 'https://api-m.paypal.com' 
+const PAYPAL_API_URL = process.env.PAYPAL_MODE === 'live'
+  ? 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com'
 
 async function getPayPalAccessToken() {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { amount, currency = 'USD', description, paymentRequestId } = req.body
+  const { amount, currency = 'PHP', description, paymentRequestId } = req.body
 
   if (!amount || !paymentRequestId) {
     return res.status(400).json({ error: 'Amount and paymentRequestId are required' })

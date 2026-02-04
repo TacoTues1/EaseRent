@@ -44,6 +44,7 @@ export default function LandlordDashboard({ session, profile }) {
     action: null // 'approve' or 'reject'
   })
   const [renewalSigningDate, setRenewalSigningDate] = useState('')
+  const [renewalEndDate, setRenewalEndDate] = useState('') // NEW: Editable Renewal End Date
 
   // EMAIL NOTIFICATION MODAL STATE
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -131,7 +132,7 @@ export default function LandlordDashboard({ session, profile }) {
 
     const { data: payments } = await supabase
       .from('payment_requests')
-      .select('id, amount, status, due_date, property_id')
+      .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, status, due_date, property_id')
       .in('property_id', propIds)
       .in('status', ['pending', 'pending_confirmation'])
       .order('due_date', { ascending: true })
@@ -139,8 +140,139 @@ export default function LandlordDashboard({ session, profile }) {
 
     setDashboardTasks({
       maintenance: maint?.map(m => ({ ...m, property_title: propMap[m.property_id] })) || [],
-      payments: payments?.map(p => ({ ...p, property_title: propMap[p.property_id] })) || []
+      payments: payments?.map(p => {
+        const total = (p.rent_amount || 0) +
+          (p.security_deposit_amount || 0) +
+          (p.advance_amount || 0) +
+          (p.water_bill || 0) +
+          (p.electrical_bill || 0) +
+          (p.wifi_bill || 0) +
+          (p.other_bills || 0)
+        return { ...p, amount: total, property_title: propMap[p.property_id] }
+      }) || []
     })
+  }
+
+  // --- NEW: Billing Tracker State & Logic ---
+  const [billingSchedule, setBillingSchedule] = useState([])
+  const [sendingBillId, setSendingBillId] = useState(null)
+
+  useEffect(() => {
+    if (occupancies.length > 0) {
+      calculateBillingSchedule()
+    }
+  }, [occupancies])
+
+  async function sendManualAdvanceBill(tenantId) {
+    if (!confirm("Send an immediate advance bill for this month?")) return;
+    setSendingBillId(tenantId)
+    try {
+      const res = await fetch(`/api/test-rent-reminder?tenantId=${tenantId}`)
+      const data = await res.json()
+      if (res.ok) {
+        showToast.success('Advance bill sent successfully!', { duration: 4000, transition: "bounceIn" })
+        setTimeout(() => calculateBillingSchedule(), 1000) // Refresh status
+      } else {
+        showToast.error(data.error || 'Failed to send bill', { duration: 4000, transition: "bounceIn" })
+      }
+    } catch (err) {
+      console.error(err)
+      showToast.error('Error sending bill', { duration: 4000, transition: "bounceIn" })
+    } finally {
+      setSendingBillId(null)
+    }
+  }
+
+  async function calculateBillingSchedule() {
+    // 1. Fetch ALL bills for the landlord to analyze status correctly
+    const { data: allBills } = await supabase
+      .from('payment_requests')
+      .select('occupancy_id, status, due_date, created_at, rent_amount, bills_description')
+      .eq('landlord', session.user.id)
+      .order('due_date', { ascending: true }) // Order by due date to find earliest pending
+
+    // Group by occupancy
+    const billsByOccupancy = {}
+    if (allBills) {
+      allBills.forEach(bill => {
+        if (!billsByOccupancy[bill.occupancy_id]) {
+          billsByOccupancy[bill.occupancy_id] = []
+        }
+        billsByOccupancy[bill.occupancy_id].push(bill)
+      })
+    }
+
+    // 2. Build schedule based on occupancies
+    const schedule = occupancies.map(occ => {
+      const bills = billsByOccupancy[occ.id] || []
+
+      // Find earliest pending payment
+      const earliestPending = bills.find(b => b.status === 'pending' || b.status === 'pending_confirmation')
+
+      // Find latest bill (by creation) for status display
+      const latestBill = bills.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+
+      let nextDueDate = null
+      let status = 'Scheduled'
+      let note = ''
+
+      if (earliestPending) {
+        // If there is ANY pending bill, the "Next Due" is that bill's date
+        nextDueDate = new Date(earliestPending.due_date)
+
+        const today = new Date()
+        if (nextDueDate < today) {
+          status = 'Overdue'
+          note = 'Tenant has unpaid bills'
+        } else {
+          status = earliestPending.status === 'pending_confirmation' ? 'Confirming' : 'Pending'
+        }
+      } else {
+        // No pending bills - Project next date based on Last Paid or Start Date
+        const lastPaid = bills
+          .filter(b => b.status === 'paid' && parseFloat(b.rent_amount) > 0)
+          .sort((a, b) => new Date(b.due_date) - new Date(a.due_date))[0]
+
+        if (lastPaid) {
+          // Next due is 1 month after last paid bill
+          nextDueDate = new Date(lastPaid.due_date)
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1)
+        } else {
+          // No history, use Start Date
+          // If start date is in past and no bills, it means we missed bills? 
+          // Or maybe "Move-in" bill is pending (handled above in earliestPending).
+          // If no bills at all, it's Start Date.
+          nextDueDate = new Date(occ.start_date)
+        }
+      }
+
+      // Handle contract end date
+      if (occ.contract_end_date && nextDueDate) {
+        const endDate = new Date(occ.contract_end_date)
+        if (nextDueDate > endDate) {
+          status = 'Contract Ending'
+          note = 'Contract ends before next expected cycle'
+        }
+      }
+
+      // Calculate Send Date (3 days before due date)
+      const sendDate = new Date(nextDueDate)
+      sendDate.setDate(sendDate.getDate() - 3)
+
+      return {
+        id: occ.id,
+        tenantId: occ.tenant_id,
+        tenantName: `${occ.tenant?.first_name} ${occ.tenant?.last_name}`,
+        propertyTitle: occ.property?.title,
+        nextDueDate: nextDueDate,
+        sendDate: sendDate,
+        status: status,
+        note: note,
+        lastBill: latestBill
+      }
+    })
+
+    setBillingSchedule(schedule)
   }
 
   async function loadPendingEndRequests() {
@@ -165,14 +297,23 @@ export default function LandlordDashboard({ session, profile }) {
     const defaultDate = new Date()
     defaultDate.setDate(defaultDate.getDate() + 3)
     setRenewalSigningDate(defaultDate.toISOString().split('T')[0])
+
+    // Default End Date: Current End + 1 Year
+    if (occupancy && occupancy.contract_end_date) {
+      const currentEnd = new Date(occupancy.contract_end_date)
+      currentEnd.setFullYear(currentEnd.getFullYear() + 1)
+      setRenewalEndDate(currentEnd.toISOString().split('T')[0])
+    }
   }
 
   // Close renewal modal
   function closeRenewalModal() {
     setRenewalModal({ isOpen: false, occupancy: null, action: null })
     setRenewalSigningDate('')
+    setRenewalEndDate('')
   }
 
+  // Process renewal after modal confirmation
   // Process renewal after modal confirmation
   async function confirmRenewalRequest() {
     const { occupancy, action } = renewalModal
@@ -180,14 +321,19 @@ export default function LandlordDashboard({ session, profile }) {
 
     const approved = action === 'approve'
 
-    // For approval, require signing date
-    if (approved && !renewalSigningDate) {
-      showToast.error('Please select a contract signing date', { duration: 4000, transition: "bounceIn" })
-      return
+    // For approval, require signing date and end date
+    if (approved) {
+      if (!renewalSigningDate) {
+        showToast.error('Please select a contract signing date', { duration: 4000, transition: "bounceIn" })
+        return
+      }
+      if (!renewalEndDate) {
+        showToast.error('Please select a new contract end date', { duration: 4000, transition: "bounceIn" })
+        return
+      }
     }
 
-    const newEndDate = new Date(occupancy.contract_end_date)
-    newEndDate.setFullYear(newEndDate.getFullYear() + 1) // Extend by 1 year
+    const newEndDateObj = new Date(renewalEndDate) // Use the editable date
 
     const updateData = {
       renewal_status: approved ? 'approved' : 'rejected',
@@ -195,7 +341,7 @@ export default function LandlordDashboard({ session, profile }) {
     }
 
     if (approved) {
-      updateData.contract_end_date = newEndDate.toISOString().split('T')[0]
+      updateData.contract_end_date = renewalEndDate
       updateData.renewal_signing_date = renewalSigningDate // Store signing date
     }
 
@@ -212,7 +358,7 @@ export default function LandlordDashboard({ session, profile }) {
     // Notify tenant
     let message = ''
     if (approved) {
-      message = `Your contract renewal for "${occupancy.property?.title}" has been approved! New contract end date: ${newEndDate.toLocaleDateString()}. Please come for contract signing on ${new Date(renewalSigningDate).toLocaleDateString()}.`
+      message = `Your contract renewal for "${occupancy.property?.title}" has been approved! New contract end date: ${newEndDateObj.toLocaleDateString()}. Please come for contract signing on ${new Date(renewalSigningDate).toLocaleDateString()}.`
     } else {
       message = `Your contract renewal request for "${occupancy.property?.title}" was not approved. Please contact your landlord for more details.`
     }
@@ -446,6 +592,16 @@ export default function LandlordDashboard({ session, profile }) {
 
     if (!endDate) {
       showToast.error("Please select a contract end date", { duration: 4000, transition: "bounceIn" });
+      return
+    }
+
+    if (!wifiDueDay || parseInt(wifiDueDay) <= 0 || parseInt(wifiDueDay) > 31) {
+      showToast.error("Please enter a valid Wifi Due Day (1-31)", { duration: 4000, transition: "bounceIn" });
+      return
+    }
+
+    if (!penaltyDetails || parseFloat(penaltyDetails) <= 0) {
+      showToast.error("Please enter a Late Payment Fee", { duration: 4000, transition: "bounceIn" });
       return
     }
 
@@ -955,6 +1111,91 @@ export default function LandlordDashboard({ session, profile }) {
             </div>
           </div>
 
+
+          {/* SECTION 1.5: AUTOMATED BILLING TRACKER */}
+          <div className="w-full">
+            <h3 className="text-xl font-black text-gray-900 mb-4 px-1 uppercase tracking-tight flex items-center justify-between">
+              <span>Automated Billing Schedule</span>
+              <span className="text-xs font-normal text-gray-500 normal-case bg-gray-100 px-3 py-1 rounded-full">Bills sent automatically 3 days before due date</span>
+            </h3>
+
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+              {billingSchedule.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-gray-400">No active tenants to bill.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50/50 border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
+                        <th className="px-6 py-4 font-bold">Tenant / Property</th>
+                        <th className="px-6 py-4 font-bold">Next Bill Due</th>
+                        <th className="px-6 py-4 font-bold">Auto-Send Date</th>
+                        <th className="px-6 py-4 font-bold">Latest Bill Status</th>
+                        <th className="px-6 py-4 font-bold text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 text-sm">
+                      {billingSchedule.map((item) => {
+                        // Check if send date is in the past and no active bill?
+                        // Simple logic for row highlighting
+                        const isUpcoming = item.sendDate > new Date()
+
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <p className="font-bold text-gray-900">{item.tenantName}</p>
+                              <p className="text-xs text-gray-500">{item.propertyTitle}</p>
+                              {item.note && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">{item.note}</span>}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="font-mono font-medium text-gray-700">
+                                {item.nextDueDate.toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col">
+                                <span className={`font-bold ${isUpcoming ? 'text-blue-600' : 'text-gray-500'}`}>
+                                  {item.sendDate.toLocaleDateString()}
+                                </span>
+                                <span className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">
+                                  {isUpcoming ? 'Scheduled' : 'Passed'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`text-xs font-bold px-2 py-1 rounded capitalize ${item.status === 'Overdue' ? 'bg-red-100 text-red-700' :
+                                item.status === 'Confirming' ? 'bg-blue-100 text-blue-700' :
+                                  item.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-gray-100 text-gray-600'
+                                }`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <button
+                                onClick={() => sendManualAdvanceBill(item.tenantId)}
+                                disabled={sendingBillId === item.tenantId}
+                                className="text-xs font-bold text-white bg-black hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto"
+                              >
+                                {sendingBillId === item.tenantId ? (
+                                  <>
+                                    <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                  </>
+                                ) : 'Send Advance'}
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* SECTION 2: PROPERTIES (Full Width) */}
           <div className="w-full">
             <div className="mb-0">
@@ -1231,7 +1472,7 @@ export default function LandlordDashboard({ session, profile }) {
 
             {/* Late Payment Fee */}
             <div className="mb-3">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Late Payment Fee (₱)</label>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Late Payment Fee (₱) <span className="text-red-500">*</span></label>
               <input type="number" min="0" step="0.01" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" placeholder="e.g. 500" value={penaltyDetails} onChange={(e) => setPenaltyDetails(e.target.value)} />
             </div>
 
@@ -1241,7 +1482,7 @@ export default function LandlordDashboard({ session, profile }) {
                 <span className="font-bold">Utility Reminders:</span> Tenants will receive SMS & email reminders 3 days before due dates (no payment bills created).
               </p>
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Wifi Due Day</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Wifi Due Day <span className="text-red-500">*</span></label>
                 <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-white" placeholder="e.g. 10" value={wifiDueDay} onChange={(e) => setWifiDueDay(e.target.value)} />
               </div>
               <p className="text-[10px] text-gray-400 mt-2">
@@ -1308,7 +1549,7 @@ export default function LandlordDashboard({ session, profile }) {
                     <strong>Important:</strong> Approving this renewal will:
                   </p>
                   <ul className="text-sm text-amber-700 list-disc list-inside space-y-1">
-                    <li>Extend the contract by 1 year</li>
+                    <li>Extend the contract end date</li>
                     <li>Send a <strong>payment bill</strong> for Rent + Advance</li>
                     <li>Notify the tenant of the signing schedule</li>
                   </ul>
@@ -1342,6 +1583,21 @@ export default function LandlordDashboard({ session, profile }) {
                     <span className="font-bold text-indigo-800">Total:</span>
                     <span className="font-black text-indigo-900">₱{Number((renewalModal.occupancy?.property?.price || 0) * 2).toLocaleString()}</span>
                   </div>
+                </div>
+
+                {/* New Contract End Date */}
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    📅 New Contract End Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="w-full border-2 border-gray-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-colors"
+                    value={renewalEndDate}
+                    onChange={(e) => setRenewalEndDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]} // Min today? Or better min > current end date?
+                  />
                 </div>
 
                 {/* Contract Signing Date */}
