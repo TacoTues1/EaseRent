@@ -11,6 +11,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '../components/ui/carousel'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function Home() {
   const router = useRouter()
@@ -680,18 +682,18 @@ export default function Home() {
 
           {loading ? (
             <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-      {/* Wrapper for animation + text */}
-      <div className="flex flex-col items-center">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading Properties...
-        </p>
-      </div>
-    </div>
+              {/* Wrapper for animation + text */}
+              <div className="flex flex-col items-center">
+                <Lottie
+                  animationData={loadingAnimation}
+                  loop={true}
+                  className="w-64 h-64"
+                />
+                <p className="text-gray-500 font-medium text-lg mt-4">
+                  Loading Properties...
+                </p>
+              </div>
+            </div>
           ) : properties.length === 0 ? (
             <div className={`text-center py-12 border-2 border-dashed border-gray-300 rounded-2xl h-[350px] flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm ${mounted ? 'animate-scaleIn' : 'opacity-0'}`}>
               <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4 animate-float">
