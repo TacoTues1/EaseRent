@@ -251,7 +251,7 @@ export default function Login() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 animate-float inline-block">Perfect Home</span>
             </h1>
             <p className={`text-white/80 text-lg leading-relaxed ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
-              Discover comfortable rental spaces that fit your lifestyle. EaseRent connects you with trusted landlords for a seamless renting experience.
+              Discover comfortable rental spaces that fit your lifestyle. RentSphere connects you with trusted landlords for a seamless renting experience.
             </p>
           </div>
 
@@ -303,7 +303,7 @@ export default function Login() {
                 Welcome
               </h2>
               <p className={`mt-1 text-sm text-gray-500 font-medium ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
-                Sign in to your EaseRent account
+                Sign in to your RentSphere account
               </p>
             </div>
 

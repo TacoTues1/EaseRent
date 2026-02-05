@@ -4,6 +4,8 @@ import { createNotification } from '../lib/notifications'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import Footer from './Footer'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function LandlordDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
@@ -36,6 +38,8 @@ export default function LandlordDashboard({ session, profile }) {
     isOpen: false,
     occupancy: null
   })
+  const [endContractDate, setEndContractDate] = useState('')
+  const [endContractReason, setEndContractReason] = useState('')
 
   // Renewal Confirmation Modal State
   const [renewalModal, setRenewalModal] = useState({
@@ -845,17 +849,28 @@ export default function LandlordDashboard({ session, profile }) {
 
   function openEndContractModal(occupancy) {
     setEndContractModal({ isOpen: true, occupancy })
+    setEndContractDate('')
+    setEndContractReason('')
   }
 
   async function confirmEndContract() {
     const occupancy = endContractModal.occupancy
     if (!occupancy) return
 
+    if (!endContractDate) {
+      showToast.error('Please select an end date', { duration: 3000, transition: "bounceIn" })
+      return
+    }
+    if (!endContractReason) {
+      showToast.error('Please enter a reason', { duration: 3000, transition: "bounceIn" })
+      return
+    }
+
     setEndContractModal({ isOpen: false, occupancy: null })
 
     const { error } = await supabase
       .from('tenant_occupancies')
-      .update({ status: 'ended', end_date: new Date().toISOString() })
+      .update({ status: 'ended', end_date: new Date(endContractDate).toISOString() })
       .eq('id', occupancy.id)
 
     if (error) {
@@ -880,7 +895,8 @@ export default function LandlordDashboard({ session, profile }) {
       .eq('status', 'accepted')
 
     // Notification Message
-    const message = `Your contract for "${occupancy.property?.title}" has been ended by the landlord. Please vacate the premises.`
+    const formattedDate = new Date(endContractDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const message = `Your contract for "${occupancy.property?.title}" has been ended by the landlord.\n\nEnd Date: ${formattedDate}\nReason: ${endContractReason}\n\nPlease vacate the premises by the end date.`
 
     // 1. In-App
     await createNotification({ recipient: occupancy.tenant_id, actor: session.user.id, type: 'occupancy_ended', message: message, link: '/dashboard' })
@@ -1030,7 +1046,7 @@ export default function LandlordDashboard({ session, profile }) {
             <div className="relative z-10">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div>
-                  <p className="text-white/60 text-sm font-medium mb-1">Welcome back,</p>
+                  <p className="text-white/60 text-sm font-medium mb-1">Welcome back</p>
                   <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{profile?.first_name} {profile?.last_name}</h1>
                   <p className="text-white/70 mt-2 text-sm sm:text-base">Manage your properties, tenants, and finances from one place.</p>
                 </div>
@@ -1328,9 +1344,18 @@ export default function LandlordDashboard({ session, profile }) {
             </div>
 
             {loading ? (
-              <div className="min-h-[300px] flex flex-col items-center justify-center bg-white rounded-2xl border border-gray-100">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-                <p className="text-gray-500 font-medium">Loading Properties...</p>
+              <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+                {/* Wrapper for animation + text */}
+                <div className="flex flex-col items-center">
+                  <Lottie
+                    animationData={loadingAnimation}
+                    loop={true}
+                    className="w-64 h-64"
+                  />
+                  <p className="text-gray-500 font-medium text-lg mt-4">
+                    Loading Properties...
+                  </p>
+                </div>
               </div>
             ) : properties.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
@@ -1610,10 +1635,33 @@ export default function LandlordDashboard({ session, profile }) {
 
               <h3 className="text-lg font-bold text-gray-900 mb-2">End Contract?</h3>
 
-              <p className="text-sm text-gray-500 mb-6">
+              <p className="text-sm text-gray-500 mb-4">
                 Are you sure you want to end the contract for <strong>{endContractModal.occupancy?.tenant?.first_name} {endContractModal.occupancy?.tenant?.last_name}</strong>?
                 This action cannot be undone. The tenant will be notified and the property will be marked as available.
               </p>
+
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
+                    value={endContractDate}
+                    onChange={(e) => setEndContractDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Reason <span className="text-red-500">*</span></label>
+                  <textarea
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black resize-none"
+                    rows="3"
+                    placeholder="Enter reason for ending contract..."
+                    value={endContractReason}
+                    onChange={(e) => setEndContractReason(e.target.value)}
+                  />
+                </div>
+              </div>
 
               <div className="flex gap-3">
                 <button
@@ -1624,7 +1672,8 @@ export default function LandlordDashboard({ session, profile }) {
                 </button>
                 <button
                   onClick={confirmEndContract}
-                  className="flex-1 px-4 py-2 text-white font-bold rounded-xl cursor-pointer shadow-lg bg-red-600 hover:bg-red-700"
+                  className="flex-1 px-4 py-2 text-white font-bold rounded-xl md:cursor-pointer shadow-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!endContractDate || !endContractReason}
                 >
                   End Contract
                 </button>

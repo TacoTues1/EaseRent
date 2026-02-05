@@ -4,6 +4,8 @@ import { useRouter } from 'next/router'
 import LandlordDashboard from '../components/LandlordDashboard'
 import TenantDashboard from '../components/TenantDashboard'
 import AdminDashboard from '../components/AdminDashboard'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function Dashboard() {
   const [session, setSession] = useState(null)
@@ -62,19 +64,15 @@ async function loadProfile(userId, retries = 3) { // Add retry counter
             setIsDuplicate(true)
         }
       }
-      setLoading(false) // Only stop loading if we found data
     } else if (retries > 0) {
       // If no data found, wait 500ms and try again
       console.log(`Profile not found, retrying... (${retries} left)`)
       setTimeout(() => loadProfile(userId, retries - 1), 500)
     } else {
-      // Out of retries, stop loading (this will likely result in an error state)
-      setLoading(false)
-      // Optional: Redirect to login or show specific error
     }
   } catch (error) {
     console.error("Error fetching profile:", error)
-    setLoading(false)
+    
   }
 }
 
@@ -108,11 +106,21 @@ async function loadProfile(userId, retries = 3) { // Add retry counter
     }
   }
 
-  if (loading || !session || !profile) {
+  if (!session || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-black"></div>
+      <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+      {/* Wrapper for animation + text */}
+      <div className="flex flex-col items-center">
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Verifying Account...
+        </p>
       </div>
+    </div>
     )
   }
 

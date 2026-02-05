@@ -3,7 +3,7 @@ import Head from 'next/head'
 export default function Meta() {
   return (
     <Head>
-      <title>EaseRent - House Rental Management</title>
+      <title>RentSphere - House Rental Management</title>
       <meta name="description" content="Modern rental management platform for landlords and tenants" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" type="image/svg+xml" href="/home.png" />
@@ -12,4 +12,4 @@ export default function Meta() {
       {/* <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" /> */}
     </Head>
   )
-}
+} 

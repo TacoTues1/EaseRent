@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function Settings() {
   const router = useRouter()
@@ -380,9 +382,19 @@ export default function Settings() {
 
   if (!session || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black"></div>
+       <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+      {/* Wrapper for animation + text */}
+      <div className="flex flex-col items-center">
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Loading User Details...
+        </p>
       </div>
+    </div>
     )
   }
 

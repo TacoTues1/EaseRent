@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
 import { showToast } from 'nextjs-toast-notify'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function MaintenancePage() {
   const router = useRouter()
@@ -595,22 +597,16 @@ export default function MaintenancePage() {
         {/* Requests List */}
         <div className="space-y-4">
           {loading ? (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-              <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-              <p className="text-gray-500 font-medium">Loading Maintenance Requests...</p>
-            </div>) : filteredRequests.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300">
-                <p className="text-gray-900 font-bold mb-1">
-                  {requests.length === 0
-                    ? (profile?.role === 'landlord' ? 'All caught up!' : 'No requests yet.')
-                    : 'No matching requests found.'}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {requests.length === 0
-                    ? (profile?.role === 'landlord' ? 'No open maintenance requests.' : 'Click "+ New Request" to submit one.')
-                    : 'Try adjusting your search or filter.'}
-                </p>
-              </div>
+             <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Loading Maintenance list...
+        </p>
+      </div>
             ) : (
             filteredRequests.map(req => (
               <div key={req.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">

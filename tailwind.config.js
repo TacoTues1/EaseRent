@@ -64,3 +64,21 @@ module.exports = {
   },
   plugins: [],
 }
+// tailwind.config.js
+export default {
+  theme: {
+    extend: {
+      keyframes: {
+        flip: {
+          '0%': { transform: 'rotateY(0deg)' },
+          '100%': { transform: 'rotateY(360deg)' },
+        },
+      },
+      animation: {
+        flip: 'flip .5s linear infinite', // 1000ms
+      },
+    },
+  },
+  plugins: [],
+}
+

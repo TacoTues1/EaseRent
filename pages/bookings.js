@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import { createNotification } from '../lib/notifications'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function BookingsPage() {
   const router = useRouter()
@@ -577,15 +579,21 @@ export default function BookingsPage() {
     }
   }
 
-if (loading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-        <p className="text-gray-500 font-medium">Loading bookings list....</p>
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Loading bookings list...
+        </p>
       </div>
     )
   }
-if (!profile) return null
+  if (!profile) return null
 
   const pendingCount = bookings.filter(b => b.status === 'pending' || b.status === 'pending_approval').length
   const approvedCount = bookings.filter(b => b.status === 'approved' || b.status === 'accepted').length

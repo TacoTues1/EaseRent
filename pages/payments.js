@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import Link from 'next/link'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 import StripePaymentForm from '../components/StripePaymentForm'
 
 export default function PaymentsPage() {
@@ -1004,7 +1006,7 @@ export default function PaymentsPage() {
 
       // For renewal payments, calculate and update the correct due_date (next due date, not contract end date)
       let actualNextDueDate = request.due_date;
-      
+
       if (request.is_renewal_payment && request.occupancy_id) {
         // Find the actual next due date from the last paid bill (excluding this renewal payment)
         // We need to find bills that were paid BEFORE this renewal
@@ -1025,24 +1027,24 @@ export default function PaymentsPage() {
           const lastDue = new Date(lastPaidBill.due_date);
           const rentAmount = parseFloat(lastPaidBill.rent_amount || 0);
           const advanceAmount = parseFloat(lastPaidBill.advance_amount || 0);
-          
+
           let monthsFromLast = 1;
           if (rentAmount > 0 && advanceAmount > 0) {
             monthsFromLast = 1 + Math.floor(advanceAmount / rentAmount);
           }
-          
+
           // Calculate the actual next due date
           const currentMonth = lastDue.getMonth();
           const currentYear = lastDue.getFullYear();
           const currentDay = lastDue.getDate();
-          
+
           const targetMonth = currentMonth + monthsFromLast;
           const targetYear = currentYear + Math.floor(targetMonth / 12);
           let finalMonth = targetMonth % 12;
           if (finalMonth < 0) finalMonth += 12;
-          
+
           actualNextDueDate = new Date(targetYear, finalMonth, currentDay).toISOString();
-          
+
           console.log('Renewal payment: Calculated actual next due date:', {
             lastPaidBillDue: lastPaidBill.due_date,
             monthsFromLast,
@@ -1057,19 +1059,19 @@ export default function PaymentsPage() {
             .select('start_date')
             .eq('id', request.occupancy_id)
             .single();
-          
+
           if (occupancy && occupancy.start_date) {
             // Calculate next due date from start_date (add 1 month)
             const startDate = new Date(occupancy.start_date);
             const currentMonth = startDate.getMonth();
             const currentYear = startDate.getFullYear();
             const currentDay = startDate.getDate();
-            
+
             const targetMonth = currentMonth + 1;
             const targetYear = currentYear + Math.floor(targetMonth / 12);
             let finalMonth = targetMonth % 12;
             if (finalMonth < 0) finalMonth += 12;
-            
+
             actualNextDueDate = new Date(targetYear, finalMonth, currentDay).toISOString();
             console.log('Renewal payment: Calculated from occupancy start_date + 1 month:', actualNextDueDate);
           } else {
@@ -1086,18 +1088,18 @@ export default function PaymentsPage() {
         status: 'paid',
         payment_id: payment.id
       };
-      
+
       // Only update due_date if it's different (for renewal payments)
       if (request.is_renewal_payment && actualNextDueDate !== request.due_date) {
         updateData.due_date = actualNextDueDate;
         console.log(`🔄 Updating renewal payment due_date from ${request.due_date} to ${actualNextDueDate}`);
       }
-      
+
       const { error: updateError } = await supabase
         .from('payment_requests')
         .update(updateData)
         .eq('id', requestId);
-      
+
       if (updateError) {
         console.error('Error updating payment request:', updateError);
       } else if (request.is_renewal_payment && actualNextDueDate !== request.due_date) {
@@ -1114,13 +1116,13 @@ export default function PaymentsPage() {
           const currentMonth = futureDueDate.getMonth();
           const currentYear = futureDueDate.getFullYear();
           const currentDay = futureDueDate.getDate();
-          
+
           // Calculate target month and year
           const targetMonth = currentMonth + i;
           const targetYear = currentYear + Math.floor(targetMonth / 12);
           let finalMonth = targetMonth % 12;
           if (finalMonth < 0) finalMonth += 12;
-          
+
           // Set the new date
           futureDueDate.setFullYear(targetYear);
           futureDueDate.setMonth(finalMonth);
@@ -1185,7 +1187,7 @@ export default function PaymentsPage() {
         if (request.is_renewal_payment) {
           // For renewal payments, the advance_amount is already consumed by creating paid bills above
           // Do not add to credit balance - the advance covers future months and is fully consumed
-          
+
           // CRITICAL: Also REMOVE any credit that might have been incorrectly added for this renewal
           // This fixes cases where credit was added before this fix was applied
           if (request.occupancy_id) {
@@ -1195,7 +1197,7 @@ export default function PaymentsPage() {
               .eq('tenant_id', request.tenant)
               .eq('occupancy_id', request.occupancy_id)
               .maybeSingle();
-            
+
             if (existingBalance && existingBalance.amount > 0) {
               // Check if the credit amount matches the advance amount (likely incorrectly added)
               const advanceAmount = parseFloat(request.advance_amount || 0);
@@ -1225,7 +1227,7 @@ export default function PaymentsPage() {
               }
             }
           }
-          
+
           if (remainingCredit > 0) {
             console.log(`Renewal payment: ₱${remainingCredit.toLocaleString()} excess will not be added to credit. Advance amount (₱${parseFloat(request.advance_amount || 0).toLocaleString()}) is consumed for future months.`);
           } else {
@@ -1849,9 +1851,19 @@ export default function PaymentsPage() {
             </h2>
           </div>
           {loading ? (
-            <div className="p-8 flex justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
-            </div>
+            <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+      {/* Wrapper for animation + text */}
+      <div className="flex flex-col items-center">
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Loading Payment...
+        </p>
+      </div>
+    </div>
           ) : paymentRequests.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
@@ -2062,7 +2074,7 @@ export default function PaymentsPage() {
                           </td>
 
                           <td className="px-3 py-3">
-                            <div className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]" title={request.bills_description}>
+                            <div className="text-xs text-gray-500 whitespace-normal break-words max-w-[200px]" title={request.bills_description}>
                               {request.bills_description || '-'}
                             </div>
                           </td>
