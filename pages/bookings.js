@@ -179,53 +179,12 @@ export default function BookingsPage() {
       tenant_profile: tenantMap[booking.tenant]
     }))
 
-    // --- DEDUPLICATION LOGIC ---
-    // Only show the single most relevant status per property
     let finalBookings = enrichedBookings;
 
-    // if (userRole !== 'landlord') {
-    //   const distinctMap = {};
-
-    //   const getScore = (status) => {
-    //     const s = (status || '').toLowerCase();
-    //     if (['pending', 'pending_approval', 'approved', 'accepted'].includes(s)) return 3;
-    //     if (s === 'ready_to_book') return 2; 
-    //     if (['rejected', 'cancelled'].includes(s)) return 1;
-    //     return 0;
-    //   };
-
-    //   enrichedBookings.forEach(item => {
-    //     const pid = item.property_id;
-    //     if (!distinctMap[pid]) {
-    //        distinctMap[pid] = item;
-    //     } else {
-    //        const existing = distinctMap[pid];
-    //        const scoreNew = getScore(item.status);
-    //        const scoreExisting = getScore(existing.status);
-
-    //        if (scoreNew > scoreExisting) {
-    //           distinctMap[pid] = item;
-    //        } else if (scoreNew === scoreExisting) {
-    //           const dateNew = new Date(item.booking_date || 0);
-    //           const dateExisting = new Date(existing.booking_date || 0);
-    //           if (dateNew > dateExisting) {
-    //              distinctMap[pid] = item;
-    //           }
-    //        }
-    //     }
-    //   });
-
-    //   finalBookings = Object.values(distinctMap);
-    //   finalBookings.sort((a, b) => new Date(b.booking_date || 0) - new Date(a.booking_date || 0));
-    // }
-
-    // setBookings(finalBookings)
-    // setLoading(false)
     const hasActiveBooking = bookingsData.some(b =>
       ['pending', 'pending_approval', 'approved', 'accepted'].includes(b.status)
     );
 
-    // Helper to get sort weight (Lower number = Higher priority/Top of list)
     const getSortWeight = (booking) => {
       const s = (booking.status || '').toLowerCase();
 
@@ -313,13 +272,13 @@ export default function BookingsPage() {
         await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', booking.time_slot_id)
       }
 
-      // await createNotification({
-      //   recipient: booking.tenant,
-      //   actor: session.user.id,
-      //   type: 'booking_approved',
-      //   message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
-      //   link: '/bookings'
-      // })
+      await createNotification({
+        recipient: booking.tenant,
+        actor: session.user.id,
+        type: 'booking_approved',
+        message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
+        link: '/bookings'
+      })
 
       fetch('/api/notify', {
         method: 'POST',

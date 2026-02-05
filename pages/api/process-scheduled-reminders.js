@@ -121,7 +121,7 @@ async function processUnreadMessageReminder(reminder) {
             </a>
           </div>
           <p style="font-size: 12px; color: #9ca3af; margin-top: 24px;">
-            This is an automated reminder from EaseRent.
+            This is an automated reminder from RentSphere.
           </p>
         </div>
       `

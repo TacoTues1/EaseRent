@@ -558,7 +558,7 @@ export default async function handler(req, res) {
           const phone = formatPhoneNumber(occupancy.tenant?.phone);
           if (phone) {
             try {
-              const smsMsg = `Hi ${tenantName}! Your rental contract for "${propertyTitle}" expires on ${endDate} (32 days). Contact your landlord to renew or extend. - EaseRent`;
+              const smsMsg = `Hi ${tenantName}! Your rental contract for "${propertyTitle}" expires on ${endDate} (32 days). Contact your landlord to renew or extend. - RentSphere`;
               await sendSMS(phone, smsMsg);
               console.log(`[Contract Expiry] SMS sent to ${phone}`);
             } catch (smsErr) {
