@@ -6,7 +6,7 @@ import { createNotification } from '../../lib/notifications'
 import AuthModal from '../../components/AuthModal'
 import { showToast } from 'nextjs-toast-notify'
 import Lottie from "lottie-react"
-import loadingAnimation from "../assets/loading.json"
+import loadingAnimation from "../../assets/loading.json"
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -323,18 +323,18 @@ export default function PropertyDetail() {
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-      {/* Wrapper for animation + text */}
-      <div className="flex flex-col items-center">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading Properties...
-        </p>
+        {/* Wrapper for animation + text */}
+        <div className="flex flex-col items-center">
+          <Lottie
+            animationData={loadingAnimation}
+            loop={true}
+            className="w-64 h-64"
+          />
+          <p className="text-gray-500 font-medium text-lg mt-4">
+            Loading Property Details...
+          </p>
+        </div>
       </div>
-    </div>
     )
   if (!property)
     return (
