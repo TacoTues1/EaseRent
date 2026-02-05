@@ -4,7 +4,9 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { createNotification } from '../../lib/notifications'
 import AuthModal from '../../components/AuthModal'
-import { showToast } from 'nextjs-toast-notify' // Changed to match your bookings.js
+import { showToast } from 'nextjs-toast-notify'
+import Lottie from "lottie-react"
+import loadingAnimation from "../assets/loading.json"
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -318,8 +320,28 @@ export default function PropertyDetail() {
     setSubmitting(false)
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] text-gray-500">Loading...</div>
-  if (!property) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">Property not found</div>
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+      {/* Wrapper for animation + text */}
+      <div className="flex flex-col items-center">
+        <Lottie
+          animationData={loadingAnimation}
+          loop={true}
+          className="w-64 h-64"
+        />
+        <p className="text-gray-500 font-medium text-lg mt-4">
+          Loading Properties...
+        </p>
+      </div>
+    </div>
+    )
+  if (!property)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]">
+        Property not found
+      </div>
+    )
 
   const propertyImages = property.images && property.images.length > 0
     ? property.images
