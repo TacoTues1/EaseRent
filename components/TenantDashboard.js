@@ -327,43 +327,184 @@ export default function TenantDashboard({ session, profile }) {
     // Use passed occupancy or fall back to state
     const currentOccupancy = occupancy || tenantOccupancy;
 
-    // 1. Check for strict "pending" (unpaid) RENT bills first (exclude move-in payments)
-    let pendingQuery = supabase
+    // 1. Check for pending bills first (including move-in payments)
+    // For newly assigned tenants: show move-in payment due date
+    // For regular tenants: show pending rent bill due date
+    // Renewal payments should NOT advance the due date until they are actually paid
+
+    // Get ALL pending bills for this tenant first, then filter in JavaScript
+    // This avoids issues with complex .or() queries
+    // Don't filter by is_renewal_payment here - we'll check it later
+    const { data: allPendingBills, error: pendingError } = await supabase
       .from('payment_requests')
-      .select('due_date, is_move_in_payment')
+      .select('due_date, is_move_in_payment, is_renewal_payment, occupancy_id, property_id, status')
       .eq('tenant', session.user.id)
       .eq('status', 'pending')
       .gt('rent_amount', 0) // Only rent bills
       .order('due_date', { ascending: true })
-      .limit(1)
-      .maybeSingle()
 
-    if (occupancyId) {
-      pendingQuery = pendingQuery.or(`occupancy_id.eq.${occupancyId},occupancy_id.is.null`)
+    if (pendingError) {
+      console.error('Error fetching pending bills:', pendingError);
     }
 
-    const { data: pendingBill } = await pendingQuery
+    console.log('All pending bills for tenant:', allPendingBills);
+    console.log('Occupancy ID:', occupancyId, 'Property ID:', currentOccupancy?.property_id);
 
-    // If there's a pending bill that is NOT a move-in payment, use its due date
-    if (pendingBill && pendingBill.due_date && !pendingBill.is_move_in_payment) {
-      setNextPaymentDate(new Date(pendingBill.due_date).toLocaleDateString('en-US', {
-        month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
-      }))
-      return
+    // Filter to only bills for this occupancy/property, but be lenient
+    let pendingBill = null;
+    if (allPendingBills && allPendingBills.length > 0) {
+      // First, try to find a bill that matches occupancy_id or property_id
+      pendingBill = allPendingBills.find(bill => {
+        // Match by occupancy_id (most specific)
+        if (occupancyId && bill.occupancy_id === occupancyId) return true;
+        // Match by property_id
+        if (currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) return true;
+        // Include bills without occupancy_id if they match property (for move-in payments created before occupancy)
+        if (!bill.occupancy_id && currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) return true;
+        return false;
+      });
+
+      // If no match found, use the first pending bill (for cases where occupancy_id/property_id might not be set)
+      // This is important for newly assigned tenants where the bill might not have occupancy_id yet
+      if (!pendingBill && allPendingBills.length > 0) {
+        pendingBill = allPendingBills[0];
+        console.log('No matching pending bill found, using first pending bill:', pendingBill);
+      }
     }
 
-    const { data: lastBill } = await supabase
+    console.log('Selected pending bill:', pendingBill);
+    console.log('Pending bill check - pendingBill exists:', !!pendingBill, 'has due_date:', pendingBill?.due_date, 'is_renewal:', pendingBill?.is_renewal_payment);
+
+    // Get all paid bills to find the one with the latest due_date that has advance_amount
+    // For renewal payments, we need to use the original bill (with advance_amount) not the advance payment bills
+    // Include move-in payments in the calculation
+    // Query ALL paid bills for this tenant first, then filter by property/occupancy
+    const { data: allPaidBills, error: paidBillsError } = await supabase
       .from('payment_requests')
-      .select('due_date, rent_amount, advance_amount')
+      .select('due_date, rent_amount, advance_amount, is_renewal_payment, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
       .eq('tenant', session.user.id)
-      .eq('occupancy_id', occupancyId)
       .in('status', ['paid', 'pending_confirmation'])
       .gt('rent_amount', 0)
       .order('due_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+
+    if (paidBillsError) {
+      console.error('Error fetching paid bills:', paidBillsError);
+    }
+
+    // DEBUG: Also query ALL bills (regardless of status) to see what's in the database
+    if (currentOccupancy?.property_id) {
+      const { data: allBillsDebug } = await supabase
+        .from('payment_requests')
+        .select('due_date, rent_amount, advance_amount, is_move_in_payment, property_id, occupancy_id, status')
+        .eq('tenant', session.user.id)
+        .eq('property_id', currentOccupancy.property_id)
+        .order('due_date', { ascending: false })
+        .limit(10)
+
+      console.log('DEBUG - All bills for this property (any status):', allBillsDebug);
+      if (allBillsDebug && allBillsDebug.length > 0) {
+        console.log('DEBUG - Bill statuses:', allBillsDebug.map(b => ({ id: b.id, status: b.status, due_date: b.due_date, is_move_in: b.is_move_in_payment })));
+      }
+    }
+    console.log('All paid bills for tenant:', allPaidBills);
+    console.log('Occupancy ID:', occupancyId, 'Property ID:', currentOccupancy?.property_id);
+
+    // Filter to only bills for this property/occupancy
+    let filteredBills = [];
+    if (allPaidBills && allPaidBills.length > 0) {
+      filteredBills = allPaidBills.filter(bill => {
+        // STRICT FILTER: If bill has an occupancy_id and it doesn't match the current one, EXCLUDE IT
+        // This prevents picking up bills from previous leases for the same tenant/property
+        if (occupancyId && bill.occupancy_id && bill.occupancy_id !== occupancyId) return false;
+
+        // Match by occupancy_id (most specific)
+        if (occupancyId && bill.occupancy_id === occupancyId) return true;
+        // Match by property_id (only if bill has no occupancy_id)
+        if (currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id && !bill.occupancy_id) return true;
+
+        return false;
+      });
+    }
+
+    console.log('Filtered paid bills for this occupancy/property:', filteredBills);
+
+    // Prioritize bills with advance_amount (original renewal bills) over advance payment bills
+    // This ensures we calculate monthsCovered correctly for renewal payments
+    // Move-in payments should be included (they have advance_amount = 0, so they'll be in filteredBills?.[0] if no advance bills exist)
+    // CRITICAL: For renewal payments, the bill's due_date should be the actual next due date (not contract end date)
+    // This is updated in payments.js when the renewal is confirmed
+    const lastBill = filteredBills?.find(bill => bill.advance_amount > 0 && bill.is_renewal_payment) ||
+      filteredBills?.find(bill => bill.advance_amount > 0) ||
+      filteredBills?.[0];
 
     console.log('Last paid bill for next due calc:', lastBill);
+    console.log('Paid bills count:', filteredBills?.length || 0);
+    console.log('All paid bills count:', allPaidBills?.length || 0);
+
+    // CRITICAL: For newly assigned tenants with NO paid bills, ALWAYS use pending bill if available
+    // This MUST happen before any other calculations to prevent "All Paid" from showing
+    if (!lastBill) {
+      // If we have a pending bill, use it immediately
+      if (pendingBill && pendingBill.due_date && pendingBill.is_renewal_payment !== true) {
+        console.log('✅ No paid bills found, using pending bill due date:', pendingBill.due_date, 'is_move_in:', pendingBill.is_move_in_payment);
+        const formattedDate = new Date(pendingBill.due_date).toLocaleDateString('en-US', {
+          month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+        });
+        console.log('✅ Setting nextPaymentDate to:', formattedDate);
+        setNextPaymentDate(formattedDate);
+        setLastRentPeriod("N/A"); // No last payment yet if there's a pending bill
+        return; // CRITICAL: Return immediately to prevent any "All Paid" logic
+      }
+
+      // If no pending bill found in initial query, do a more aggressive search
+      console.log('⚠️ No pending bill found in initial query, doing aggressive search...');
+      const { data: aggressivePendingCheck } = await supabase
+        .from('payment_requests')
+        .select('due_date, occupancy_id, property_id, is_move_in_payment, is_renewal_payment, status')
+        .eq('tenant', session.user.id)
+        .eq('status', 'pending')
+        .gt('rent_amount', 0)
+        .order('due_date', { ascending: true })
+        .limit(5); // Get multiple to see what's available
+
+      console.log('Aggressive pending bill search results:', aggressivePendingCheck);
+
+      if (aggressivePendingCheck && aggressivePendingCheck.length > 0) {
+        // Find any pending bill that's not a renewal
+        const validPending = aggressivePendingCheck.find(bill =>
+          bill.due_date &&
+          bill.is_renewal_payment !== true &&
+          (
+            (occupancyId && bill.occupancy_id === occupancyId) ||
+            (currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) ||
+            (!bill.occupancy_id && currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) ||
+            (!bill.occupancy_id && !bill.property_id) // Accept bills with no IDs for new tenants
+          )
+        ) || aggressivePendingCheck.find(bill => bill.due_date && bill.is_renewal_payment !== true);
+
+        if (validPending && validPending.due_date) {
+          console.log('✅ Found pending bill in aggressive search, using it:', validPending.due_date);
+          setNextPaymentDate(new Date(validPending.due_date).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+          }));
+          setLastRentPeriod("N/A");
+          return; // CRITICAL: Return immediately
+        }
+      }
+
+      // If still no pending bill, use start_date (never show "All Paid" for new tenants)
+      console.log('⚠️ No pending bills found at all for newly assigned tenant, using start_date');
+      if (currentOccupancy?.start_date) {
+        const startDate = new Date(currentOccupancy.start_date);
+        const formattedDate = startDate.toLocaleDateString('en-US', {
+          month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+        });
+        console.log('✅ Setting nextPaymentDate to start_date for newly assigned tenant:', formattedDate);
+        setNextPaymentDate(formattedDate);
+        setLastRentPeriod("N/A");
+        return; // CRITICAL: Return immediately to prevent "All Paid"
+      }
+    }
 
     const baseDateString = currentOccupancy?.start_date;
 
@@ -378,27 +519,264 @@ export default function TenantDashboard({ session, profile }) {
 
         let monthsCovered = 1;
         if (rentAmount > 0 && advanceAmount > 0) {
+          // For renewal payments: advance_amount = 1 month rent, so total = 2 months
+          // The renewal payment's due_date should be the actual next due date (March 6), not contract end date (April 6)
+          // Example: If renewal due_date = March 6, it covers March (rent) + April (advance) = 2 months
+          // So the next due date should be: March 6 + 2 months = May 6
+          // We add 2 months because the renewal payment covers 2 months total (1 month rent + 1 month advance)
           monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
         }
 
-        console.log('Next due calculation:', { rentAmount, advanceAmount, monthsCovered, billDueDate: lastBill.due_date });
+        console.log('Next due calculation:', {
+          rentAmount,
+          advanceAmount,
+          monthsCovered,
+          billDueDate: lastBill.due_date,
+          isRenewal: lastBill.is_renewal_payment,
+          isMoveIn: lastBill.is_move_in_payment,
+          originalDueDate: lastBill.due_date,
+          billStatus: lastBill.status
+        });
+
+        // Create a new date object from the bill's due_date
         nextDue = new Date(lastBill.due_date);
-        nextDue.setMonth(nextDue.getMonth() + monthsCovered);
+
+        // Ensure we're working with a valid date
+        if (isNaN(nextDue.getTime())) {
+          console.error('Invalid date from lastBill.due_date:', lastBill.due_date);
+          nextDue = new Date(startDate);
+          nextDue.setUTCDate(startDay);
+        } else {
+          // Add months to the due date - CRITICAL: Preserve the day of month
+          const originalDate = new Date(nextDue); // Save original for logging
+          const currentMonth = nextDue.getMonth();
+          const currentYear = nextDue.getFullYear();
+          const currentDay = nextDue.getDate(); // Preserve the day (e.g., 6th of the month)
+
+          // Calculate target month and year
+          const targetMonth = currentMonth + monthsCovered;
+          const targetYear = currentYear + Math.floor(targetMonth / 12);
+          let finalMonth = targetMonth % 12;
+          if (finalMonth < 0) finalMonth += 12;
+
+          // Set the new date
+          nextDue.setFullYear(targetYear);
+          nextDue.setMonth(finalMonth);
+          nextDue.setDate(currentDay); // Preserve the day of month
+
+          console.log('Calculated next due date:', {
+            original: originalDate.toISOString(),
+            originalFormatted: originalDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+            calculated: nextDue.toISOString(),
+            calculatedFormatted: nextDue.toLocaleDateString('en-US', {
+              month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+            }),
+            monthsAdded: monthsCovered,
+            originalMonth: originalDate.getMonth() + 1,
+            calculatedMonth: nextDue.getMonth() + 1,
+            monthDifference: (nextDue.getMonth() + 1) - (originalDate.getMonth() + 1),
+            preservedDay: currentDay
+          });
+        }
+
+        // CRITICAL: Set the calculated date and return immediately
+        // This prevents any other logic from overriding the calculated next due date
+        if (nextDue && !isNaN(nextDue.getTime())) {
+          const formattedNextDue = nextDue.toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+          });
+          console.log('✅ Setting nextPaymentDate from paid bill calculation:', formattedNextDue);
+
+          // Check contract end date: Only show "All Paid" if the PAID period already covers past contract end
+          // CRITICAL: For move-in payments, they only cover 1 month, so we should NEVER show "All Paid" immediately after move-in
+          // CRITICAL: For newly assigned tenants (within 3 months), NEVER show "All Paid" - always show the calculated next due date
+          if (currentOccupancy.contract_end_date && lastBill) {
+            const endDate = new Date(currentOccupancy.contract_end_date);
+            const lastPaidDate = new Date(lastBill.due_date);
+            const rentAmount = parseFloat(lastBill.rent_amount || 0);
+            const advanceAmount = parseFloat(lastBill.advance_amount || 0);
+
+            // Check if this is a move-in payment - move-in payments only cover 1 month
+            const isMoveInPayment = lastBill.is_move_in_payment === true;
+
+            let monthsCoveredByPayment = 1;
+            if (rentAmount > 0 && advanceAmount > 0) {
+              monthsCoveredByPayment = 1 + Math.floor(advanceAmount / rentAmount);
+            }
+
+            // Calculate when the paid period ends
+            const paidPeriodEnd = new Date(lastPaidDate);
+            paidPeriodEnd.setMonth(paidPeriodEnd.getMonth() + monthsCoveredByPayment);
+
+            // CRITICAL: For move-in payments, they only cover the first month
+            // The next due date should be start_date + 1 month, not "All Paid"
+            if (isMoveInPayment) {
+              console.log('Move-in payment detected - showing calculated next due date, not "All Paid"');
+              // The nextDue is already calculated correctly above, just use it
+              setNextPaymentDate(formattedNextDue);
+              if (lastBill) {
+                const lastDate = new Date(lastBill.due_date);
+                setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+              } else {
+                setLastRentPeriod("N/A");
+              }
+              return; // Return immediately for move-in payments
+            }
+
+            // Only show "All Paid" if the paid period already extends past contract end
+            // BUT first check if there are any pending bills - if so, don't show "All Paid"
+            if (paidPeriodEnd >= endDate) {
+              // Before showing "All Paid", check for pending bills one more time
+              const { data: finalPendingCheck } = await supabase
+                .from('payment_requests')
+                .select('due_date, occupancy_id, property_id, is_renewal_payment')
+                .eq('tenant', session.user.id)
+                .eq('status', 'pending')
+                .gt('rent_amount', 0)
+                .neq('is_renewal_payment', true)
+                .order('due_date', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+              if (finalPendingCheck && finalPendingCheck.due_date) {
+                // There's a pending bill, use it instead of "All Paid"
+                console.log('⚠️ Found pending bill even though paid period extends past contract end, using pending bill:', finalPendingCheck.due_date);
+                setNextPaymentDate(new Date(finalPendingCheck.due_date).toLocaleDateString('en-US', {
+                  month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+                }));
+                setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+                return;
+              }
+
+              // No pending bills found, show "All Paid"
+              console.log('Paid period already covers past contract end, showing "All Paid"');
+              setNextPaymentDate("All Paid - Contract Ending");
+              setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+              return;
+            }
+          }
+
+          // Set the calculated next due date
+          console.log('✅ FINAL: Setting nextPaymentDate to:', formattedNextDue);
+          setNextPaymentDate(formattedNextDue);
+
+          if (lastBill) {
+            const lastDate = new Date(lastBill.due_date);
+            setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+          } else {
+            setLastRentPeriod("N/A");
+          }
+          return; // IMPORTANT: Return immediately to prevent any other code from overriding
+        }
       } else {
+        console.log('No lastBill found, using start_date:', baseDateString);
+
+        // CRITICAL: For newly assigned tenants with no paid bills, ALWAYS check for pending bills FIRST
+        // This must happen BEFORE any contract end date checks to prevent "All Paid" from showing incorrectly
+        if (!pendingBill) {
+          // Check for ANY pending bill (move-in or regular rent bill)
+          const { data: anyPendingBillData } = await supabase
+            .from('payment_requests')
+            .select('due_date, occupancy_id, property_id, is_move_in_payment, is_renewal_payment')
+            .eq('tenant', session.user.id)
+            .eq('status', 'pending')
+            .gt('rent_amount', 0)
+            .order('due_date', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          // Only use it if it's not a renewal payment
+          const anyPendingBill = (anyPendingBillData && anyPendingBillData.is_renewal_payment !== true) ? anyPendingBillData : null;
+
+          if (anyPendingBill && anyPendingBill.due_date) {
+            // Check if it matches this occupancy/property (be lenient for newly assigned tenants)
+            const matches = (occupancyId && anyPendingBill.occupancy_id === occupancyId) ||
+              (currentOccupancy?.property_id && anyPendingBill.property_id === currentOccupancy.property_id) ||
+              (!anyPendingBill.occupancy_id && currentOccupancy?.property_id && anyPendingBill.property_id === currentOccupancy.property_id) ||
+              (!anyPendingBill.occupancy_id && !anyPendingBill.property_id); // If bill has no IDs, use it anyway for new tenants
+
+            if (matches) {
+              console.log('✅ Found pending bill for newly assigned tenant, using its due date:', anyPendingBill.due_date);
+              setNextPaymentDate(new Date(anyPendingBill.due_date).toLocaleDateString('en-US', {
+                month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+              }));
+              setLastRentPeriod("N/A");
+              return; // CRITICAL: Return immediately to prevent "All Paid" logic
+            }
+          }
+        } else if (pendingBill && pendingBill.due_date) {
+          // We already have a pending bill from earlier, use it
+          console.log('✅ Using existing pending bill for newly assigned tenant:', pendingBill.due_date);
+          setNextPaymentDate(new Date(pendingBill.due_date).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+          }));
+          setLastRentPeriod("N/A");
+          return; // CRITICAL: Return immediately to prevent "All Paid" logic
+        }
+
         nextDue = new Date(startDate);
         nextDue.setUTCDate(startDay);
       }
 
+      // Only reach here if we didn't have a paid bill to calculate from
+      // Check contract end date
       if (currentOccupancy.contract_end_date) {
         const endDate = new Date(currentOccupancy.contract_end_date);
 
-        if (nextDue >= endDate) {
-          setNextPaymentDate("All Paid - Contract Ending");
-          setLastRentPeriod(lastBill ? new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : "N/A");
+        // Only show "All Paid" if the PAID period already covers past contract end
+        // Don't show "All Paid" just because next due date exceeds contract end - tenant hasn't paid for that month yet!
+        if (nextDue >= endDate && lastBill) {
+          const lastPaidDate = new Date(lastBill.due_date);
+          const rentAmount = parseFloat(lastBill.rent_amount || 0);
+          const advanceAmount = parseFloat(lastBill.advance_amount || 0);
+          let monthsCoveredByPayment = 1;
+          if (rentAmount > 0 && advanceAmount > 0) {
+            monthsCoveredByPayment = 1 + Math.floor(advanceAmount / rentAmount);
+          }
+
+          // Calculate when the paid period ends
+          const paidPeriodEnd = new Date(lastPaidDate);
+          paidPeriodEnd.setMonth(paidPeriodEnd.getMonth() + monthsCoveredByPayment);
+
+          // Only show "All Paid" if the paid period already extends past contract end
+          if (paidPeriodEnd >= endDate) {
+            // Check if this is likely an error (contract end is far in future but we only covered limited months)
+            // If contract ends more than 35 days from now, do NOT show "All Paid"
+            const today = new Date();
+            const timeDiff = endDate - today;
+            const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+            if (daysDiff > 45) {
+              console.log('⚠️ Paid period >= endDate but endDate is far away (' + daysDiff + ' days). Assuming calculation sync issue. Showing calculated date.');
+              setNextPaymentDate(formattedNextDue);
+              setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+              return;
+            }
+
+            setNextPaymentDate("All Paid - Contract Ending");
+            setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+            return;
+          }
+          // If paid period doesn't extend past contract end, show the calculated next due date
+          console.log('Paid period does not extend past contract end, showing calculated next due date');
+        }
+
+        // CRITICAL: For newly assigned tenants with no paid bills, NEVER show "All Paid"
+        // Even if nextDue >= endDate, if there's no paid bill, we should show the start_date or pending bill
+        // Only show "All Paid" if there's actually a paid bill that covers past the contract end
+        if (nextDue >= endDate && !lastBill) {
+          // This should never happen for newly assigned tenants because we already checked for pending bills above
+          // But as a safety net, use start_date instead of "All Paid"
+          console.log('⚠️ No paid bills and nextDue >= endDate, but no pending bills found. Using start_date instead of "All Paid"');
+          setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+          }));
+          setLastRentPeriod("N/A");
           return;
         }
       }
 
+      // Fallback: Use calculated nextDue (from start_date if no paid bill)
       setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
         month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
       }))
@@ -412,15 +790,61 @@ export default function TenantDashboard({ session, profile }) {
 
     } else {
       if (lastBill && lastBill.due_date) {
+        const rentAmount = parseFloat(lastBill.rent_amount || 0);
+        const advanceAmount = parseFloat(lastBill.advance_amount || 0);
+
+        let monthsCovered = 1;
+        if (rentAmount > 0 && advanceAmount > 0) {
+          monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
+        }
+
+        console.log('Next due calculation (no baseDate):', {
+          rentAmount,
+          advanceAmount,
+          monthsCovered,
+          billDueDate: lastBill.due_date,
+          isMoveIn: lastBill.is_move_in_payment
+        });
+
         const d = new Date(lastBill.due_date);
-        d.setMonth(d.getMonth() + 1);
+        const originalDate = new Date(d); // Save original for logging
+        const currentMonth = d.getMonth();
+        const currentYear = d.getFullYear();
+        const currentDay = d.getDate(); // Preserve the day of month
+
+        // Calculate target month and year
+        const targetMonth = currentMonth + monthsCovered;
+        const targetYear = currentYear + Math.floor(targetMonth / 12);
+        let finalMonth = targetMonth % 12;
+        if (finalMonth < 0) finalMonth += 12;
+
+        // Set the new date
+        d.setFullYear(targetYear);
+        d.setMonth(finalMonth);
+        d.setDate(currentDay); // Preserve the day of month
+
+        console.log('Calculated next due date (no baseDate):', {
+          original: originalDate.toISOString(),
+          originalFormatted: originalDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+          calculated: d.toISOString(),
+          calculatedFormatted: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+          monthsAdded: monthsCovered,
+          monthDifference: (d.getMonth() + 1) - (originalDate.getMonth() + 1)
+        });
 
         if (currentOccupancy?.contract_end_date) {
           const endDate = new Date(currentOccupancy.contract_end_date);
-          if (d > endDate) {
+          // Only show "All Paid" if the PAID period already covers past contract end
+          const lastPaidDate = new Date(lastBill.due_date);
+          const paidPeriodEnd = new Date(lastPaidDate);
+          paidPeriodEnd.setMonth(paidPeriodEnd.getMonth() + monthsCovered);
+
+          // Only show "All Paid" if the paid period already extends past contract end
+          if (paidPeriodEnd >= endDate) {
             setNextPaymentDate("All Paid - Contract Ending");
             return;
           }
+          // Otherwise, show the calculated next due date
         }
 
         setNextPaymentDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));

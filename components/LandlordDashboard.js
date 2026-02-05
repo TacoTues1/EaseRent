@@ -394,12 +394,48 @@ export default function LandlordDashboard({ session, profile }) {
       const rentAmount = occupancy.property?.price || 0
       const advanceAmount = rentAmount // Advance equals one month's rent (total = 2 months)
 
-      // Calculate the due date: 1 month AFTER old contract end
-      // This represents the END of the first renewal billing period
-      // Example: Contract ends April 2 → due_date = May 2 (for April-May period)
-      const oldContractEndDate = new Date(occupancy.contract_end_date)
-      const renewalBillDueDate = new Date(oldContractEndDate)
-      renewalBillDueDate.setMonth(renewalBillDueDate.getMonth() + 1) // +1 month for end of first period
+      // Calculate the due date:
+      // Try to find the ACTUAL next due date based on payment history
+      // This prevents "skipping" months if there's a gap between last payment and contract end
+      // Default to contract end date if no history
+      let renewalBillDueDate = new Date(occupancy.contract_end_date);
+
+      try {
+        const { data: lastPaidBills } = await supabase
+          .from('payment_requests')
+          .select('due_date, rent_amount, advance_amount')
+          .eq('occupancy_id', occupancy.id)
+          .or('status.eq.paid,status.eq.pending_confirmation')
+          .gt('rent_amount', 0)
+          .order('due_date', { ascending: false })
+          .limit(1);
+
+        if (lastPaidBills && lastPaidBills.length > 0) {
+          const lastBill = lastPaidBills[0];
+          const lastDate = new Date(lastBill.due_date);
+          let monthsCovered = 1;
+          // Calculate how many months the last bill covered
+          if (lastBill.rent_amount > 0 && lastBill.advance_amount > 0) {
+            monthsCovered = 1 + Math.floor(lastBill.advance_amount / lastBill.rent_amount);
+          } else if (lastBill.rent_amount > 0 && lastBill.advance_amount === 0) {
+            // Standard bill covers 1 month
+            monthsCovered = 1;
+          }
+
+          // Calculate next due date based on history
+          const nextDue = new Date(lastDate);
+          nextDue.setMonth(nextDue.getMonth() + monthsCovered);
+
+          console.log("Calculated Renewal Bill Date from history:", nextDue.toISOString());
+
+          // Use this as the renewal bill date
+          renewalBillDueDate = nextDue;
+        } else {
+          console.log("No payment history found for renewal, using contract end date");
+        }
+      } catch (err) {
+        console.error("Error calculating renewal date:", err);
+      }
 
       const signingDate = new Date(renewalSigningDate) // When payment should be made
 
@@ -416,7 +452,7 @@ export default function LandlordDashboard({ session, profile }) {
           electrical_bill: 0,
           other_bills: 0,
           bills_description: 'Contract Renewal Payment (1 Month Rent + 1 Month Advance)',
-          due_date: renewalBillDueDate.toISOString(), // End of first renewal period (e.g., May 2 for April-May)
+          due_date: renewalBillDueDate.toISOString(), // Due on the start of renewal (e.g., April 2)
           status: 'pending',
           is_renewal_payment: true // Mark as renewal payment
         });
@@ -1485,7 +1521,7 @@ export default function LandlordDashboard({ session, profile }) {
                           {uploadingContract ? (
                             <>
                               <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                              <span>Uploading...</span>
+                              <span>Assigning...</span>
                             </>
                           ) : (
                             <span>Assign</span>

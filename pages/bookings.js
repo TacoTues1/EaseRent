@@ -311,13 +311,13 @@ export default function BookingsPage() {
         await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', booking.time_slot_id)
       }
 
-      await createNotification({
-        recipient: booking.tenant,
-        actor: session.user.id,
-        type: 'booking_approved',
-        message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
-        link: '/bookings'
-      })
+      // await createNotification({
+      //   recipient: booking.tenant,
+      //   actor: session.user.id,
+      //   type: 'booking_approved',
+      //   message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
+      //   link: '/bookings'
+      // })
 
       fetch('/api/notify', {
         method: 'POST',

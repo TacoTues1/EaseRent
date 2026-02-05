@@ -39,6 +39,7 @@ export default async function handler(req, res) {
 
         const requestTotal = (
             parseFloat(request.rent_amount || 0) +
+            parseFloat(request.advance_amount || 0) +
             parseFloat(request.security_deposit_amount || 0) +
             parseFloat(request.water_bill || 0) +
             parseFloat(request.electrical_bill || 0) +
@@ -168,6 +169,73 @@ export default async function handler(req, res) {
             .eq('id', paymentRequestId);
 
         if (updateError) throw updateError;
+
+        // --- NEW: Handle Advance Payment Records (Consistency with Manual Confirmation) ---
+        // If this is a renewal (or has advance), we should generate the "Future" paid bills 
+        // so they appear in history and metrics correctly.
+
+        let monthlyRent = parseFloat(request.rent_amount || 0);
+        // If rent is 0 but item is renewal, try to fetch from property? Usually rent_amount is set.
+
+        let extraMonths = 0;
+        if (monthlyRent > 0) {
+            const advanceAmount = parseFloat(request.advance_amount || 0);
+            if (advanceAmount > 0) {
+                extraMonths = Math.floor(advanceAmount / monthlyRent);
+            }
+        }
+
+        if (extraMonths > 0 && request.occupancy_id) {
+            console.log(`Creating ${extraMonths} advance payment records for Stripe payment ${paymentRequestId}`);
+
+            // Calculate base due date (the due date of the CURRENT bill)
+            // For renewal, this should ideally be the correct next due date. 
+            // If the renewal bill date was set correctly (which we fixed in LandlordDashboard), we use it.
+            const baseDueDate = new Date(request.due_date);
+
+            for (let i = 1; i <= extraMonths; i++) {
+                const futureDueDate = new Date(baseDueDate);
+                const currentMonth = futureDueDate.getMonth();
+                const currentYear = futureDueDate.getFullYear();
+                const currentDay = futureDueDate.getDate();
+
+                // Calculate target month
+                const targetMonth = currentMonth + i;
+                const targetYear = currentYear + Math.floor(targetMonth / 12);
+                let finalMonth = targetMonth % 12;
+                if (finalMonth < 0) finalMonth += 12;
+
+                futureDueDate.setFullYear(targetYear);
+                futureDueDate.setMonth(finalMonth);
+                futureDueDate.setDate(currentDay);
+
+                // Create PAID bill for advance month
+                await supabase.from('payment_requests').insert({
+                    landlord: request.landlord,
+                    tenant: request.tenant,
+                    property_id: request.property_id,
+                    occupancy_id: request.occupancy_id,
+                    rent_amount: monthlyRent, // 1 month rent
+                    water_bill: 0,
+                    electrical_bill: 0,
+                    other_bills: 0,
+                    bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1}) - via Stripe`,
+                    due_date: futureDueDate.toISOString(),
+                    status: 'paid', // Mark as PAID immediately
+                    paid_at: new Date().toISOString(),
+                    payment_method: 'stripe',
+                    is_advance_payment: true,
+                    payment_id: paymentRecord?.id
+                });
+            }
+
+            // Reset renewal status if applicable (so deposit logic works for next cycle)
+            if (request.is_renewal_payment) {
+                await supabase.from('tenant_occupancies')
+                    .update({ renewal_status: null, renewal_requested: false })
+                    .eq('id', request.occupancy_id);
+            }
+        }
 
         // --- NEW: SEND NOTIFICATIONS (SMS & EMAIL) ---
         try {
