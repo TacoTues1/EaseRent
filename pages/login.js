@@ -14,9 +14,35 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [stats, setStats] = useState({ properties: '0', tenants: '0' })
 
   useEffect(() => {
     setMounted(true)
+    async function loadStats() {
+      try {
+        // Fetch Properties Count
+        const { count: propertiesCount } = await supabase
+          .from('properties')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_deleted', false)
+
+        // Fetch Tenants Count
+        const { count: tenantsCount } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'tenant')
+
+        if (propertiesCount !== null && tenantsCount !== null) {
+          setStats({
+            properties: propertiesCount.toString(),
+            tenants: tenantsCount.toString()
+          })
+        }
+      } catch (err) {
+        console.error('Error loading stats', err)
+      }
+    }
+    loadStats()
   }, [])
 
 
@@ -226,7 +252,7 @@ export default function Login() {
           {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30"></div>
         </div>
-        
+
         {/* Content on top of image */}
         <div className="relative z-10 flex flex-col justify-between p-8 xl:p-12 w-full h-full">
           {/* Logo/Brand */}
@@ -258,12 +284,12 @@ export default function Login() {
           {/* Trust indicators */}
           <div className={`flex items-center gap-8 ${mounted ? 'animate-slideInStats delay-400' : 'opacity-0'}`}>
             <div className="text-center group cursor-default">
-              <div className="text-3xl font-black text-white group-hover:scale-110 transition-transform duration-300">500+</div>
+              <div className="text-3xl font-black text-white group-hover:scale-110 transition-transform duration-300">{stats.properties}+</div>
               <div className="text-white/60 text-sm font-medium">Properties</div>
             </div>
             <div className="w-px h-12 bg-white/20"></div>
             <div className="text-center group cursor-default">
-              <div className="text-3xl font-black text-white group-hover:scale-110 transition-transform duration-300">1,200+</div>
+              <div className="text-3xl font-black text-white group-hover:scale-110 transition-transform duration-300">{stats.tenants}+</div>
               <div className="text-white/60 text-sm font-medium">Happy Tenants</div>
             </div>
             <div className="w-px h-12 bg-white/20"></div>
@@ -345,7 +371,7 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5 cursor-pointer text-gray-500 hover:text-black transition-colors"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5 cursor-pointer text-gray-500 hover:text-black transition-colors z-20"
                     >
                       {showPassword ? (
                         // Eye Slash Icon (Hide)
@@ -364,7 +390,7 @@ export default function Login() {
                 </div>
               </div>
 
-                <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <input
                     id="remember-me"

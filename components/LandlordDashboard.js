@@ -66,6 +66,14 @@ export default function LandlordDashboard({ session, profile }) {
   const [pendingRenewalRequests, setPendingRenewalRequests] = useState([])
   const [dashboardTasks, setDashboardTasks] = useState({ maintenance: [], payments: [] })
 
+  // Advance Bill Confirmation Modal State
+  const [advanceBillModal, setAdvanceBillModal] = useState({
+    isOpen: false,
+    tenantId: null,
+    tenantName: '',
+    propertyTitle: ''
+  })
+
   const router = useRouter()
 
   // Auto-slide images
@@ -167,8 +175,32 @@ export default function LandlordDashboard({ session, profile }) {
     }
   }, [occupancies])
 
-  async function sendManualAdvanceBill(tenantId) {
-    if (!confirm("Send an immediate advance bill for this month?")) return;
+  // Open confirmation modal for sending advance bill
+  function openAdvanceBillModal(tenantId, tenantName, propertyTitle) {
+    setAdvanceBillModal({
+      isOpen: true,
+      tenantId,
+      tenantName,
+      propertyTitle
+    })
+  }
+
+  // Close the advance bill modal
+  function closeAdvanceBillModal() {
+    setAdvanceBillModal({
+      isOpen: false,
+      tenantId: null,
+      tenantName: '',
+      propertyTitle: ''
+    })
+  }
+
+  // Actually send the advance bill after confirmation
+  async function confirmSendAdvanceBill() {
+    const tenantId = advanceBillModal.tenantId
+    if (!tenantId) return
+
+    closeAdvanceBillModal()
     setSendingBillId(tenantId)
     try {
       const res = await fetch(`/api/test-rent-reminder?tenantId=${tenantId}`)
@@ -1306,17 +1338,21 @@ export default function LandlordDashboard({ session, profile }) {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-center">
-                              <button
-                                onClick={() => sendManualAdvanceBill(item.tenantId)}
-                                disabled={sendingBillId === item.tenantId}
-                                className="text-xs font-bold text-white bg-black hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto"
-                              >
-                                {sendingBillId === item.tenantId ? (
-                                  <>
-                                    <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                  </>
-                                ) : 'Send Advance'}
-                              </button>
+                              {item.status === 'Contract Ending' ? (
+                                <span className="text-xs text-gray-400 font-medium">Unable to Send</span>
+                              ) : (
+                                <button
+                                  onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)}
+                                  disabled={sendingBillId === item.tenantId}
+                                  className="text-xs font-bold text-white bg-black hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto"
+                                >
+                                  {sendingBillId === item.tenantId ? (
+                                    <>
+                                      <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    </>
+                                  ) : 'Send Advance'}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         )
@@ -1977,6 +2013,64 @@ export default function LandlordDashboard({ session, profile }) {
           </div>
         )
       }
+
+      {/* Advance Bill Confirmation Modal */}
+      {advanceBillModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-amber-50 px-6 py-4 border-b border-amber-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Confirm Send Advance Bill</h3>
+                  <p className="text-xs text-gray-500">This action will send a bill immediately</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Are you sure you want to send an advance bill to <span className="font-bold">{advanceBillModal.tenantName}</span> for property <span className="font-bold">{advanceBillModal.propertyTitle}</span>?
+              </p>
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-gray-500">
+                    This will immediately send a rent payment notification to the tenant. The tenant will receive an email, SMS (if phone is verified), and an in-app notification.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 justify-end">
+              <button
+                onClick={closeAdvanceBillModal}
+                className="px-5 py-2.5 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSendAdvanceBill}
+                className="px-5 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 cursor-pointer shadow-lg transition-all flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Yes, Send Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div >

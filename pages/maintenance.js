@@ -430,7 +430,7 @@ export default function MaintenancePage() {
         showToast.success(`Request submitted successfully!`, {
           duration: 4000,
           progress: true,
-          position: "top-center",
+          // position: "top-center",
           transition: "bounceIn",
         });
       }

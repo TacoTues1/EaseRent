@@ -854,6 +854,27 @@ export default function PaymentsPage() {
     }
   }
 
+  async function handlePayMongoSuccess(requestId, sessionId) {
+    showToast.info('Verifying PayMongo payment...', { duration: 3000 });
+    try {
+      const res = await fetch('/api/payments/process-paymongo-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentRequestId: requestId, sessionId })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
+
+      showToast.success('Payment verified and processed!', { duration: 5000, icon: '🎉' });
+      loadPaymentRequests();
+
+    } catch (error) {
+      console.error(error);
+      showToast.error('Payment verification failed: ' + error.message);
+    }
+  }
+
   async function handleStripeSuccess(paymentIntent) {
     try {
       // Call backend to process payment and handle balances
@@ -923,6 +944,244 @@ export default function PaymentsPage() {
         icon: '',
         sound: true,
       })
+    }
+  }
+
+  // Handle PayMongo Success Return
+  useEffect(() => {
+    // Check if URL has paymongo_success param
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('paymongo_success') === 'true') {
+      const requestId = query.get('payment_request_id');
+      const storedSessionId = localStorage.getItem(`paymongo_session_${requestId}`);
+
+      if (requestId && storedSessionId) {
+        // Clear URL params to prevent re-triggering
+        window.history.replaceState({}, document.title, window.location.pathname);
+        localStorage.removeItem(`paymongo_session_${requestId}`); // Clear stored session
+
+        handlePayMongoSuccess(requestId, storedSessionId);
+      }
+    }
+  }, []);
+
+  async function handlePayMongoSuccess(requestId, sessionId) {
+    showToast.info('Verifying PayMongo payment...', { duration: 3000 });
+    try {
+      const res = await fetch('/api/payments/process-paymongo-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentRequestId: requestId, sessionId })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
+
+      showToast.success('Payment verified and processed!', { duration: 5000, icon: '🎉' });
+      loadPaymentRequests();
+
+    } catch (error) {
+      console.error(error);
+      showToast.error('Payment verification failed: ' + error.message);
+    }
+  }
+
+  async function handleStripeSuccess(paymentIntent) {
+    try {
+      // Call backend to process payment and handle balances
+      const res = await fetch('/api/payments/process-stripe-success', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paymentRequestId: selectedBill.id,
+          paymentIntentId: paymentIntent.id
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to process payment')
+      }
+
+      // Notify landlord
+      const amountPaid = paymentIntent.amount / 100;
+
+      await supabase.from('notifications').insert({
+        recipient: selectedBill.landlord,
+        actor: session.user.id,
+        type: 'payment_confirmation_needed',
+        message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${selectedBill.properties?.title || 'property'} via Stripe (Transaction: ${paymentIntent.id}). Please confirm payment receipt.`,
+        link: '/payments',
+        data: { payment_request_id: selectedBill.id }
+      })
+
+      setShowPaymentModal(false)
+      setSelectedBill(null)
+      setPaymentMethod('cash')
+      loadPaymentRequests()
+
+      let successMsg = 'Stripe payment successful!';
+      let successMsg2 = 'Waiting for landlord confirmation.';
+      if (data.excessAmount > 0) {
+        successMsg += ` Excess of ₱${data.excessAmount.toLocaleString()} added to your credit.`;
+      }
+
+      showToast.success(successMsg, {
+        duration: 5000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+      showToast.success(successMsg2, {
+        duration: 5000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    } catch (error) {
+      console.error('Stripe Success Handler Error:', error)
+      showToast.error('Payment processed but updating status failed. Please contact support.', {
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      })
+    }
+  }
+
+  // Helper to silently check status during polling
+  async function checkPaymentStatus(requestId, sessionId) {
+    try {
+      const res = await fetch('/api/payments/process-paymongo-success', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentRequestId: requestId, sessionId })
+      });
+      // If the API returns OK (200), it means payment is verified/processed
+      if (res.ok) return true;
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function handlePayMongoPayment() {
+    // 1. Basic validation
+    if (!selectedBill || !customAmount) {
+      showToast.error("Invalid bill or amount.", { duration: 3000 });
+      return;
+    }
+
+    setUploadingProof(true);
+
+    // 2. Open a NEW TAB immediately to avoid popup blockers
+    // We open it empty first, then redirect it later
+    const paymentWindow = window.open('', '_blank');
+    
+    if (!paymentWindow) {
+      showToast.error("Popup blocked! Please allow popups for this site.", { duration: 4000 });
+      setUploadingProof(false);
+      return;
+    }
+
+    // Show a loading message in the new tab while we fetch the URL
+    paymentWindow.document.write(`
+      <html><head><title>Secure Payment</title></head>
+      <body style="display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;background:#f9fafb;">
+        <div style="text-align:center"><h3>Initializing Secure Payment...</h3><p>Please wait.</p></div>
+      </body></html>
+    `);
+
+    try {
+      showToast.info('Initializing secure payment...', { duration: 2000 });
+
+      const allMethods = ['gcash', 'paymaya', 'card', 'grab_pay', 'dob'];
+
+      // 3. Call API to create checkout session
+      const res = await fetch('/api/payments/create-paymongo-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(customAmount),
+          description: `Payment for ${selectedBill.properties?.title || 'Property'}`,
+          remarks: `Payment Request ID: ${selectedBill.id}`,
+          paymentRequestId: selectedBill.id,
+          allowedMethods: allMethods
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Failed to connect to payment gateway');
+
+      if (data.checkoutUrl) {
+        // 4. Redirect the new tab to PayMongo
+        paymentWindow.location.href = data.checkoutUrl;
+
+        showToast.info('Payment tab opened. Waiting for confirmation...', {
+          duration: 5000,
+          position: "top-center"
+        });
+
+        // 5. START POLLING: Check status every 5 seconds
+        let attempts = 0;
+        const maxAttempts = 60; // Stop after 5 minutes (60 * 5s)
+        
+        const pollInterval = setInterval(async () => {
+          attempts++;
+          
+          // Check if payment is successful
+          const isSuccess = await checkPaymentStatus(selectedBill.id, data.checkoutSessionId);
+
+          if (isSuccess) {
+            // SUCCESS: Stop polling
+            clearInterval(pollInterval);
+            
+            // Close the payment tab automatically
+            if (paymentWindow) paymentWindow.close();
+
+            // Update UI
+            showToast.success('Payment verified successfully!', { duration: 5000, icon: '🎉' });
+            loadPaymentRequests();
+            setShowPaymentModal(false);
+            setSelectedBill(null);
+            setPaymentMethod('cash');
+            setUploadingProof(false);
+          } 
+          else if (attempts >= maxAttempts) {
+            // TIMEOUT: Stop polling after 5 mins
+            clearInterval(pollInterval);
+            setUploadingProof(false);
+            showToast.warning('Automatic verification timed out. Please check "View History" later.', { duration: 5000 });
+          }
+          
+          // Safety: Stop polling if user closed the modal manually in the app
+          if (!showPaymentModal) {
+             clearInterval(pollInterval);
+             setUploadingProof(false);
+          }
+
+        }, 5000); // Check every 5 seconds
+
+      } else {
+        paymentWindow.close();
+        throw new Error("Payment server did not return a valid URL.");
+      }
+
+    } catch (error) {
+      if (paymentWindow) paymentWindow.close();
+      console.error('PayMongo Error:', error);
+      showToast.error(error.message || 'Payment initiation failed', { duration: 4000 });
+      setUploadingProof(false);
     }
   }
 
@@ -1852,18 +2111,18 @@ export default function PaymentsPage() {
           </div>
           {loading ? (
             <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-      {/* Wrapper for animation + text */}
-      <div className="flex flex-col items-center">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading Payment...
-        </p>
-      </div>
-    </div>
+              {/* Wrapper for animation + text */}
+              <div className="flex flex-col items-center">
+                <Lottie
+                  animationData={loadingAnimation}
+                  loop={true}
+                  className="w-64 h-64"
+                />
+                <p className="text-gray-500 font-medium text-lg mt-4">
+                  Loading Payment...
+                </p>
+              </div>
+            </div>
           ) : paymentRequests.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
@@ -2320,11 +2579,6 @@ export default function PaymentsPage() {
                 <div className="border-2 border-black p-4 rounded-xl">
                   <div className="flex justify-between items-center mb-2">
                     <label className="block text-sm font-bold text-black">Amount to Pay</label>
-                    {/* {maxPaymentLimit !== null && maxPaymentLimit !== Infinity && (
-                      <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                        Max: ₱{maxPaymentLimit.toLocaleString()} ({maxMonthsAllowed} mo)
-                      </span>
-                    )} */}
                   </div>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-gray-500">₱</span>
@@ -2377,7 +2631,7 @@ export default function PaymentsPage() {
                   </p>
                 </div>
 
-                {/* Check if credit actually covers the bill (minimumPayment is 0 means credit >= bill total) */}
+                {/* Check if credit actually covers the bill */}
                 {minimumPayment <= 0 && appliedCredit > 0 ? (
                   <div className="mt-6">
                     <div className="bg-green-50 border border-green-200 p-4 rounded-xl mb-4">
@@ -2394,11 +2648,12 @@ export default function PaymentsPage() {
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Payment Method</label>
                     <div className="grid grid-cols-3 gap-3">
+                      {/* 1. Cash Button */}
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('cash')}
                         disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
                           ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
                           : paymentMethod === 'cash'
                             ? 'border-black bg-black text-white'
@@ -2409,39 +2664,12 @@ export default function PaymentsPage() {
                         <span className="font-bold text-sm">Cash</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (selectedBill.qr_code_url) {
-                            setPaymentMethod('qr_code')
-                          } else {
-                            showToast.error('Landlord has not provided a QR code', {
-                              duration: 4000,
-                              progress: true,
-                              position: "top-center",
-                              transition: "bounceIn",
-                              icon: '',
-                              sound: true,
-                            })
-                          }
-                        }}
-                        disabled={!selectedBill.qr_code_url || isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${!selectedBill.qr_code_url || isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
-                          ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : paymentMethod === 'qr_code'
-                            ? 'border-black bg-black text-white'
-                            : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                          }`}
-                      >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                        <span className="font-bold text-sm">QR Code</span>
-                      </button>
-
+                      {/* 2. Stripe Button */}
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('stripe')}
                         disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all cursor-pointer ${paymentMethod === 'stripe'
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${paymentMethod === 'stripe'
                           ? 'border-[#6772e5] bg-[#6772e5] text-white'
                           : 'border-gray-200 bg-white hover:border-[#6772e5] text-black'
                           } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200`}
@@ -2451,156 +2679,152 @@ export default function PaymentsPage() {
                         </svg>
                         <span className="font-bold text-sm">Stripe</span>
                       </button>
+
+                      {/* 3. Unified PayMongo Button (GCash/Maya/Cards) */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('paymongo')}
+                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${paymentMethod === 'paymongo'
+                          ? 'border-[#00BFA5] bg-[#00BFA5] text-white'
+                          : 'border-gray-200 bg-white hover:border-[#00BFA5] text-black'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        <div className="flex -space-x-1 justify-center items-center">
+                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-blue-600 border border-gray-200 z-10">G</div>
+                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-green-600 border border-gray-200 z-20">M</div>
+                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center border border-gray-200 z-30">
+                              <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                           </div>
+                        </div>
+                        <span className="font-bold text-xs text-center leading-tight">GCash / Maya<br/>Cards</span>
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* QR Code Payment Flow */}
-                {paymentMethod === 'qr_code' && (
-                  <div className="space-y-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
+                {/* PayMongo Unified Flow Display */}
+                {(paymentMethod === 'paymongo') && (
+                  <div className="space-y-4 p-5 rounded-2xl border bg-teal-50 border-teal-200">
                     {isBelowMinimum ? (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                         <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                         <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
                         <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
-                        <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
                       </div>
-                    ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
+                    ) : exceedsContract ? (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
-                        <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
-                        <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
+                        <p className="font-bold text-red-700">Payment Exceeds Contract</p>
                       </div>
-                    ) : selectedBill.qr_code_url ? (
-                      <>
-                        <div className="text-center">
-                          <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Scan to Pay</p>
-                          <img
-                            src={selectedBill.qr_code_url}
-                            alt="Payment QR Code"
-                            className="max-h-48 mx-auto rounded-lg shadow-sm border border-white"
-                          />
-                        </div>
-
-                        <div className="border-t border-gray-200 pt-4">
-                          <p className="text-sm font-bold text-black mb-3">Payment Proof (Required)</p>
-
-                          <div className="mb-3">
-                            <input
-                              type="text"
-                              value={referenceNumber}
-                              onChange={e => setReferenceNumber(e.target.value)}
-                              placeholder="Enter Ref/Transaction No."
-                              className="w-full border-2 border-gray-200 focus:border-black rounded-lg px-3 py-2 font-medium outline-none transition-colors"
-                            />
-                          </div>
-
-                          <div>
-                            <div className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer bg-white transition-colors ${proofPreview ? 'border-black' : 'border-gray-300 hover:border-gray-400'}`}>
-                              {proofPreview ? (
-                                <div className="relative inline-block">
-                                  <img src={proofPreview} alt="Payment Proof" className="max-h-32 rounded shadow-sm" />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setProofFile(null)
-                                      setProofPreview(null)
-                                    }}
-                                    className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full hover:bg-gray-800"
-                                  >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                  </button>
-                                </div>
-                              ) : (
-                                <label className="cursor-pointer block w-full h-full">
-                                  <span className="text-xs font-bold text-black">Upload Screenshot</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={e => {
-                                      const file = e.target.files[0]
-                                      if (file) {
-                                        setProofFile(file)
-                                        setProofPreview(URL.createObjectURL(file))
-                                      }
-                                    }}
-                                  />
-                                </label>
-                              )}
+                    ) : (
+                      <div className="text-center">
+                        <h4 className="font-bold text-lg text-gray-900 mb-2">Pay securely with PayMongo</h4>
+                        
+                         <div className="flex justify-center flex-wrap gap-2 mb-2">
+                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                                <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+                                <span className="text-[10px] font-bold text-gray-700">GCash</span>
+                              </div>
+                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                                <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                                <span className="text-[10px] font-bold text-gray-700">Maya</span>
+                              </div>
+                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                                <div className="w-4 h-4 rounded-full bg-indigo-500"></div>
+                                <span className="text-[10px] font-bold text-gray-700">Cards</span>
+                              </div>
+                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                                <div className="w-4 h-4 rounded-full bg-green-600"></div>
+                                <span className="text-[10px] font-bold text-gray-700">GrabPay</span>
+                              </div>
                             </div>
+
+                        <p className="text-xs text-gray-500">
+                              You will be redirected to PayMongo's secure checkout page where you can choose <strong>GCash, Maya, GrabPay, or Credit/Debit Card</strong> to complete your payment.
+                            </p>
+
+                        <div className="bg-white/60 rounded-xl p-3 mb-4 inline-block px-6 border border-gray-200 shadow-sm">
+                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Amount</p>
+                          <p className="text-2xl font-black text-black">₱{parseFloat(customAmount).toLocaleString()}</p>
+                        </div>
+
+                        <button
+                            onClick={handlePayMongoPayment}
+                            disabled={uploadingProof}
+                            className="w-full px-4 py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
+                          >
+                            {uploadingProof ? 'Redirecting...' : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* PayMongo / GCash / Maya / Card Flow */}
+                
+                
+                <div>
+                  {/* Stripe Payment Flow */}
+                  {paymentMethod === 'stripe' && (
+                    <div className="space-y-4 bg-[#6772e5]/10 border border-[#6772e5]/30 p-4 rounded-xl">
+                      {isBelowMinimum ? (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                          <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
+                          <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
+                          <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
+                        </div>
+                      ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+                          <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
+                          <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
+                          <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-center mb-4">
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with Stripe</p>
+                            <p className="text-xs text-gray-500">Secure payment powered by Stripe</p>
                           </div>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center text-gray-500 py-4">
-                        <p className="text-sm">No QR code available from landlord</p>
-                      </div>
-                    )}
-                  </div>
-                )}
 
-                {/* Stripe Payment Flow */}
-                {paymentMethod === 'stripe' && (
-                  <div className="space-y-4 bg-[#6772e5]/10 border border-[#6772e5]/30 p-4 rounded-xl">
-                    {isBelowMinimum ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
-                        <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
-                        <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
-                      </div>
-                    ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
-                        <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
-                        <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="text-center mb-4">
-                          <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with Stripe</p>
-                          <p className="text-xs text-gray-500">Secure payment powered by Stripe</p>
-                        </div>
-
-                        <StripePaymentForm
-                          amount={parseFloat(customAmount || 0).toFixed(2)}
-                          description={`EaseRent Payment - ${selectedBill.properties?.title}`}
-                          paymentRequestId={selectedBill.id}
-                          onSuccess={handleStripeSuccess}
-                          onCancel={() => {
-                            showToast.error('Payment cancelled', { duration: 4000, transition: "bounceIn" });
-                          }}
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Buttons */}
-                <div className="flex gap-3 pt-2">
-                  {paymentMethod !== 'stripe' && parseFloat(customAmount) > 0 && (
-                    <button
-                      onClick={submitPayment}
-                      disabled={uploadingProof || isBelowMinimum || (maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit)}
-                      className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
-                    >
-                      {uploadingProof ? 'Submitting...' : 'Submit Payment'}
-                    </button>
+                          <StripePaymentForm
+                            amount={parseFloat(customAmount || 0).toFixed(2)}
+                            description={`EaseRent Payment - ${selectedBill.properties?.title}`}
+                            paymentRequestId={selectedBill.id}
+                            onSuccess={handleStripeSuccess}
+                            onCancel={() => {
+                              showToast.error('Payment cancelled', { duration: 4000, transition: "bounceIn" });
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
                   )}
-                  <button
-                    onClick={() => {
-                      setShowPaymentModal(false)
-                      setSelectedBill(null)
-                      setPaymentMethod('cash')
-                      setPaypalProcessing(false)
-                    }}
-                    className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'stripe' || parseFloat(customAmount) <= 0 ? 'flex-1' : ''}`}
-                  >
-                    Cancel
-                  </button>
+
+                  {/* Buttons */}
+                  <div className="flex gap-3 pt-2">
+                    {paymentMethod !== 'stripe' && paymentMethod !== 'paymongo' && parseFloat(customAmount) > 0 && (
+                      <button
+                        onClick={submitPayment}
+                        disabled={uploadingProof || isBelowMinimum || (maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit)}
+                        className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
+                      >
+                        {uploadingProof ? 'Submitting...' : 'Submit Payment'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowPaymentModal(false)
+                        setSelectedBill(null)
+                        setPaymentMethod('cash')
+                        setPaypalProcessing(false)
+                      }}
+                      className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'stripe' || paymentMethod === 'paymongo' || parseFloat(customAmount) <= 0 ? 'flex-1' : ''}`}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2678,7 +2902,8 @@ export default function PaymentsPage() {
             </div>
           </div>
         )}
+
       </div>
-    </div >
+    </div>
   )
 }

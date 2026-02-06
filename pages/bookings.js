@@ -299,7 +299,11 @@ export default function BookingsPage() {
         })
       } catch (e) { console.error(e) }
 
-      showToast.success("Booking approved!", { duration: 4000, transition: "bounceIn" });
+      showToast.success("Booking approved!", 
+        { 
+          duration: 4000, 
+          transition: "bounceIn" 
+        });
       loadBookings()
     } else {
       showToast.error('Failed to approve booking', { duration: 4000, transition: "bounceIn" });

@@ -929,7 +929,7 @@ export default function TenantDashboard({ session, profile }) {
   async function loadTenantOccupancy() {
     const { data: occupancy, error } = await supabase
       .from('tenant_occupancies')
-      .select(`*, property:properties(id, title, address, city, images, price), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`)
+      .select(`*, property:properties(id, title, address, city, images, price, terms_conditions), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
       .order('created_at', { ascending: false })
@@ -1202,22 +1202,22 @@ export default function TenantDashboard({ session, profile }) {
   const carouselItemClass = "pl-2 basis-1/2 md:basis-1/4 lg:basis-[16.66%]"
 
   if (loading) {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-      {/* Wrapper for animation + text */}
-      <div className="flex flex-col items-center">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading Properties...
-        </p>
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
+        {/* Wrapper for animation + text */}
+        <div className="flex flex-col items-center">
+          <Lottie
+            animationData={loadingAnimation}
+            loop={true}
+            className="w-64 h-64"
+          />
+          <p className="text-gray-500 font-medium text-lg mt-4">
+            Loading Properties...
+          </p>
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] flex flex-col scroll-smooth">
@@ -1320,6 +1320,12 @@ export default function TenantDashboard({ session, profile }) {
                         <a href={tenantOccupancy.contract_url} target="_blank" rel="noopener noreferrer" className="py-2 text-sm bg-black text-white font-bold rounded-lg hover:bg-gray-800 cursor-pointer text-center flex items-center justify-center gap-1">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                           View Contract
+                        </a>
+                      )}
+                      {tenantOccupancy.property?.terms_conditions && (
+                        <a href={tenantOccupancy.property.terms_conditions.startsWith('http') ? tenantOccupancy.property.terms_conditions : '/terms'} target="_blank" rel="noopener noreferrer" className="py-2 text-sm bg-white text-black font-bold rounded-lg hover:bg-gray-50 border border-gray-300 cursor-pointer flex items-center justify-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          Property Terms
                         </a>
                       )}
                       {canRenew && (

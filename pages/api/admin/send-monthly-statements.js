@@ -109,14 +109,14 @@ export default async function handler(req, res) {
                     continue
                 }
 
-                // Get payments for this tenant in the period
+                // Get ALL payments for this tenant (paid/completed/confirmed)
+                // We'll include all payment history in the statement
                 const { data: payments, error: paymentError } = await supabaseAdmin
                     .from('payment_requests')
                     .select('*')
                     .eq('tenant', occ.tenant_id)
-                    .gte('created_at', periodStart.toISOString())
-                    .lte('created_at', periodEnd.toISOString())
                     .in('status', ['paid', 'completed', 'confirmed'])
+                    .order('created_at', { ascending: false })
 
                 if (paymentError) {
                     console.error(`Error fetching payments for ${tenantEmail}:`, paymentError)
@@ -124,7 +124,10 @@ export default async function handler(req, res) {
                     continue
                 }
 
-                console.log(`Tenant ${tenant.first_name}: Found ${payments?.length || 0} payments for period`)
+                console.log(`Tenant ${tenant.first_name}: Found ${payments?.length || 0} total paid payments`)
+                if (payments && payments.length > 0) {
+                    console.log(`  Latest payment: ${payments[0].created_at}, Amount: ${payments[0].rent_amount}`)
+                }
 
                 // Create tenant object with email for PDF generation
                 const tenantWithEmail = {
@@ -138,12 +141,14 @@ export default async function handler(req, res) {
                 // Generate PDF
                 const pdfBuffer = await generateStatementPDF(tenantWithEmail, payments || [], period, password)
 
-                // Send email with PDF attachment
+                // Send email with PDF attachment (also BCC admin for verification)
+                const ADMIN_EMAIL = 'alfnzperez@gmail.com' // Admin receives a copy
                 const emailResult = await sendMonthlyStatementEmail({
                     to: tenantEmail,
                     tenantName: `${tenant.first_name} ${tenant.last_name}`,
                     period,
-                    pdfBuffer
+                    pdfBuffer,
+                    adminBcc: ADMIN_EMAIL
                 })
 
                 if (emailResult.success) {

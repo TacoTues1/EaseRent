@@ -152,8 +152,50 @@ function OverviewView() {
   const [recentUsers, setRecentUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [autoSendStatus, setAutoSendStatus] = useState(null) // 'sending', 'sent', 'error', null
+  const [remindersEnabled, setRemindersEnabled] = useState(true) // Default true, fetch from DB ideally
+  const [togglingReminders, setTogglingReminders] = useState(false)
 
-  useEffect(() => { loadStats() }, [])
+  useEffect(() => { loadStats(); checkReminderStatus(); }, [])
+
+  async function checkReminderStatus() {
+    try {
+      const { data, error } = await supabase.from('system_settings').select('value').eq('key', 'reminders_enabled').single()
+      if (error) {
+        // Table might not exist yet, default to enabled
+        console.warn("Could not fetch reminder status (table may not exist):", error.message)
+        setRemindersEnabled(true)
+        return
+      }
+      if (data) setRemindersEnabled(data.value === true || data.value === 'true')
+    } catch (e) {
+      console.error("Failed to load settings", e)
+      setRemindersEnabled(true) // Default to enabled on error
+    }
+  }
+
+  async function toggleReminders() {
+    if (!confirm(`Are you sure you want to ${remindersEnabled ? 'STOP' : 'START'} sending automated reminders?`)) return
+
+    setTogglingReminders(true)
+    try {
+      const newState = !remindersEnabled
+      const res = await fetch('/api/admin/toggle-reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enable: newState })
+      })
+      if (res.ok) {
+        setRemindersEnabled(newState)
+        showToast.success(`Reminders ${newState ? 'STARTED' : 'STOPPED'} successfully`)
+      } else {
+        showToast.error("Failed to toggle reminders")
+      }
+    } catch (e) {
+      showToast.error("Error: " + e.message)
+    } finally {
+      setTogglingReminders(false)
+    }
+  }
 
   // Auto-send monthly statements on the 30th or last day of month
   useEffect(() => {
@@ -300,6 +342,35 @@ function OverviewView() {
             className="px-5 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Send Now
+          </button>
+        </div>
+
+        {/* Reminder Toggle */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 mt-4">
+          <div>
+            <h4 className="font-bold text-gray-900">Payment Reminders</h4>
+            <p className="text-sm text-gray-500 mt-1">Automatically email/SMS tenants about upcoming due dates.</p>
+            <div className="mt-2">
+              {remindersEnabled ? (
+                <span className="text-xs text-green-700 font-bold bg-green-100 px-2 py-1 rounded-md flex items-center gap-1 w-fit">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ACTIVE
+                </span>
+              ) : (
+                <span className="text-xs text-red-700 font-bold bg-red-100 px-2 py-1 rounded-md flex items-center gap-1 w-fit">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span> STOPPED
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={toggleReminders}
+            disabled={togglingReminders}
+            className={`px-5 py-3 font-bold rounded-xl transition-colors cursor-pointer min-w-[120px] ${remindersEnabled
+              ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-100'
+              : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
+              }`}
+          >
+            {togglingReminders ? 'Processing...' : remindersEnabled ? 'Stop Reminders' : 'Start Reminders'}
           </button>
         </div>
       </div>

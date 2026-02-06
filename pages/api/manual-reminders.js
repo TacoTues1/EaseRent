@@ -23,6 +23,24 @@ export default async function handler(req, res) {
 
   try {
     // ====================================================
+    // CHECK IF REMINDERS ARE ENABLED (Admin Toggle)
+    // ====================================================
+    const { data: reminderSetting } = await supabaseAdmin
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'reminders_enabled')
+      .single()
+
+    // If setting exists and is explicitly false, skip all reminders
+    if (reminderSetting && reminderSetting.value === false) {
+      return res.status(200).json({
+        success: true,
+        report: results,
+        skipped: 'Reminders are disabled by admin'
+      })
+    }
+
+    // ====================================================
     // TIME CHECK: Only run bill reminders between 7:00 AM - 9:00 AM (Philippine Time)
     // ====================================================
     const now = new Date();

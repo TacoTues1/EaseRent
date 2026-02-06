@@ -94,6 +94,29 @@ export default async function handler(req, res) {
     const dueDateStr = dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const monthName = dueDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
+    // --- DUPLICATE CHECK: Prevent duplicate advance bills ---
+    // Check if there's already a pending bill for this occupancy in the same month
+    const dueDateMonth = dueDate.getMonth()
+    const dueDateYear = dueDate.getFullYear()
+    const monthStart = new Date(dueDateYear, dueDateMonth, 1).toISOString()
+    const monthEnd = new Date(dueDateYear, dueDateMonth + 1, 0, 23, 59, 59).toISOString()
+
+    const { data: existingBill } = await supabaseAdmin
+      .from('payment_requests')
+      .select('id, status')
+      .eq('occupancy_id', occupancy.id)
+      .gte('due_date', monthStart)
+      .lte('due_date', monthEnd)
+      .in('status', ['pending', 'pending_confirmation'])
+      .maybeSingle()
+
+    if (existingBill) {
+      return res.status(400).json({
+        error: `A pending bill already exists for ${monthName}. Cannot create duplicate.`,
+        existingBillId: existingBill.id
+      })
+    }
+
     // Create payment request
     const { error: billError } = await supabaseAdmin.from('payment_requests').insert({
       landlord: occupancy.landlord_id,

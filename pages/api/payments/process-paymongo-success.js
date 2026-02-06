@@ -1,8 +1,6 @@
 
-import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 export default async function handler(req, res) {
@@ -10,21 +8,76 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { paymentRequestId, paymentIntentId } = req.body;
+    const { paymentRequestId, sessionId } = req.body;
 
-    if (!paymentRequestId || !paymentIntentId) {
+    if (!paymentRequestId || !sessionId) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
     try {
-        // 1. Verify Payment with Stripe
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        // 1. Verify Payment with PayMongo
+        const encoded = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64');
+        const options = {
+            method: 'GET',
+            headers: {
+                accept: 'application/json',
+                authorization: `Basic ${encoded}`
+            }
+        };
 
-        if (paymentIntent.status !== 'succeeded') {
-            return res.status(400).json({ error: 'Payment not succeeded' });
+        // Try as Checkout Session first (legacy compat)
+        // Or if ID starts with 'cs_'
+        let amountPaid = 0;
+        let transactionId = '';
+
+        if (sessionId.startsWith('link_') || !sessionId.startsWith('cs_')) {
+            // Assume Link
+            const response = await fetch(`https://api.paymongo.com/v1/links/${sessionId}`, options);
+            const linkData = await response.json();
+
+            if (linkData.errors) throw new Error(linkData.errors[0]?.detail || 'PayMongo Verification Failed');
+
+            if (linkData.data?.attributes?.status !== 'paid') {
+                return res.status(400).json({ error: 'Payment not paid yet.' });
+            }
+
+            // For Links, we often have to fetch the related payments
+            const payments = linkData.data?.attributes?.payments || [];
+
+            // If payments array is empty but status is paid, might be in a different relation or delayed
+            // But usually included.
+            const successPay = payments.find(p => p.data.attributes.status === 'paid') || payments[0]; // fallback
+
+            if (successPay) {
+                amountPaid = successPay.data.attributes.amount / 100;
+                transactionId = successPay.data.id;
+            } else {
+                // Fallback if payments not populated in link response (sometimes happens)
+                // Use link amount
+                amountPaid = linkData.data.attributes.amount / 100;
+                transactionId = linkData.data.id; // Use Link ID as reference
+            }
+
+        } else {
+            // Assume Checkout Session
+            const response = await fetch(`https://api.paymongo.com/v1/checkout_sessions/${sessionId}`, options);
+            const sessionData = await response.json();
+
+            if (sessionData.errors) {
+                throw new Error(sessionData.errors[0]?.detail || 'PayMongo Verification Failed');
+            }
+
+            const payments = sessionData.data?.attributes?.payments || [];
+            const successfulPayment = payments.find(p => p.attributes.status === 'paid');
+
+            if (!successfulPayment) {
+                return res.status(400).json({ error: 'Payment not verified or not paid.' });
+            }
+
+            amountPaid = successfulPayment.attributes.amount / 100;
+            transactionId = successfulPayment.id;
         }
 
-        const amountPaid = paymentIntent.amount / 100; // Convert cents to whole units
 
         // 2. Get Payment Request Details
         const { data: request, error: requestError } = await supabase
@@ -35,6 +88,11 @@ export default async function handler(req, res) {
 
         if (requestError || !request) {
             throw new Error('Payment request not found');
+        }
+
+        // Avoid Double Processing
+        if (request.status === 'paid' && request.payment_method === 'paymongo' && request.tenant_reference_number === transactionId) {
+            return res.status(200).json({ success: true, message: 'Already processed' });
         }
 
         const requestTotal = (
@@ -55,79 +113,30 @@ export default async function handler(req, res) {
             .eq('occupancy_id', request.occupancy_id)
             .maybeSingle();
 
-        // Status is PAID because Stripe is trusted.
-        // If user wants landlord to "confirm" first, we could use pending_confirmation,
-        // but typically digital payments are instant.
-        // However, user specifically asked: "the landlord will double check if the money is recieve".
-        // So let's respect that request and make it 'pending_confirmation' even for Stripe if desired?
-        // Actually, usually Stripe = Paid. The user Complaint was:
-        // "it automatic paid the advance and the status make PAID"
-        // This implies they DON'T want it to be PAID immediately.
-        // So let's set it to 'pending_confirmation' for the BILL itself?
-        // But Stripe money is already taken.
-        // Compromise: Mark as 'paid' because money IS moved, but remove auto-advance logic.
-        // The "Double check" might surely refer to the "Advanced" months being generated.
-        // By removing auto-advance, we just add credit.
-
-        let finalStatus = 'pending_confirmation'; // User explicitly requested landlord confirmation for payments ("landlord will double check")
-
-        // Wait, if I set it to pending_confirmation, does it show as "Paid"?
-        // No, it shows as Pending Confirmation.
-        // If I pay via Stripe, I expect it to be confirmed? 
-        // Let's set to 'paid' for the CURRENT bill, but NO auto-advance.
-        // The user's issue "advance payment... automatic paid the advance" likely refers to the FUTURE bills.
-        // So:
-        finalStatus = 'pending_confirmation'; // Let's strictly follow "landlord will double check" for everything.
-
-        // Actually, let's stick to 'pending_confirmation' for safety as requested.
-        // Or if Stripe is 100% sure, maybe 'paid'.
-        // Let's try 'pending_confirmation'.
-
-        // RE-READING: "when i advance payment of 100,000 and it automatic paid the advance and the status make PAID"
-        // This confirms the previous code was creating new "PAID" bills.
-        // REMOVING that loop fixes the main issue.
-        // Whether the current bill becomes PAID or PENDING_CONFIRMATION:
-        // If I pay via Stripe, it SHOULD be paid. 
-        // Let's set current bill to 'paid' (confirmed) but avoid creating future bills.
-        finalStatus = 'paid';
-
         let balanceChange = 0;
         let availableExcess = amountPaid - requestTotal;
 
-        // NO AUTO-ADVANCE LOGIC HERE. All excess goes to credit.
-
-        // Remaining excess (or deficit) handling
         if (availableExcess > 0) {
-            // Overpayment (Dust)
             balanceChange = availableExcess;
         } else if (availableExcess < 0) {
-            // Underpayment (Deficit) logic
             const needed = Math.abs(availableExcess);
             const currentBalance = balanceRecord?.amount || 0;
-
             if (currentBalance >= needed) {
                 balanceChange = -needed;
             } else {
-                if (currentBalance > 0) {
-                    balanceChange = -currentBalance;
-                }
+                if (currentBalance > 0) balanceChange = -currentBalance;
             }
         }
 
-        // Apply Balance Change to Wallet
         if (balanceChange !== 0 && request.occupancy_id) {
             const newBalance = (balanceRecord?.amount || 0) + balanceChange;
-
-            const { error: upsertError } = await supabase
-                .from('tenant_balances')
+            await supabase.from('tenant_balances')
                 .upsert({
                     tenant_id: request.tenant,
                     occupancy_id: request.occupancy_id,
                     amount: newBalance,
                     last_updated: new Date().toISOString()
                 }, { onConflict: 'tenant_id,occupancy_id' });
-
-            if (upsertError) console.error("Balance update failed:", upsertError);
         }
 
         // 4. Create Payment Record (Ledger)
@@ -142,46 +151,38 @@ export default async function handler(req, res) {
                 electrical_bill: request.electrical_bill,
                 other_bills: request.other_bills,
                 bills_description: request.bills_description,
-                method: 'stripe',
-                status: 'recorded', // confirmed automatically by Stripe
+                method: 'paymongo',
+                status: 'recorded',
                 paid_at: new Date().toISOString(),
                 currency: 'PHP'
             })
             .select()
             .single();
 
-        if (paymentError) {
-            console.error("Failed to create payment record:", paymentError);
-            // Don't throw, just log. The request status update is more important for UX.
-            // But ideally this should be a transaction.
-        }
+        if (paymentError) console.error("Failed to create payment record:", paymentError);
 
         // 5. Update Original Payment Request Status (append payment method to description)
         const updatedDescription = request.bills_description
-            ? `${request.bills_description} (Via Stripe)`
-            : 'Payment (Via Stripe)';
+            ? `${request.bills_description} (Via PayMongo)`
+            : 'Payment (Via PayMongo)';
 
         const { error: updateError } = await supabase
             .from('payment_requests')
             .update({
-                status: finalStatus,
+                status: 'paid',
                 paid_at: new Date().toISOString(),
-                payment_method: 'stripe',
+                payment_method: 'paymongo',
                 bills_description: updatedDescription,
-                tenant_reference_number: paymentIntentId,
-                payment_id: paymentRecord?.id // Link to the ledger
+                tenant_reference_number: transactionId,
+                payment_id: paymentRecord?.id
             })
             .eq('id', paymentRequestId);
 
         if (updateError) throw updateError;
 
-        // --- NEW: Handle Advance Payment Records (Consistency with Manual Confirmation) ---
-        // If this is a renewal (or has advance), we should generate the "Future" paid bills 
-        // so they appear in history and metrics correctly.
 
+        // 6. Handle Advance Payment Records
         let monthlyRent = parseFloat(request.rent_amount || 0);
-        // If rent is 0 but item is renewal, try to fetch from property? Usually rent_amount is set.
-
         let extraMonths = 0;
         if (monthlyRent > 0) {
             const advanceAmount = parseFloat(request.advance_amount || 0);
@@ -191,20 +192,13 @@ export default async function handler(req, res) {
         }
 
         if (extraMonths > 0 && request.occupancy_id) {
-            console.log(`Creating ${extraMonths} advance payment records for Stripe payment ${paymentRequestId}`);
-
-            // Calculate base due date (the due date of the CURRENT bill)
-            // For renewal, this should ideally be the correct next due date. 
-            // If the renewal bill date was set correctly (which we fixed in LandlordDashboard), we use it.
             const baseDueDate = new Date(request.due_date);
-
             for (let i = 1; i <= extraMonths; i++) {
                 const futureDueDate = new Date(baseDueDate);
                 const currentMonth = futureDueDate.getMonth();
                 const currentYear = futureDueDate.getFullYear();
                 const currentDay = futureDueDate.getDate();
 
-                // Calculate target month
                 const targetMonth = currentMonth + i;
                 const targetYear = currentYear + Math.floor(targetMonth / 12);
                 let finalMonth = targetMonth % 12;
@@ -214,27 +208,25 @@ export default async function handler(req, res) {
                 futureDueDate.setMonth(finalMonth);
                 futureDueDate.setDate(currentDay);
 
-                // Create PAID bill for advance month
                 await supabase.from('payment_requests').insert({
                     landlord: request.landlord,
                     tenant: request.tenant,
                     property_id: request.property_id,
                     occupancy_id: request.occupancy_id,
-                    rent_amount: monthlyRent, // 1 month rent
+                    rent_amount: monthlyRent,
                     water_bill: 0,
                     electrical_bill: 0,
                     other_bills: 0,
-                    bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1}) - via Stripe`,
+                    bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1}) - via PayMongo`,
                     due_date: futureDueDate.toISOString(),
-                    status: 'paid', // Mark as PAID immediately
+                    status: 'paid',
                     paid_at: new Date().toISOString(),
-                    payment_method: 'stripe',
+                    payment_method: 'paymongo',
                     is_advance_payment: true,
                     payment_id: paymentRecord?.id
                 });
             }
 
-            // Reset renewal status if applicable (so deposit logic works for next cycle)
             if (request.is_renewal_payment) {
                 await supabase.from('tenant_occupancies')
                     .update({ renewal_status: null, renewal_requested: false })
@@ -242,21 +234,19 @@ export default async function handler(req, res) {
             }
         }
 
-        // --- NEW: SEND NOTIFICATIONS (SMS & EMAIL) ---
+        // 7. Notifications
         try {
-            // Fetch Tenant Profile for contact info
             const { data: tenantProfile } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', request.tenant)
                 .single();
 
-            const message = `Payment of ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" received (Via Stripe).`;
+            const message = `Payment of ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" received (Via PayMongo).`;
 
             // Use absolute URL or fallback to localhost for development
             const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-            // 1. Send SMS
             if (tenantProfile?.phone) {
                 try {
                     await fetch(`${baseUrl}/api/send-sms`, {
@@ -272,18 +262,17 @@ export default async function handler(req, res) {
                 }
             }
 
-            // 2. Send Email
             try {
                 await fetch(`${baseUrl}/api/send-email`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         recipientId: request.tenant,
-                        subject: 'Payment Successful (Via Stripe)',
+                        subject: 'Payment Successful (Via PayMongo)',
                         html: `<p>Dear ${tenantProfile?.first_name || 'Tenant'},</p>
-                               <p>We confirm that your payment of <strong>₱${amountPaid.toLocaleString()}</strong> has been successfully processed via Stripe.</p>
+                               <p>We confirm that your payment of <strong>₱${amountPaid.toLocaleString()}</strong> has been successfully processed via PayMongo.</p>
                                <p>Property: ${request.properties?.title}</p>
-                               <p>Transaction ID: ${paymentIntentId}</p>
+                               <p>Transaction ID: ${transactionId}</p>
                                <p>Thank you!</p>`
                     })
                 });
@@ -291,16 +280,26 @@ export default async function handler(req, res) {
                 console.error('Email send error:', emailErr);
             }
 
+            // Notify Landlord too
+            await supabase.from('notifications').insert({
+                recipient: request.landlord,
+                actor: request.tenant, // Assuming actor logic works or we use hardcoded
+                // Actually, in the other file it used session.user.id. Here we don't have session.
+                // We can use request.tenant as actor.
+                type: 'payment_confirmation_needed', // reuse this type or 'payment_received'
+                message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${request.properties?.title} via PayMongo (Transaction: ${transactionId}).`,
+                link: '/payments',
+                data: { payment_request_id: request.id }
+            })
+
         } catch (notifyErr) {
             console.error('Notification Error:', notifyErr);
-            // Don't fail the request just because notification failed
         }
 
-        // Return info
         res.status(200).json({ success: true, excessAmount: availableExcess > 0 ? availableExcess : 0 });
 
     } catch (err) {
-        console.error('Process Payment Error:', err);
+        console.error('Process PayMongo Payment Error:', err);
         res.status(500).json({ error: err.message });
     }
 }
