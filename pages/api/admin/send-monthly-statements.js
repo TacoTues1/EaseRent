@@ -2,8 +2,8 @@
 // Regular admin API endpoint for manually triggering monthly statements
 
 import { createClient } from '@supabase/supabase-js'
-import { generateStatementPDF } from '../../../lib/pdf-generator'
-import { sendMonthlyStatementEmail } from '../../../lib/email'
+import { generateStatementPDF, generateLandlordStatementPDF } from '../../../lib/pdf-generator'
+import { sendMonthlyStatementEmail, sendLandlordMonthlyStatementEmail } from '../../../lib/email'
 
 /**
  * Generates a password for the PDF based on tenant info
@@ -37,10 +37,10 @@ export default async function handler(req, res) {
     )
 
     try {
-        // Calculate the period (previous month)
+        // Calculate the period (current month for testing - change to previous month for production)
         const now = new Date()
-        const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-        const month = now.getMonth() === 0 ? 11 : now.getMonth() - 1
+        const year = now.getFullYear()
+        const month = now.getMonth() // Current month (0-indexed)
 
         const periodStart = new Date(year, month, 1)
         const periodEnd = new Date(year, month + 1, 0, 23, 59, 59) // Last day of month
@@ -165,11 +165,190 @@ export default async function handler(req, res) {
             }
         }
 
+        // ============================================
+        // PART 2: SEND FINANCIAL STATEMENTS TO LANDLORDS
+        // ============================================
+        let landlordProcessed = 0
+        let landlordErrors = []
+
+        try {
+            // Get all landlords who have properties
+            const { data: landlords, error: landlordError } = await supabaseAdmin
+                .from('profiles')
+                .select('id, first_name, last_name, birthday, phone')
+                .eq('role', 'landlord')
+                .eq('is_deleted', false)
+
+            if (landlordError) {
+                console.error('Error fetching landlords:', landlordError)
+            } else if (landlords && landlords.length > 0) {
+                console.log(`Found ${landlords.length} landlords to process`)
+
+                for (const landlord of landlords) {
+                    try {
+                        // Get landlord email
+                        const { data: landlordEmail, error: emailError } = await supabaseAdmin.rpc('get_user_email', {
+                            user_id: landlord.id
+                        })
+
+                        if (emailError || !landlordEmail) {
+                            console.error(`Error getting email for landlord ${landlord.id}:`, emailError)
+                            landlordErrors.push({ landlord: `${landlord.first_name} ${landlord.last_name}`, error: 'Email not found' })
+                            continue
+                        }
+
+                        // Get landlord's properties
+                        const { data: properties, error: propError } = await supabaseAdmin
+                            .from('properties')
+                            .select('id, title')
+                            .eq('landlord', landlord.id)
+                            .eq('is_deleted', false)
+
+                        if (propError || !properties || properties.length === 0) {
+                            console.log(`Landlord ${landlord.first_name} has no properties, skipping`)
+                            continue
+                        }
+
+                        const propIds = properties.map(p => p.id)
+                        const propMap = properties.reduce((acc, p) => ({ ...acc, [p.id]: p.title }), {})
+
+                        // Get paid payments for this landlord's properties in the period
+                        // Include all paid/confirmed/completed statuses
+                        const { data: payments, error: payError } = await supabaseAdmin
+                            .from('payment_requests')
+                            .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, created_at, property_id, amount_paid, status, bills_description')
+                            .eq('landlord', landlord.id)
+                            .in('status', ['paid', 'confirmed', 'completed'])
+
+                        if (payError) {
+                            console.error(`Error fetching payments for landlord ${landlord.id}:`, payError)
+                            continue
+                        }
+
+                        console.log(`Landlord ${landlord.first_name}: Found ${payments?.length || 0} total payments`)
+
+                        // Filter payments by date (use paid_at or created_at)
+                        const filteredPayments = (payments || []).filter(p => {
+                            const paymentDate = new Date(p.paid_at || p.created_at)
+                            return paymentDate >= periodStart && paymentDate <= periodEnd
+                        })
+
+                        console.log(`Landlord ${landlord.first_name}: ${filteredPayments.length} payments in ${monthName} ${year}`)
+
+                        // Calculate total income
+                        const calculateTotal = (paymentsList) => {
+                            return paymentsList?.reduce((sum, p) => {
+                                const total = parseFloat(p.amount_paid || 0) || (
+                                    (parseFloat(p.rent_amount) || 0) +
+                                    (parseFloat(p.security_deposit_amount) || 0) +
+                                    (parseFloat(p.advance_amount) || 0) +
+                                    (parseFloat(p.water_bill) || 0) +
+                                    (parseFloat(p.electrical_bill) || 0) +
+                                    (parseFloat(p.wifi_bill) || 0) +
+                                    (parseFloat(p.other_bills) || 0)
+                                )
+                                return sum + total
+                            }, 0) || 0
+                        }
+
+                        // Group by property
+                        const groupByProperty = (paymentsList) => {
+                            const grouped = {}
+                            paymentsList?.forEach(p => {
+                                const propTitle = propMap[p.property_id] || 'Unknown'
+                                if (!grouped[propTitle]) {
+                                    grouped[propTitle] = { title: propTitle, income: 0, payments: 0 }
+                                }
+                                const total = parseFloat(p.amount_paid || 0) || (
+                                    (parseFloat(p.rent_amount) || 0) +
+                                    (parseFloat(p.security_deposit_amount) || 0) +
+                                    (parseFloat(p.advance_amount) || 0) +
+                                    (parseFloat(p.water_bill) || 0) +
+                                    (parseFloat(p.electrical_bill) || 0) +
+                                    (parseFloat(p.wifi_bill) || 0) +
+                                    (parseFloat(p.other_bills) || 0)
+                                )
+                                grouped[propTitle].income += total
+                                grouped[propTitle].payments += 1
+                            })
+                            return Object.values(grouped)
+                        }
+
+                        const totalIncome = calculateTotal(filteredPayments)
+                        const propertySummary = groupByProperty(filteredPayments)
+
+                        // Create landlord object with email for PDF generation
+                        const landlordWithEmail = {
+                            ...landlord,
+                            email: landlordEmail
+                        }
+
+                        // Generate password (same format as tenant - birthday)
+                        const password = generatePassword(landlordWithEmail)
+
+                        // Generate PDF with individual payment breakdown
+                        const pdfBuffer = await generateLandlordStatementPDF(
+                            landlordWithEmail,
+                            propertySummary,
+                            {
+                                start: periodStart,
+                                end: periodEnd,
+                                monthName: monthName,
+                                year: year
+                            },
+                            totalIncome,
+                            password,
+                            filteredPayments,  // Pass individual payments for detailed breakdown
+                            propMap            // Pass property ID to name mapping
+                        )
+
+                        // Send landlord statement email with PDF attachment
+                        const ADMIN_EMAIL = 'alfnzperez@gmail.com' // Admin receives a copy
+                        const emailResult = await sendLandlordMonthlyStatementEmail({
+                            to: landlordEmail,
+                            landlordName: `${landlord.first_name} ${landlord.last_name}`.trim() || 'Landlord',
+                            period: {
+                                monthName: monthName,
+                                year: year,
+                                start: periodStart,
+                                end: periodEnd
+                            },
+                            totalIncome,
+                            transactions: [],
+                            propertySummary,
+                            pdfBuffer,
+                            adminBcc: ADMIN_EMAIL
+                        })
+
+                        if (emailResult.success) {
+                            landlordProcessed++
+                            console.log(`✅ Landlord statement sent to ${landlordEmail}`)
+                        } else {
+                            const errMsg = typeof emailResult.error === 'string' ? emailResult.error : JSON.stringify(emailResult.error)
+                            landlordErrors.push({ landlord: landlordEmail, error: errMsg })
+                            console.error(`❌ Failed to send landlord statement to ${landlordEmail}:`, emailResult.error)
+                        }
+                    } catch (err) {
+                        console.error(`Error processing landlord ${landlord.id}:`, err)
+                        landlordErrors.push({ landlordId: landlord.id, error: err.message })
+                    }
+                }
+            }
+        } catch (landlordErr) {
+            console.error('Error processing landlord statements:', landlordErr)
+        }
+
         return res.status(200).json({
             success: true,
-            processed,
-            total: occupancies.length,
-            errors: errors.length > 0 ? errors : undefined,
+            tenants: {
+                processed,
+                total: occupancies.length,
+                errors: errors.length > 0 ? errors : undefined
+            },
+            landlords: {
+                processed: landlordProcessed,
+                errors: landlordErrors.length > 0 ? landlordErrors : undefined
+            },
             period: period.monthYear
         })
 

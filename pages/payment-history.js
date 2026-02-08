@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function PaymentHistoryPage() {
   const router = useRouter()
@@ -27,7 +28,7 @@ export default function PaymentHistoryPage() {
       .select('role')
       .eq('id', userId)
       .maybeSingle()
-    
+
     setUserRole(data?.role || 'tenant')
   }
 
@@ -87,7 +88,7 @@ export default function PaymentHistoryPage() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     const currentMonth = new Date().getMonth()
     const data = []
-    
+
     for (let i = 5; i >= 0; i--) {
       const monthIndex = (currentMonth - i + 12) % 12
       data.push({
@@ -101,13 +102,13 @@ export default function PaymentHistoryPage() {
       const monthIndex = date.getMonth()
       const monthLabel = months[monthIndex]
       const dataPoint = data.find(d => d.label === monthLabel)
-      
+
       if (dataPoint) {
         const total = (
-          parseFloat(payment.amount) || 0 +
-          parseFloat(payment.water_bill) || 0 +
-          parseFloat(payment.electrical_bill) || 0 +
-          parseFloat(payment.other_bills) || 0
+          (parseFloat(payment.amount) || 0) +
+          (parseFloat(payment.water_bill) || 0) +
+          (parseFloat(payment.electrical_bill) || 0) +
+          (parseFloat(payment.other_bills) || 0)
         )
         dataPoint.value += total
       }
@@ -128,14 +129,14 @@ export default function PaymentHistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-6">   
+    <div className="min-h-screen bg-white p-3 sm:p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-black">History</h1>
             <p className="text-sm text-gray-500 mt-1">View all payment records</p>
           </div>
-          <Link 
+          <Link
             href="/payments"
             className="px-6 py-2.5 bg-white border-2 border-black text-black font-bold rounded-lg cursor-pointer"
           >
@@ -147,48 +148,76 @@ export default function PaymentHistoryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Summary Cards */}
           <div className="space-y-4 lg:col-span-1">
-            <div className="bg-white border-2 border-black p-6 rounded-xl">
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
+            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="text-sm font-medium text-gray-500 mb-2">
                 {userRole === 'landlord' ? 'Total Collected' : 'Total Paid'}
               </div>
-              <div className="text-3xl font-bold text-black truncate">
+              <div className="text-3xl font-black text-gray-900 truncate">
                 ₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </div>
-            
-            <div className="bg-white border-2 border-black p-6 rounded-xl">
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Transactions</div>
-              <div className="text-3xl font-bold text-black">{payments.length}</div>
+
+            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="text-sm font-medium text-gray-500 mb-2">Transactions</div>
+              <div className="text-3xl font-black text-gray-900">{payments.length}</div>
             </div>
 
-            <div className="bg-white border-2 border-black p-6 rounded-xl">
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Average</div>
-              <div className="text-3xl font-bold text-black truncate">
+            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="text-sm font-medium text-gray-500 mb-2">Average</div>
+              <div className="text-3xl font-black text-gray-900 truncate">
                 ₱{payments.length > 0 ? (totalIncome / payments.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
               </div>
             </div>
           </div>
 
           {/* Payment Trends Graph */}
-          <div className="lg:col-span-2 bg-white border-2 border-black p-6 rounded-xl flex flex-col">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500 mb-6">Payment Volume (6 Months)</h3>
-            <div className="flex-1 flex items-end gap-3 sm:gap-6 min-h-[200px]">
-              {chartData.map((data, index) => (
-                <div key={index} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer h-full justify-end">
-                  <div className="relative w-full flex items-end justify-center h-full">
-                    {/* Tooltip */}
-                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-xs px-2 py-1 rounded font-bold whitespace-nowrap z-10 pointer-events-none">
-                      ₱{data.value.toLocaleString()}
-                    </div>
-                    {/* Bar */}
-                    <div 
-                      className="w-full bg-black rounded-t-sm transition-all duration-500 group-hover:opacity-80"
-                      style={{ height: `${(data.value / maxChartValue) * 100}%`, minHeight: '4px' }}
-                    ></div>
-                  </div>
-                  <span className="text-xs font-bold text-gray-500">{data.label}</span>
-                </div>
-              ))}
+          <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-xl font-black text-gray-900 tracking-tight">Payment Volume</h3>
+                <p className="text-sm text-gray-500 font-medium mt-1">Last 6 months overview</p>
+              </div>
+            </div>
+
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorPayment" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1aff00ff" stopOpacity={0.1} />
+                      <stop offset="95%" stopColor="#1aff00ff" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                    dy={10}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af', fontSize: 12 }}
+                    tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
+                    itemStyle={{ color: '#fff' }}
+                    formatter={(value) => [`₱${value.toLocaleString()}`, 'Total Payments']}
+                    cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#55ed44ff"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorPayment)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
@@ -201,7 +230,7 @@ export default function PaymentHistoryPage() {
               {payments.length} Records
             </span>
           </div>
-          
+
           {loading ? (
             <div className="p-8 flex justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
@@ -243,17 +272,17 @@ export default function PaymentHistoryPage() {
                           Paid
                         </span>
                       </div>
-                      
+
                       <div className="flex items-baseline gap-1 mb-3">
                         <span className="text-xs font-bold text-gray-500 uppercase">Total</span>
                         <span className="text-xl font-bold text-black">₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-3 bg-gray-50 p-2 rounded border border-gray-100">
                         <div>Rent: <span className="font-medium text-black">₱{rent.toLocaleString()}</span></div>
                         <div>Bills: <span className="font-medium text-black">₱{totalBills.toLocaleString()}</span></div>
                       </div>
-                      
+
                       <div className="flex justify-between items-center text-xs text-gray-400 border-t border-gray-100 pt-3">
                         <div className="flex items-center gap-1">
                           <span className="uppercase font-bold tracking-wider">{payment.method?.replace('_', ' ')}</span>
@@ -264,7 +293,7 @@ export default function PaymentHistoryPage() {
                   )
                 })}
               </div>
-              
+
               {/* Desktop Table View */}
               <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">

@@ -410,13 +410,13 @@ export default function Navbar() {
                 {/* --- CENTER: Text (Absolute Positioned) --- */}
                 {/* Mobile Center Text */}
                 <div className="absolute left-1/2 transform -translate-x-1/2 sm:hidden pointer-events-none">
-                  <span className="text-lg font-bold text-black">RentSphere</span>
+                  <span className="text-lg font-bold text-black">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</span>
                 </div>
 
                 {/* Desktop Center Welcome Text */}
                 <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
                   <span className="text-5xl lg:text-3xl font-bold text-gray-800 tracking-tight">
-                    Welcome to RentSphere
+                    Welcome to 𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝
                   </span>
                 </div>
 
@@ -457,7 +457,7 @@ export default function Navbar() {
               <div className="flex items-center gap-6 lg:gap-10">
                 <Link href="/dashboard" className="flex items-center gap-2 font-bold text-black hover:opacity-80 transition-opacity">
                   <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
-                  <span className="hidden md:inline text-xl">RentSphere</span>
+                  <span className="hidden md:inline text-xl">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</span>
                 </Link>
 
                 <div className="hidden md:flex relative gap-1">
@@ -486,7 +486,7 @@ export default function Navbar() {
               </div>
 
               <div className="absolute left-1/2 transform -translate-x-1/2 md:hidden pointer-events-none">
-                <span className="text-xl font-bold text-black">RentSphere</span>
+                <span className="text-xl font-bold text-black">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</span>
               </div>
 
               <div className="flex items-center gap-3">

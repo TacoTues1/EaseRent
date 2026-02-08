@@ -6,6 +6,7 @@ import { showToast } from 'nextjs-toast-notify'
 import Footer from './Footer'
 import Lottie from "lottie-react"
 import loadingAnimation from "../assets/loading.json"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function LandlordDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
@@ -19,7 +20,8 @@ export default function LandlordDashboard({ session, profile }) {
   const [acceptedApplications, setAcceptedApplications] = useState([])
   const [penaltyDetails, setPenaltyDetails] = useState('')
   const [startDate, setStartDate] = useState('') // NEW: Start Date State
-  const [endDate, setEndDate] = useState('') // NEW: Contract End Date State
+  const [contractMonths, setContractMonths] = useState(12) // NEW: Contract duration in months
+  const [endDate, setEndDate] = useState('') // NEW: Contract End Date State (auto-calculated)
   const [wifiDueDay, setWifiDueDay] = useState('') // NEW: Wifi Due Day
   const [electricityDueDay, setElectricityDueDay] = useState('') // NEW: Electricity Due Day
 
@@ -74,6 +76,17 @@ export default function LandlordDashboard({ session, profile }) {
     propertyTitle: ''
   })
 
+  // Monthly Income Statements State
+  const [monthlyIncome, setMonthlyIncome] = useState({
+    currentMonth: { total: 0, payments: [], byProperty: [] },
+    previousMonth: { total: 0, payments: [], byProperty: [] },
+    yearTotal: 0
+  })
+  const [selectedStatementMonth, setSelectedStatementMonth] = useState(new Date().getMonth())
+  const [selectedStatementYear, setSelectedStatementYear] = useState(new Date().getFullYear())
+  const [monthlyChartData, setMonthlyChartData] = useState([])
+  const [sendingStatement, setSendingStatement] = useState(false)
+
   const router = useRouter()
 
   // Auto-slide images
@@ -101,10 +114,28 @@ export default function LandlordDashboard({ session, profile }) {
       loadPendingEndRequests()
       loadPendingRenewalRequests()
       loadDashboardTasks()
+      loadMonthlyIncome()
     }
     // Check for reminders (only sends at 8:00 AM, once per day)
     fetch('/api/manual-reminders').catch(err => console.error("Reminder check failed", err));
   }, [profile])
+
+  // Reload monthly income when selected month/year changes
+  useEffect(() => {
+    if (profile) {
+      loadMonthlyIncome()
+    }
+  }, [selectedStatementMonth, selectedStatementYear])
+
+  // Auto-calculate end date when start date or contract months change
+  useEffect(() => {
+    if (startDate && contractMonths) {
+      const start = new Date(startDate);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + parseInt(contractMonths));
+      setEndDate(end.toISOString().split('T')[0]);
+    }
+  }, [startDate, contractMonths])
 
   async function loadProperties() {
     if (properties.length === 0) {
@@ -163,6 +194,182 @@ export default function LandlordDashboard({ session, profile }) {
         return { ...p, amount: total, property_title: propMap[p.property_id] }
       }) || []
     })
+  }
+
+  // --- Monthly Income Statements Logic ---
+  async function loadMonthlyIncome() {
+    try {
+      // Get all properties for this landlord
+      const { data: myProps } = await supabase
+        .from('properties')
+        .select('id, title')
+        .eq('landlord', session.user.id)
+
+      if (!myProps || myProps.length === 0) return
+
+      const propIds = myProps.map(p => p.id)
+      const propMap = myProps.reduce((acc, p) => ({ ...acc, [p.id]: p.title }), {})
+
+      // Calculate date ranges
+      const now = new Date()
+      const selectedMonth = selectedStatementMonth
+      const selectedYear = selectedStatementYear
+
+      // Start and end of selected month
+      const monthStart = new Date(selectedYear, selectedMonth, 1)
+      const monthEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59)
+
+      // Start of year for yearly total
+      const yearStart = new Date(selectedYear, 0, 1)
+      const yearEnd = new Date(selectedYear, 11, 31, 23, 59, 59)
+
+      // Fetch paid payments for the selected month
+      const { data: monthPayments } = await supabase
+        .from('payment_requests')
+        .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
+        .eq('landlord', session.user.id)
+        .eq('status', 'paid')
+        .gte('paid_at', monthStart.toISOString())
+        .lte('paid_at', monthEnd.toISOString())
+
+      // Fetch paid payments for the year
+      const { data: yearPayments } = await supabase
+        .from('payment_requests')
+        .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
+        .eq('landlord', session.user.id)
+        .eq('status', 'paid')
+        .gte('paid_at', yearStart.toISOString())
+        .lte('paid_at', yearEnd.toISOString())
+
+      // Calculate totals
+      const calculateTotal = (payments) => {
+        return payments?.reduce((sum, p) => {
+          const total = parseFloat(p.amount_paid || 0) || (
+            (parseFloat(p.rent_amount) || 0) +
+            (parseFloat(p.security_deposit_amount) || 0) +
+            (parseFloat(p.advance_amount) || 0) +
+            (parseFloat(p.water_bill) || 0) +
+            (parseFloat(p.electrical_bill) || 0) +
+            (parseFloat(p.wifi_bill) || 0) +
+            (parseFloat(p.other_bills) || 0)
+          )
+          return sum + total
+        }, 0) || 0
+      }
+
+      // Group by property for breakdown
+      const groupByProperty = (payments) => {
+        const grouped = {}
+        payments?.forEach(p => {
+          const propTitle = propMap[p.property_id] || 'Unknown'
+          if (!grouped[propTitle]) {
+            grouped[propTitle] = { title: propTitle, income: 0, payments: 0 }
+          }
+          const total = parseFloat(p.amount_paid || 0) || (
+            (parseFloat(p.rent_amount) || 0) +
+            (parseFloat(p.security_deposit_amount) || 0) +
+            (parseFloat(p.advance_amount) || 0) +
+            (parseFloat(p.water_bill) || 0) +
+            (parseFloat(p.electrical_bill) || 0) +
+            (parseFloat(p.wifi_bill) || 0) +
+            (parseFloat(p.other_bills) || 0)
+          )
+          grouped[propTitle].income += total
+          grouped[propTitle].payments += 1
+        })
+        return Object.values(grouped)
+      }
+
+      setMonthlyIncome({
+        currentMonth: {
+          total: calculateTotal(monthPayments),
+          payments: monthPayments || [],
+          byProperty: groupByProperty(monthPayments)
+        },
+        previousMonth: { total: 0, payments: [], byProperty: [] }, // Can be expanded later
+        yearTotal: calculateTotal(yearPayments)
+      })
+
+      // Generate chart data for the year (monthly breakdown)
+      const chartData = []
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+      for (let month = 0; month < 12; month++) {
+        const mStart = new Date(selectedYear, month, 1)
+        const mEnd = new Date(selectedYear, month + 1, 0, 23, 59, 59)
+
+        const monthTotal = yearPayments?.filter(p => {
+          const paidDate = new Date(p.paid_at)
+          return paidDate >= mStart && paidDate <= mEnd
+        }).reduce((sum, p) => {
+          const total = parseFloat(p.amount_paid || 0) || (
+            (parseFloat(p.rent_amount) || 0) +
+            (parseFloat(p.security_deposit_amount) || 0) +
+            (parseFloat(p.advance_amount) || 0) +
+            (parseFloat(p.water_bill) || 0) +
+            (parseFloat(p.electrical_bill) || 0) +
+            (parseFloat(p.wifi_bill) || 0) +
+            (parseFloat(p.other_bills) || 0)
+          )
+          return sum + total
+        }, 0) || 0
+
+        chartData.push({
+          name: monthNames[month],
+          income: monthTotal
+        })
+      }
+
+      setMonthlyChartData(chartData)
+    } catch (err) {
+      console.error('Error loading monthly income:', err)
+    }
+  }
+
+  // Send Monthly Statement Email
+  async function sendMonthlyStatement() {
+    setSendingStatement(true)
+    try {
+      // Get landlord email
+      const { data: landlordEmail } = await supabase.rpc('get_user_email', { user_id: session.user.id })
+
+      if (!landlordEmail) {
+        showToast.error('Unable to find your email address.', { duration: 3000, position: 'top-center' })
+        return
+      }
+
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+      // Send the statement via API
+      const response = await fetch('/api/send-landlord-statement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          landlordId: session.user.id,
+          landlordEmail,
+          landlordName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Landlord',
+          month: selectedStatementMonth,
+          year: selectedStatementYear,
+          monthName: monthNames[selectedStatementMonth],
+          totalIncome: monthlyIncome.currentMonth.total,
+          propertySummary: monthlyIncome.currentMonth.byProperty
+        })
+      })
+
+      if (response.ok) {
+        showToast.success(`Statement for ${monthNames[selectedStatementMonth]} ${selectedStatementYear} sent to your email!`, {
+          duration: 4000,
+          position: 'top-center'
+        })
+      } else {
+        throw new Error('Failed to send statement')
+      }
+    } catch (err) {
+      console.error('Error sending statement:', err)
+      showToast.error('Failed to send statement. Please try again.', { duration: 3000, position: 'top-center' })
+    } finally {
+      setSendingStatement(false)
+    }
   }
 
   // --- NEW: Billing Tracker State & Logic ---
@@ -669,10 +876,8 @@ export default function LandlordDashboard({ session, profile }) {
     loadAcceptedApplicationsForProperty(property.id);
     setPenaltyDetails('');
     setStartDate(new Date().toISOString().split('T')[0]); // Default to today
-    // Default end date to 1 year from now
-    const defaultEndDate = new Date();
-    defaultEndDate.setFullYear(defaultEndDate.getFullYear() + 1);
-    setEndDate(defaultEndDate.toISOString().split('T')[0]);
+    setContractMonths(12); // Default to 12 months
+    // End date will be auto-calculated by useEffect
     setWifiDueDay(''); // Reset
     setElectricityDueDay(''); // Reset
     setContractFile(null); // Reset contract file
@@ -1069,7 +1274,7 @@ export default function LandlordDashboard({ session, profile }) {
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 flex-1 w-full">
 
         {/* HERO HEADER WITH STATS */}
-        <div className="mb-10">
+        <div className="mb-5">
           <div className="bg-gradient-to-r from-black via-gray-900 to-gray-800 rounded-[2rem] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-black/20">
             {/* Decorative elements */}
             <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
@@ -1099,566 +1304,499 @@ export default function LandlordDashboard({ session, profile }) {
                   </button>
                 </div>
               </div>
-
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-8">
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                  <p className="text-white/60 text-xs font-medium uppercase tracking-wider">Properties</p>
-                  <p className="text-2xl sm:text-3xl font-black mt-1">{properties.length}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                  <p className="text-white/60 text-xs font-medium uppercase tracking-wider">Active Tenants</p>
-                  <p className="text-2xl sm:text-3xl font-black mt-1">{occupancies.length}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                  <p className="text-white/60 text-xs font-medium uppercase tracking-wider">Pending Actions</p>
-                  <p className="text-2xl sm:text-3xl font-black mt-1">{pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length}</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10">
-                  <p className="text-white/60 text-xs font-medium uppercase tracking-wider">Available</p>
-                  <p className="text-2xl sm:text-3xl font-black mt-1">{properties.filter(p => p.status === 'available').length}</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
 
         {/* MAIN CONTENT GRID */}
-        <div className="flex flex-col gap-8">
+        {/* NEW DASHBOARD LAYOUT - CLEAN & MODERN */}
+        <div className="space-y-8 pb-24">
 
-          {/* SECTION 1: ACTION CENTER - 2x2 Grid */}
-          <div>
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-1.5 h-8 bg-black rounded-full"></div>
-              <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">Action Center</h2>
+          {/* 1. KEY METRICS ROW */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Properties */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-900">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                </div>
+                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Total</span>
+              </div>
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{properties.length}</h3>
+                <p className="text-sm font-medium text-gray-500">Properties Managed</p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* 1. Pending Move-Out Requests */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between bg-gradient-to-r from-orange-50 to-white">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                    </div>
-                    <h4 className="font-bold text-gray-900 text-sm">Move-Out</h4>
-                  </div>
-                  {pendingEndRequests.length > 0 && <span className="text-xs font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full animate-pulse">{pendingEndRequests.length}</span>}
+            {/* Tenants */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                 </div>
-                <div className="p-4 min-h-[120px] flex flex-col">
-                  {pendingEndRequests.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-sm text-gray-400">No pending requests</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[150px] overflow-y-auto">
-                      {pendingEndRequests.slice(0, 2).map(request => (
-                        <div key={request.id} className="p-2 bg-orange-50/50 rounded-lg border border-orange-100">
-                          <p className="font-bold text-gray-900 text-xs truncate">{request.property?.title}</p>
-                          <p className="text-[10px] text-gray-500">{request.tenant?.first_name} {request.tenant?.last_name}</p>
-                          <div className="flex gap-1 mt-2">
-                            <button onClick={() => openEndConfirmation('approve', request.id)} className="flex-1 py-1 bg-black text-white text-[10px] font-bold rounded cursor-pointer hover:bg-gray-800">Approve</button>
-                            <button onClick={() => openEndConfirmation('reject', request.id)} className="flex-1 py-1 bg-gray-100 text-gray-700 text-[10px] font-bold rounded cursor-pointer hover:bg-gray-200">Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                  {properties.length > 0 ? Math.round((occupancies.length / properties.length) * 100) : 0}% Occ
+                </span>
               </div>
-
-              {/* 2. Contract Renewal Requests */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-white">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    </div>
-                    <h4 className="font-bold text-gray-900 text-sm">Renewals</h4>
-                  </div>
-                  {pendingRenewalRequests.length > 0 && <span className="text-xs font-bold bg-indigo-500 text-white px-2 py-0.5 rounded-full animate-pulse">{pendingRenewalRequests.length}</span>}
-                </div>
-                <div className="p-4 min-h-[120px] flex flex-col">
-                  {pendingRenewalRequests.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-sm text-gray-400">No renewals pending</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[150px] overflow-y-auto">
-                      {pendingRenewalRequests.slice(0, 2).map(request => (
-                        <div key={request.id} className="p-2 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                          <p className="font-bold text-gray-900 text-xs truncate">{request.property?.title}</p>
-                          <p className="text-[10px] text-gray-500">{request.tenant?.first_name} {request.tenant?.last_name}</p>
-                          <div className="flex gap-1 mt-2">
-                            <button onClick={() => openRenewalModal(request, 'approve')} className="flex-1 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded cursor-pointer hover:bg-indigo-700">Approve</button>
-                            <button onClick={() => openRenewalModal(request, 'reject')} className="flex-1 py-1 bg-gray-100 text-gray-700 text-[10px] font-bold rounded cursor-pointer hover:bg-gray-200">Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{occupancies.length}</h3>
+                <p className="text-sm font-medium text-gray-500">Active Tenants</p>
               </div>
+            </div>
 
-              {/* 3. Pending Payments */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={() => router.push('/payments')}>
-                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between bg-gradient-to-r from-emerald-50 to-white">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                    </div>
-                    <h4 className="font-bold text-gray-900 text-sm">Payments</h4>
-                  </div>
-                  {dashboardTasks.payments.length > 0 && <span className="text-xs font-bold bg-emerald-500 text-white px-2 py-0.5 rounded-full">{dashboardTasks.payments.length}</span>}
+            {/* Income */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <div className="p-4 min-h-[120px] flex flex-col">
-                  {dashboardTasks.payments.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-sm text-gray-400">All caught up!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {dashboardTasks.payments.slice(0, 2).map(pay => (
-                        <div key={pay.id} className="p-2 bg-emerald-50/50 rounded-lg border border-emerald-100">
-                          <div className="flex justify-between items-center">
-                            <p className="font-black text-emerald-700 text-sm">₱{pay.amount?.toLocaleString()}</p>
-                            <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold uppercase">{pay.status?.replace('_', ' ')}</span>
-                          </div>
-                          <p className="text-[10px] text-gray-500 truncate">{pay.property_title}</p>
-                        </div>
-                      ))}
-                      <p className="text-[10px] text-center text-gray-400 mt-1">Click to view all →</p>
-                    </div>
-                  )}
-                </div>
+                <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{selectedStatementYear}</span>
               </div>
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">₱{(monthlyIncome.yearTotal / 1000).toFixed(1)}k</h3>
+                <p className="text-sm font-medium text-gray-500">Total Income</p>
+              </div>
+            </div>
 
-              {/* 4. Pending Maintenance */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer" onClick={() => router.push('/maintenance')}>
-                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between bg-gradient-to-r from-rose-50 to-white">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    </div>
-                    <h4 className="font-bold text-gray-900 text-sm">Maintenance</h4>
-                  </div>
-                  {dashboardTasks.maintenance.length > 0 && <span className="text-xs font-bold bg-rose-500 text-white px-2 py-0.5 rounded-full">{dashboardTasks.maintenance.length}</span>}
+            {/* Attention */}
+            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                 </div>
-                <div className="p-4 min-h-[120px] flex flex-col">
-                  {dashboardTasks.maintenance.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center">
-                      <p className="text-sm text-gray-400">All caught up!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {dashboardTasks.maintenance.slice(0, 2).map(task => (
-                        <div key={task.id} className="p-2 bg-rose-50/50 rounded-lg border border-rose-100">
-                          <p className="font-bold text-gray-900 text-xs truncate">{task.title}</p>
-                          <div className="flex justify-between items-center mt-1">
-                            <p className="text-[10px] text-gray-500 truncate">{task.property_title}</p>
-                            <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold uppercase">{task.status?.replace('_', ' ')}</span>
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-[10px] text-center text-gray-400 mt-1">Click to view all →</p>
-                    </div>
-                  )}
-                </div>
+                <span className="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Action</span>
+              </div>
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length}</h3>
+                <p className="text-sm font-medium text-gray-500">Pending Tasks</p>
               </div>
             </div>
           </div>
 
+          {/* 2. MAIN GRID */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
 
-          {/* SECTION 2: AUTOMATED BILLING TRACKER */}
-          <div>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-full"></div>
-                <div>
-                  <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">Billing Schedule</h2>
-                  <p className="text-xs text-gray-500">Bills sent automatically 3 days before due date</p>
-                </div>
-              </div>
-            </div>
+            {/* LEFT CONTENT (FINANCIALS & BILLING) */}
+            <div className="xl:col-span-8 space-y-8">
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              {billingSchedule.length === 0 ? (
-                <div className="p-12 text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              {/* Financial Overview */}
+              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Financial Overview</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">Income Analysis for {selectedStatementYear}</p>
                   </div>
-                  <p className="text-gray-500 font-medium">No active tenants to bill</p>
-                  <p className="text-sm text-gray-400 mt-1">Assign tenants to properties to see billing schedule</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
-                        <th className="px-6 py-4 font-bold">Tenant / Property</th>
-                        <th className="px-6 py-4 font-bold">Next Bill Due</th>
-                        <th className="px-6 py-4 font-bold">Auto-Send Date</th>
-                        <th className="px-6 py-4 font-bold">Latest Bill Status</th>
-                        <th className="px-6 py-4 font-bold text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-sm">
-                      {billingSchedule.map((item) => {
-                        const isUpcoming = item.sendDate > new Date()
-
-                        return (
-                          <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4">
-                              <p className="font-bold text-gray-900">{item.tenantName}</p>
-                              <p className="text-xs text-gray-500">{item.propertyTitle}</p>
-                              {item.note && <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded font-bold mt-1 inline-block">{item.note}</span>}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="font-mono font-medium text-gray-700">
-                                {item.nextDueDate.toLocaleDateString()}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col">
-                                <span className={`font-bold ${isUpcoming ? 'text-black-600' : 'text-gray-500'}`}>
-                                  {item.sendDate.toLocaleDateString()}
-                                </span>
-                                <span className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">
-                                  {isUpcoming ? 'Scheduled' : 'Passed'}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`text-xs font-bold px-2 py-1 rounded capitalize ${item.status === 'Overdue' ? 'bg-red-100 text-red-700' :
-                                item.status === 'Confirming' ? 'bg-blue-100 text-blue-700' :
-                                  item.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
-                                    'bg-gray-100 text-gray-600'
-                                }`}>
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              {item.status === 'Contract Ending' ? (
-                                <span className="text-xs text-gray-400 font-medium">Unable to Send</span>
-                              ) : (
-                                <button
-                                  onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)}
-                                  disabled={sendingBillId === item.tenantId}
-                                  className="text-xs font-bold text-white bg-black hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto"
-                                >
-                                  {sendingBillId === item.tenantId ? (
-                                    <>
-                                      <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    </>
-                                  ) : 'Send Advance'}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* SECTION 3: PROPERTIES */}
-          <div>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-1.5 h-8 bg-gradient-to-b from-emerald-500 to-teal-600 rounded-full"></div>
-                <div>
-                  <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">Your Properties</h2>
-                  <p className="text-xs text-gray-500 flex items-center gap-2">
-                    Manage listings, assignments, and property details
-                    {refreshing && <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full animate-pulse">Updating...</span>}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-                {/* Wrapper for animation + text */}
-                <div className="flex flex-col items-center">
-                  <Lottie
-                    animationData={loadingAnimation}
-                    loop={true}
-                    className="w-64 h-64"
-                  />
-                  <p className="text-gray-500 font-medium text-lg mt-4">
-                    Loading Properties...
-                  </p>
-                </div>
-              </div>
-            ) : properties.length === 0 ? (
-              <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-                <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-50 rounded-full flex items-center justify-center">
-                  <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">No properties yet</h3>
-                <p className="text-gray-500 mb-6 max-w-sm mx-auto">Start by adding your first property to manage</p>
-                <button onClick={() => router.push('/properties/new')} className="px-6 py-3 bg-black text-white rounded-xl font-bold cursor-pointer hover:bg-gray-800 transition-all">
-                  Add Your First Property
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {properties.map((item) => {
-                  const property = item
-                  const images = getPropertyImages(property)
-                  const currentIndex = currentImageIndex[property.id] || 0
-                  const occupancy = getPropertyOccupancy(property.id)
-
-                  return (
-                    <div
-                      key={property.id}
-                      className="group bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer flex flex-col"
-                      onClick={() => handlePropertyAction(property.id)}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedStatementYear}
+                      onChange={(e) => setSelectedStatementYear(parseInt(e.target.value))}
+                      className="bg-gray-50 border-none text-sm font-bold rounded-xl px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors focus:ring-0"
                     >
-                      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                        <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover" />
+                      {[2024, 2025, 2026, 2027, 2028].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-                        {images.length > 1 && (
-                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10">
-                            {images.map((_, idx) => (
-                              <div key={idx} className={`h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-4 bg-white' : 'w-1 bg-white/60'}`} />
-                            ))}
-                          </div>
-                        )}
+                <div className="h-[350px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={monthlyChartData}>
+                      <defs>
+                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#1aff00ff" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#1aff00ff" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis
+                        dataKey="name"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                        dy={10}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                        tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
+                      />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
+                        itemStyle={{ color: '#fff' }}
+                        formatter={(value) => [`₱${value.toLocaleString()}`, 'Total Income']}
+                        cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="income"
+                        stroke="#55ed44ff"
+                        strokeWidth={3}
+                        fillOpacity={1}
+                        fill="url(#colorIncome)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
 
-                        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-10 flex flex-col gap-1">
-                          <span className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[8px] sm:text-[10px] uppercase font-bold tracking-wider rounded-lg shadow-sm backdrop-blur-md border border-white/20 ${property.status === 'available' ? 'bg-white/90 text-black' : 'bg-black/80 text-white'}`}>
-                            {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
-                          </span>
-                        </div>
+              {/* Billing Schedule */}
+              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Billing Schedule</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">Upcoming automated payments & notifications</p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  {billingSchedule.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       </div>
-
-                      <div className="p-2 sm:p-4 flex flex-col flex-1">
-                        <div className="mb-2 sm:mb-3">
-                          <div className="flex justify-between items-start mb-0.5 sm:mb-1">
-                            <h3 className="text-sm sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
-                          </div>
-                          <div className="flex items-center gap-1 sm:gap-1.5 text-gray-500 text-[10px] sm:text-xs">
-                            <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                            <span className="truncate">{property.city}, Philippines</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 sm:gap-3 text-gray-700 text-[10px] sm:text-xs bg-gray-50 p-2 sm:p-2.5 rounded-xl mb-3 sm:mb-4">
-                          <span className="flex items-center gap-1 font-bold">
-                            <svg
-                              className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                            </svg>{property.bedrooms}
-                          </span>
-                          <span className="w-px h-3 bg-gray-300"></span>
-                          <span className="flex items-center gap-1 font-bold">
-                            <svg
-                              className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                            >
-                              <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                            </svg>{property.bathrooms}
-                          </span>
-                          <span className="w-px h-3 bg-gray-300"></span>
-                          <span className="flex items-center gap-1 font-bold">
-                            <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                            {property.area_sqft}
-                          </span>
-                        </div>
-
-                        <div className="mt-auto">
-                          <div className="flex items-center justify-between mb-2 sm:mb-3">
-                            <div className="flex items-baseline gap-1">
-                              <p className="text-base sm:text-lg font-black text-black">
-                                ₱{Number(property.price).toLocaleString()}
-                              </p>
-                              <span className="text-sm text-gray-600">/Monthly</span>
-                            </div>                              <button onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`); }} className="text-[10px] sm:text-xs font-bold text-gray-400 hover:text-black hover:underline cursor-pointer" title="Preview">
-                              View Details
-                            </button>
-                          </div>
-
-                          <div className="pt-2 sm:pt-3 border-t border-gray-100">
-                            {occupancy ? (
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-[10px] sm:text-xs text-gray-700">
-                                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                  <span className="font-bold truncate max-w-[80px] sm:max-w-[100px]">{occupancy.tenant?.first_name}</span>
-                                </div>
-                                <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occupancy) }} className="text-[9px] sm:text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg cursor-pointer transition-colors">End Contract</button>
-                              </div>
-                            ) : (
-                              <button onClick={(e) => { e.stopPropagation(); openAssignModal(property); }} className="w-full py-2 sm:py-2.5 px-2 sm:px-3 text-[10px] sm:text-xs font-bold text-black bg-gray-50 hover:bg-gray-300 border border-black rounded-xl transition-colors text-center cursor-pointer flex items-center justify-center gap-1 sm:gap-2">
-                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
-                                Assign Tenant
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      <p className="text-gray-900 font-bold">No upcoming bills</p>
+                      <p className="text-sm text-gray-500">Everything is up to date.</p>
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+                  ) : (
+                    <table className="w-full text-left">
+                      <thead className="text-xs text-gray-400 uppercase tracking-wider font-bold border-b border-gray-100">
+                        <tr>
+                          <th className="pb-4 pl-4">Tenant</th>
+                          <th className="pb-4">Auto-Send</th>
+                          <th className="pb-4">Due Date</th>
+                          <th className="pb-4">Status</th>
+                          <th className="pb-4 text-right pr-4">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm font-medium divide-y divide-gray-50">
+                        {billingSchedule.slice(0, 10).map(item => {
+                          // Calculate Auto-Send Date (3 days before due date)
+                          const autoSendDate = new Date(item.nextDueDate);
+                          autoSendDate.setDate(autoSendDate.getDate() - 3);
 
-        </div>
-
-      </div>
-
-      {/* Confirmation Modal */}
-      {confirmationModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-200">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${confirmationModal.type === 'approve' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-              {confirmationModal.type === 'approve' ? (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              ) : (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              )}
-            </div>
-
-            <h3 className="text-lg font-bold text-gray-900 mb-2">
-              {confirmationModal.type === 'approve' ? 'Approve Move-Out?' : 'Reject Request?'}
-            </h3>
-
-            <p className="text-sm text-gray-500 mb-6">
-              {confirmationModal.type === 'approve'
-                ? 'Are you sure you want to approve this request? The contract will be ended and the property will be marked as available.'
-                : 'Are you sure you want to reject this request? The tenant will remain in the property and the contract will continue.'}
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
-                className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmEndAction}
-                className={`flex-1 px-4 py-2 text-white font-bold rounded-xl cursor-pointer shadow-lg ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-      }
-
-      {/* Assign Modal */}
-      {
-        showAssignModal && selectedProperty && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-200">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-black text-xl text-gray-900">Assign Tenant</h3>
-                <button onClick={() => setShowAssignModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-500 hover:text-black transition-colors">✕</button>
+                          return (
+                            <tr key={item.id} className="group hover:bg-gray-50/50 transition-colors">
+                              <td className="py-4 pl-4">
+                                <p className="text-gray-900 font-bold">{item.tenantName}</p>
+                                <p className="text-xs text-gray-500">{item.propertyTitle}</p>
+                              </td>
+                              <td className="py-4 text-gray-500 font-mono text-xs">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                  {autoSendDate.toLocaleDateString()}
+                                </div>
+                              </td>
+                              <td className="py-4 text-gray-900 font-mono text-xs font-bold">
+                                {item.nextDueDate.toLocaleDateString()}
+                              </td>
+                              <td className="py-4">
+                                <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' :
+                                  item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                  }`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="py-4 text-right pr-4">
+                                {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
+                                  <button
+                                    onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)}
+                                    disabled={sendingBillId === item.tenantId}
+                                    className="text-xs bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors font-bold disabled:opacity-50 shadow-sm cursor-pointer"
+                                  >
+                                    Send Now
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
 
-              {/* Approved Tenants List */}
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Select Tenant to Assign</label>
-                <div className="space-y-2">
-                  {acceptedApplications.map(app => (
-                    <div key={app.id} className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-sm text-gray-900">{app.tenant_profile?.first_name} {app.tenant_profile?.last_name}</p>
-                        <p className="text-xs text-gray-500">{app.tenant_profile?.phone}</p>
+            </div>
+
+            {/* RIGHT CONTENT (ACTION CENTER & PROPERTIES) */}
+            <div className="xl:col-span-4 space-y-8">
+
+              {/* Action Center */}
+              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] h-fit">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Action Center</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">Pending tasks & requests</p>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 text-sm font-bold">
+                    {pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Empty State */}
+                  {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) === 0 && (
+                    <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
+                      <p className="text-gray-400 text-sm font-medium">No pending tasks</p>
+                    </div>
+                  )}
+
+                  {/* Tasks List */}
+                  {pendingEndRequests.map(req => (
+                    <div key={req.id} className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 hover:shadow-md transition-shadow cursor-pointer ">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Move-Out</span>
+                        <button onClick={() => openEndConfirmation('approve', req.id)} className="text-xs font-bold text-gray-900 underline decoration-gray-300 hover:decoration-black">Review</button>
                       </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => cancelAssignment(app)} disabled={uploadingContract} className="text-xs bg-white text-red-600 border border-red-100 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-red-50 font-bold transition-colors disabled:opacity-50">Cancel</button>
-                        <button onClick={() => assignTenant(app)} disabled={uploadingContract} className="text-xs bg-black text-white px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-800 font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-1">
-                          {uploadingContract ? (
-                            <>
-                              <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                              <span>Assigning...</span>
-                            </>
-                          ) : (
-                            <span>Assign</span>
-                          )}
-                        </button>
+                      <h4 className="font-bold text-gray-900 text-sm">{req.property?.title}</h4>
+                      <p className="text-xs text-gray-500 mt-1">Tenant: {req.tenant?.first_name} {req.tenant?.last_name}</p>
+                    </div>
+                  ))}
+
+                  {pendingRenewalRequests.map(req => (
+                    <div key={req.id} className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 hover:shadow-md transition-shadow cursor-pointer">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">Renewal</span>
+                        <button onClick={() => openRenewalModal(req, 'approve')} className="text-xs font-bold text-gray-900 underline decoration-gray-300 hover:decoration-black">Review</button>
+                      </div>
+                      <h4 className="font-bold text-gray-900 text-sm">{req.property?.title}</h4>
+                      <p className="text-xs text-gray-500 mt-1">Tenant: {req.tenant?.first_name} {req.tenant?.last_name}</p>
+                    </div>
+                  ))}
+
+                  {dashboardTasks.maintenance.length > 0 && (
+                    <button onClick={() => router.push('/maintenance')} className="w-full p-4 bg-rose-50/50 rounded-2xl border border-rose-100 hover:shadow-md transition-shadow text-left group cursor-pointer">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">Maintenance</span>
+                          <h4 className="font-bold text-gray-900 text-sm mt-2">{dashboardTasks.maintenance.length} Active Issues</h4>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-400 group-hover:text-rose-600 transition-colors">→</div>
+                      </div>
+                    </button>
+                  )}
+
+                  {dashboardTasks.payments.length > 0 && (
+                    <button onClick={() => router.push('/payments')} className="w-full p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 hover:shadow-md transition-shadow text-left group cursor-pointer">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Payments</span>
+                          <h4 className="font-bold text-gray-900 text-sm mt-2">{dashboardTasks.payments.length} Pending Verifications</h4>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-400 group-hover:text-emerald-600 transition-colors">→</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* My Properties */}
+              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Properties</h3>
+                  </div>
+                  <button onClick={() => router.push('/landlord/properties')} className="text-sm font-bold text-gray-500 hover:text-black transition-colors cursor-pointer">View All My Properties</button>
+                </div>
+
+                <div className="space-y-4">
+                  {properties.slice(0, 5).map(prop => (
+                    <div key={prop.id} onClick={() => router.push('/landlord/properties')} className="flex items-center gap-4 p-2 rounded-2xl hover:bg-gray-50 transition-colors cursor-pointer group">
+                      <div className="w-12 h-12 rounded-xl bg-gray-200 overflow-hidden relative">
+                        <img src={prop.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
+                        <div className="absolute inset-0 bg-black/10"></div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-gray-900 truncate">{prop.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`w-1.5 h-1.5 rounded-full ${prop.status === 'available' ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                          <p className="text-xs text-gray-500 font-medium capitalize">{prop.status}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-black text-gray-900 bg-gray-100 px-2 py-1 rounded-lg">₱{(prop.price / 1000).toFixed(0)}k</span>
                       </div>
                     </div>
                   ))}
-                  {acceptedApplications.length === 0 && (
-                    <p className="text-gray-400 text-sm text-center py-2">No approved bookings found.</p>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* Confirmation Modal */}
+        {
+          confirmationModal.isOpen && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-200">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${confirmationModal.type === 'approve' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                  {confirmationModal.type === 'approve' ? (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  ) : (
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   )}
                 </div>
-              </div>
 
-              {/* Two column layout for dates */}
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date</label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate} />
-                </div>
-              </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">
+                  {confirmationModal.type === 'approve' ? 'Approve Move-Out?' : 'Reject Request?'}
+                </h3>
 
-              {/* Security Deposit Info - compact */}
-              <div className="mb-3 p-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-800">Security Deposit:</span>
-                <span className="font-black text-amber-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
-              </div>
-
-              {/* Contract PDF Upload */}
-              <div className="mb-3">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Contract PDF <span className="text-red-500">*</span></label>
-                <div className="border-2 border-dashed border-gray-200 rounded-lg p-3 text-center hover:border-gray-400 transition-colors">
-                  <input type="file" accept=".pdf" id="contractFile" className="hidden" onChange={(e) => setContractFile(e.target.files[0])} />
-                  <label htmlFor="contractFile" className="cursor-pointer">
-                    {contractFile ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        <span className="text-sm font-medium text-gray-700">{contractFile.name}</span>
-                        <button type="button" onClick={(e) => { e.preventDefault(); setContractFile(null); }} className="text-red-500 hover:text-red-700">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">Click to upload contract PDF</p>
-                    )}
-                  </label>
-                </div>
-              </div>
-
-              {/* Late Payment Fee */}
-              <div className="mb-3">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Late Payment Fee (₱) <span className="text-red-500">*</span></label>
-                <input type="number" min="0" step="0.01" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" placeholder="e.g. 500" value={penaltyDetails} onChange={(e) => setPenaltyDetails(e.target.value)} />
-              </div>
-
-              {/* Wifi Due Day - Notification Only (No Payment Bills) */}
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
-                <p className="text-xs text-gray-600 font-medium mb-2">
-                  <span className="font-bold">Utility Reminders:</span> Tenants will receive SMS & email reminders 3 days before due dates (no payment bills created).
+                <p className="text-sm text-gray-500 mb-6">
+                  {confirmationModal.type === 'approve'
+                    ? 'Are you sure you want to approve this request? The contract will be ended and the property will be marked as available.'
+                    : 'Are you sure you want to reject this request? The tenant will remain in the property and the contract will continue.'}
                 </p>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Wifi Due Day <span className="text-red-500">*</span></label>
-                  <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-white" placeholder="e.g. 10" value={wifiDueDay} onChange={(e) => setWifiDueDay(e.target.value)} />
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
+                    className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmEndAction}
+                    className={`flex-1 px-4 py-2 text-white font-bold rounded-xl cursor-pointer shadow-lg ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
+                  >
+                    Confirm
+                  </button>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-2">
-                  Note: Electricity reminders are sent automatically (due date is always 1st week of the month).
-                </p>
               </div>
             </div>
-          </div>
-        )
-      }
+          )
+        }
+
+        {/* Assign Modal */}
+        {
+          showAssignModal && selectedProperty && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-black text-xl text-gray-900">Assign Tenant</h3>
+                  <button onClick={() => setShowAssignModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-500 hover:text-black transition-colors">✕</button>
+                </div>
+
+                {/* Approved Tenants List */}
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Select Tenant to Assign</label>
+                  <div className="space-y-2">
+                    {acceptedApplications.map(app => (
+                      <div key={app.id} className="p-3 border border-gray-100 rounded-xl hover:bg-gray-50 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-sm text-gray-900">{app.tenant_profile?.first_name} {app.tenant_profile?.last_name}</p>
+                          <p className="text-xs text-gray-500">{app.tenant_profile?.phone}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => cancelAssignment(app)} disabled={uploadingContract} className="text-xs bg-white text-red-600 border border-red-100 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-red-50 font-bold transition-colors disabled:opacity-50">Cancel</button>
+                          <button onClick={() => assignTenant(app)} disabled={uploadingContract} className="text-xs bg-black text-white px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-800 font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-1">
+                            {uploadingContract ? (
+                              <>
+                                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span>Assigning...</span>
+                              </>
+                            ) : (
+                              <span>Assign</span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {acceptedApplications.length === 0 && (
+                      <p className="text-gray-400 text-sm text-center py-2">No approved bookings found.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contract dates section */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date <span className="text-red-500">*</span></label>
+                  <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                </div>
+
+                {/* Contract Duration */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Contract Duration (Months) <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
+                    placeholder="e.g. 12"
+                    value={contractMonths}
+                    onChange={(e) => setContractMonths(e.target.value)}
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">Enter how many months the contract will last</p>
+                </div>
+
+                {/* Auto-calculated End Date */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date (Auto-calculated)</label>
+                  <input
+                    type="date"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-gray-50 cursor-not-allowed"
+                    value={endDate}
+                    disabled
+                    readOnly
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">Automatically calculated based on start date and contract duration</p>
+                </div>
+
+                {/* Security Deposit Info - compact */}
+                <div className="mb-3 p-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-800">Security Deposit:</span>
+                  <span className="font-black text-amber-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+                </div>
+
+                {/* Contract PDF Upload */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Contract PDF <span className="text-red-500">*</span></label>
+                  <div className="border-2 border-dashed border-gray-200 rounded-lg p-3 text-center hover:border-gray-400 transition-colors">
+                    <input type="file" accept=".pdf" id="contractFile" className="hidden" onChange={(e) => setContractFile(e.target.files[0])} />
+                    <label htmlFor="contractFile" className="cursor-pointer">
+                      {contractFile ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <span className="text-sm font-medium text-gray-700">{contractFile.name}</span>
+                          <button type="button" onClick={(e) => { e.preventDefault(); setContractFile(null); }} className="text-red-500 hover:text-red-700">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">Click to upload contract PDF</p>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                {/* Late Payment Fee */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Late Payment Fee (₱) <span className="text-red-500">*</span></label>
+                  <input type="number" min="0" step="0.01" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" placeholder="e.g. 500" value={penaltyDetails} onChange={(e) => setPenaltyDetails(e.target.value)} />
+                </div>
+
+                {/* Wifi Due Day - Notification Only (No Payment Bills) */}
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3">
+                  <p className="text-xs text-gray-600 font-medium mb-2">
+                    <span className="font-bold">Utility Reminders:</span> Tenants will receive SMS & email reminders 3 days before due dates (no payment bills created).
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Wifi Due Day <span className="text-red-500">*</span></label>
+                    <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-white" placeholder="e.g. 10" value={wifiDueDay} onChange={(e) => setWifiDueDay(e.target.value)} />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">
+                    Note: Electricity reminders are sent automatically (due date is always 1st week of the month).
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+      </div>
+      {/* ^^^ Close z-10 container before modals so they can overlay navbar ^^^ */}
 
       {/* End Contract Confirmation Modal */}
       {
@@ -1838,7 +1976,7 @@ export default function LandlordDashboard({ session, profile }) {
       {/* Email Notification Modal */}
       {
         showEmailModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-gray-200">
               {/* Header */}
               <div className="flex justify-between items-center p-6 border-b border-gray-100">
@@ -2015,64 +2153,68 @@ export default function LandlordDashboard({ session, profile }) {
       }
 
       {/* Advance Bill Confirmation Modal */}
-      {advanceBillModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-            {/* Header */}
-            <div className="bg-amber-50 px-6 py-4 border-b border-amber-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Confirm Send Advance Bill</h3>
-                  <p className="text-xs text-gray-500">This action will send a bill immediately</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div className="p-6">
-              <p className="text-gray-700 mb-4">
-                Are you sure you want to send an advance bill to <span className="font-bold">{advanceBillModal.tenantName}</span> for property <span className="font-bold">{advanceBillModal.propertyTitle}</span>?
-              </p>
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-xs text-gray-500">
-                    This will immediately send a rent payment notification to the tenant. The tenant will receive an email, SMS (if phone is verified), and an in-app notification.
-                  </p>
+      {
+        advanceBillModal.isOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+              {/* Header */}
+              <div className="bg-amber-50 px-6 py-4 border-b border-amber-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Confirm Send Advance Bill</h3>
+                    <p className="text-xs text-gray-500">This action will send a bill immediately</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 justify-end">
-              <button
-                onClick={closeAdvanceBillModal}
-                className="px-5 py-2.5 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmSendAdvanceBill}
-                className="px-5 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 cursor-pointer shadow-lg transition-all flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-                Yes, Send Bill
-              </button>
+              {/* Body */}
+              <div className="p-6">
+                <p className="text-gray-700 mb-4">
+                  Are you sure you want to send an advance bill to <span className="font-bold">{advanceBillModal.tenantName}</span> for property <span className="font-bold">{advanceBillModal.propertyTitle}</span>?
+                </p>
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-gray-500">
+                      This will immediately send a rent payment notification to the tenant. The tenant will receive an email, SMS (if phone is verified), and an in-app notification.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 justify-end">
+                <button
+                  onClick={closeAdvanceBillModal}
+                  className="px-5 py-2.5 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSendAdvanceBill}
+                  className="px-5 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 cursor-pointer shadow-lg transition-all flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  Yes, Send Bill
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
+      <footer>
+        <Footer />
+      </footer>
 
-      <Footer />
-    </div >
+    </div>
   )
 }

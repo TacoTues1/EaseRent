@@ -231,9 +231,9 @@ function OverviewView() {
         const data = await res.json()
 
         if (res.ok) {
-          localStorage.setItem(sentKey, JSON.stringify({ date: now.toISOString(), processed: data.processed }))
+          localStorage.setItem(sentKey, JSON.stringify({ date: now.toISOString(), tenants: data.tenants?.processed, landlords: data.landlords?.processed }))
           setAutoSendStatus('sent')
-          showToast.success(`Auto-sent statements to ${data.processed} tenants`)
+          showToast.success(`Auto-sent statements to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`)
         } else {
           setAutoSendStatus('error')
           console.error('Auto-send failed:', data.error)
@@ -312,7 +312,7 @@ function OverviewView() {
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
           <div>
             <h4 className="font-bold text-gray-900">Monthly Statements</h4>
-            <p className="text-sm text-gray-500 mt-1">Send password-protected payment statements to all tenants via email.</p>
+            <p className="text-sm text-gray-500 mt-1">Send payment statements to tenants and financial overviews to landlords via email.</p>
             <p className="text-xs text-indigo-600 font-medium mt-2 bg-indigo-50 inline-block px-2 py-1 rounded-md">
               📅 Auto-sends on the 30th of each month • Or click to send manually
             </p>
@@ -328,7 +328,7 @@ function OverviewView() {
                 const res = await fetch('/api/admin/send-monthly-statements', { method: 'POST' })
                 const data = await res.json()
                 if (res.ok) {
-                  showToast.success(`Sent to ${data.processed} tenants`)
+                  showToast.success(`Sent to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`)
                 } else {
                   showToast.error(data.error || 'Failed to send statements')
                 }

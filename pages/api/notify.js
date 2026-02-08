@@ -3,7 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { sendBillNotification, sendNewBookingNotification } from '../../lib/sms'
-import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail } from '../../lib/email'
+import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail } from '../../lib/email'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -219,6 +219,37 @@ export default async function handler(req, res) {
         if (type === 'booking_status') {
             // This already exists - just return success
             return res.status(200).json({ success: true, type: 'booking_status', message: 'Handled by existing logic' })
+        }
+
+        // ============================================
+        // NOTIFICATION TYPE: CASH PAYMENT (For Landlord)
+        // ============================================
+        if (type === 'cash_payment') {
+            const { landlordEmail, landlordName, tenantName, propertyTitle, amount, monthsCovered, paymentMethod } = req.body
+
+            if (!landlordEmail) {
+                return res.status(400).json({ error: 'Missing landlordEmail' })
+            }
+
+            const results = { email: false }
+
+            try {
+                await sendCashPaymentNotificationEmail({
+                    to: landlordEmail,
+                    landlordName: landlordName || 'Landlord',
+                    tenantName: tenantName || 'Tenant',
+                    propertyTitle: propertyTitle || 'Property',
+                    amount: amount || 0,
+                    monthsCovered: monthsCovered || 1,
+                    paymentMethod: paymentMethod || 'cash'
+                })
+                results.email = true
+                console.log(`✅ Cash payment email sent to landlord ${landlordEmail}`)
+            } catch (err) {
+                console.error(`Cash payment email failed for ${landlordEmail}:`, err.message)
+            }
+
+            return res.status(200).json({ success: true, type: 'cash_payment', results })
         }
 
         return res.status(400).json({ error: `Unknown notification type: ${type}` })

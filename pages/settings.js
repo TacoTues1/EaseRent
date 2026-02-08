@@ -497,7 +497,7 @@ export default function Settings() {
                   {/* Phone Section Styled */}
                   <div className="pt-4 border-t border-gray-50">
                     <label className="block text-xs font-bold uppercase text-gray-500 mb-2 flex justify-between">
-                      Phone Number
+                      Phone Number (Recommended)
                       {isPhoneVerified() && <span className="text-green-600 flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> Verified</span>}
                     </label>
                     <div className="flex gap-2">

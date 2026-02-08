@@ -793,6 +793,64 @@ export default function PaymentsPage() {
         data: { payment_request_id: selectedBill.id }
       })
 
+      // --- NEW: Send SMS and Email notifications to landlord for cash/QR payments ---
+      try {
+        // Fetch landlord profile for phone and name
+        const { data: landlordProfile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, phone')
+          .eq('id', selectedBill.landlord)
+          .single();
+
+        // Fetch tenant profile for name
+        const { data: tenantProfile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', session.user.id)
+          .single();
+
+        const landlordName = landlordProfile?.first_name || 'Landlord';
+        const tenantName = `${tenantProfile?.first_name || ''} ${tenantProfile?.last_name || ''}`.trim() || 'Tenant';
+        const propertyTitle = selectedBill.properties?.title || 'property';
+
+        // Send SMS to landlord
+        if (landlordProfile?.phone) {
+          const smsMessage = `💰 ${paymentMethod === 'qr_code' ? 'QR' : 'Cash'} Payment: ${tenantName} paid ₱${totalPaid.toLocaleString()} for ${propertyTitle}${monthsText}. Please confirm in your dashboard.`;
+
+          fetch('/api/send-sms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phoneNumber: landlordProfile.phone,
+              message: smsMessage
+            })
+          }).catch(err => console.error('SMS to landlord failed:', err));
+        }
+
+        // Send Email to landlord
+        const { data: landlordEmail } = await supabase.rpc('get_user_email', { user_id: selectedBill.landlord });
+
+        if (landlordEmail) {
+          fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'cash_payment',
+              landlordEmail,
+              landlordName,
+              tenantName,
+              propertyTitle,
+              amount: totalPaid,
+              monthsCovered,
+              paymentMethod
+            })
+          }).catch(err => console.error('Email to landlord failed:', err));
+        }
+      } catch (notifyErr) {
+        console.error('Landlord notification error:', notifyErr);
+        // Don't block the payment flow for notification errors
+      }
+
       // Reset states
       setShowPaymentModal(false)
       setSelectedBill(null)
@@ -1086,7 +1144,7 @@ export default function PaymentsPage() {
     // 2. Open a NEW TAB immediately to avoid popup blockers
     // We open it empty first, then redirect it later
     const paymentWindow = window.open('', '_blank');
-    
+
     if (!paymentWindow) {
       showToast.error("Popup blocked! Please allow popups for this site.", { duration: 4000 });
       setUploadingProof(false);
@@ -1135,17 +1193,17 @@ export default function PaymentsPage() {
         // 5. START POLLING: Check status every 5 seconds
         let attempts = 0;
         const maxAttempts = 60; // Stop after 5 minutes (60 * 5s)
-        
+
         const pollInterval = setInterval(async () => {
           attempts++;
-          
+
           // Check if payment is successful
           const isSuccess = await checkPaymentStatus(selectedBill.id, data.checkoutSessionId);
 
           if (isSuccess) {
             // SUCCESS: Stop polling
             clearInterval(pollInterval);
-            
+
             // Close the payment tab automatically
             if (paymentWindow) paymentWindow.close();
 
@@ -1156,18 +1214,18 @@ export default function PaymentsPage() {
             setSelectedBill(null);
             setPaymentMethod('cash');
             setUploadingProof(false);
-          } 
+          }
           else if (attempts >= maxAttempts) {
             // TIMEOUT: Stop polling after 5 mins
             clearInterval(pollInterval);
             setUploadingProof(false);
             showToast.warning('Automatic verification timed out. Please check "View History" later.', { duration: 5000 });
           }
-          
+
           // Safety: Stop polling if user closed the modal manually in the app
           if (!showPaymentModal) {
-             clearInterval(pollInterval);
-             setUploadingProof(false);
+            clearInterval(pollInterval);
+            setUploadingProof(false);
           }
 
         }, 5000); // Check every 5 seconds
@@ -1720,50 +1778,7 @@ export default function PaymentsPage() {
     }
   }
 
-  // Calculate chart data breakdown
-  const getMonthlyData = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonth = new Date().getMonth();
-    const data = [];
 
-    // Get last 12 months (whole year view)
-    for (let i = 11; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12;
-      data.push({
-        label: months[monthIndex],
-        rent: 0,
-        water: 0,
-        electric: 0,
-        other: 0,
-        total: 0
-      });
-    }
-
-    payments.forEach(payment => {
-      const paymentDate = new Date(payment.paid_at);
-      const monthIndex = paymentDate.getMonth();
-      const monthLabel = months[monthIndex];
-      const dataPoint = data.find(d => d.label === monthLabel);
-
-      if (dataPoint) {
-        const rent = parseFloat(payment.amount || 0);
-        const water = parseFloat(payment.water_bill || 0);
-        const electric = parseFloat(payment.electrical_bill || 0);
-        const other = parseFloat(payment.other_bills || 0);
-
-        dataPoint.rent += rent;
-        dataPoint.water += water;
-        dataPoint.electric += electric;
-        dataPoint.other += other;
-        dataPoint.total += (rent + water + electric + other);
-      }
-    });
-
-    return data;
-  }
-
-  const chartData = getMonthlyData();
-  const maxChartValue = Math.max(...chartData.map(d => d.total), 1000); // Prevent division by zero
 
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
@@ -1804,72 +1819,17 @@ export default function PaymentsPage() {
 
         {/* Stats & Graph Section for Landlord */}
         {userRole === 'landlord' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Stats Cards */}
-            <div className="lg:col-span-1 space-y-4">
-              <div className="bg-white border-2 border-black p-6 rounded-xl ">
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Total Income</div>
-                <div className="text-3xl font-bold">₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-              </div>
-              <div className="bg-white border-2 border-black p-6 rounded-xl ">
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Total Payments</div>
-                <div className="text-3xl font-bold">{payments.length}</div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {/* Total Income */}
+            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="text-sm font-medium text-gray-500 mb-2">Total Income</div>
+              <div className="text-3xl font-black text-gray-900">₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
 
-            {/* Income Breakdown Graph */}
-            <div className="lg:col-span-2 bg-white border-2 border-black p-6 rounded-xl  flex flex-col">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-500">Monthly Expenses Breakdown</h3>
-                <div className="flex gap-2 text-[10px] font-bold uppercase">
-                  <div className="flex items-center gap-1"><div className="w-2 h-2 bg-black"></div>Rent</div>
-                  <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-600"></div>Water</div>
-                  <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-400"></div>Electric</div>
-                  <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-200"></div>Other</div>
-                </div>
-              </div>
-
-              <div className="flex-1 flex items-end gap-2 sm:gap-3 h-48">
-                {chartData.map((data, index) => (
-                  <div key={index} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer h-full justify-end">
-                    <div className="relative w-full flex flex-col-reverse h-full justify-start items-center">
-                      {/* Tooltip */}
-                      <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-[10px] px-2 py-1 rounded font-bold whitespace-nowrap z-20 pointer-events-none">
-                        Total: ₱{data.total.toLocaleString()}
-                      </div>
-
-                      {/* Stacked Bars */}
-                      <div className="w-full flex flex-col-reverse justify-start items-center h-full relative">
-                        {/* Rent */}
-                        <div
-                          className="w-full bg-black transition-all"
-                          style={{ height: `${(data.rent / maxChartValue) * 100}%` }}
-                          title={`Rent: ₱${data.rent.toLocaleString()}`}
-                        ></div>
-                        {/* Water */}
-                        <div
-                          className="w-full bg-gray-600 transition-all"
-                          style={{ height: `${(data.water / maxChartValue) * 100}%` }}
-                          title={`Water: ₱${data.water.toLocaleString()}`}
-                        ></div>
-                        {/* Electric */}
-                        <div
-                          className="w-full bg-gray-400 transition-all"
-                          style={{ height: `${(data.electric / maxChartValue) * 100}%` }}
-                          title={`Electric: ₱${data.electric.toLocaleString()}`}
-                        ></div>
-                        {/* Other */}
-                        <div
-                          className="w-full bg-gray-200 rounded-t-sm transition-all"
-                          style={{ height: `${(data.other / maxChartValue) * 100}%` }}
-                          title={`Other: ₱${data.other.toLocaleString()}`}
-                        ></div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-500 mt-1">{data.label}</span>
-                  </div>
-                ))}
-              </div>
+            {/* Total Payments */}
+            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="text-sm font-medium text-gray-500 mb-2">Total Payments</div>
+              <div className="text-3xl font-black text-gray-900">{payments.length}</div>
             </div>
           </div>
         )}
@@ -2691,13 +2651,13 @@ export default function PaymentsPage() {
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                       >
                         <div className="flex -space-x-1 justify-center items-center">
-                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-blue-600 border border-gray-200 z-10">G</div>
-                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-green-600 border border-gray-200 z-20">M</div>
-                           <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center border border-gray-200 z-30">
-                              <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                           </div>
+                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-blue-600 border border-gray-200 z-10">G</div>
+                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-green-600 border border-gray-200 z-20">M</div>
+                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center border border-gray-200 z-30">
+                            <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                          </div>
                         </div>
-                        <span className="font-bold text-xs text-center leading-tight">GCash / Maya<br/>Cards</span>
+                        <span className="font-bold text-xs text-center leading-tight">GCash / Maya<br />Cards</span>
                       </button>
                     </div>
                   </div>
@@ -2719,29 +2679,29 @@ export default function PaymentsPage() {
                     ) : (
                       <div className="text-center">
                         <h4 className="font-bold text-lg text-gray-900 mb-2">Pay securely with PayMongo</h4>
-                        
-                         <div className="flex justify-center flex-wrap gap-2 mb-2">
-                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                                <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                                <span className="text-[10px] font-bold text-gray-700">GCash</span>
-                              </div>
-                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                                <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                                <span className="text-[10px] font-bold text-gray-700">Maya</span>
-                              </div>
-                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                                <div className="w-4 h-4 rounded-full bg-indigo-500"></div>
-                                <span className="text-[10px] font-bold text-gray-700">Cards</span>
-                              </div>
-                              <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                                <div className="w-4 h-4 rounded-full bg-green-600"></div>
-                                <span className="text-[10px] font-bold text-gray-700">GrabPay</span>
-                              </div>
-                            </div>
+
+                        <div className="flex justify-center flex-wrap gap-2 mb-2">
+                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                            <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+                            <span className="text-[10px] font-bold text-gray-700">GCash</span>
+                          </div>
+                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                            <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                            <span className="text-[10px] font-bold text-gray-700">Maya</span>
+                          </div>
+                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                            <div className="w-4 h-4 rounded-full bg-indigo-500"></div>
+                            <span className="text-[10px] font-bold text-gray-700">Cards</span>
+                          </div>
+                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
+                            <div className="w-4 h-4 rounded-full bg-green-600"></div>
+                            <span className="text-[10px] font-bold text-gray-700">GrabPay</span>
+                          </div>
+                        </div>
 
                         <p className="text-xs text-gray-500">
-                              You will be redirected to PayMongo's secure checkout page where you can choose <strong>GCash, Maya, GrabPay, or Credit/Debit Card</strong> to complete your payment.
-                            </p>
+                          You will be redirected to PayMongo's secure checkout page where you can choose <strong>GCash, Maya, GrabPay, or Credit/Debit Card</strong> to complete your payment.
+                        </p>
 
                         <div className="bg-white/60 rounded-xl p-3 mb-4 inline-block px-6 border border-gray-200 shadow-sm">
                           <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Amount</p>
@@ -2749,11 +2709,11 @@ export default function PaymentsPage() {
                         </div>
 
                         <button
-                            onClick={handlePayMongoPayment}
-                            disabled={uploadingProof}
-                            className="w-full px-4 py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
-                          >
-                            {uploadingProof ? 'Redirecting...' : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
+                          onClick={handlePayMongoPayment}
+                          disabled={uploadingProof}
+                          className="w-full px-4 py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
+                        >
+                          {uploadingProof ? 'Redirecting...Please wait...' : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
                         </button>
                       </div>
                     )}
@@ -2761,8 +2721,8 @@ export default function PaymentsPage() {
                 )}
 
                 {/* PayMongo / GCash / Maya / Card Flow */}
-                
-                
+
+
                 <div>
                   {/* Stripe Payment Flow */}
                   {paymentMethod === 'stripe' && (
