@@ -320,16 +320,15 @@ export default function Login() {
           <div className={`max-w-md w-full space-y-5 p-6 sm:p-8 ${mounted ? 'animate-scaleIn' : 'opacity-0'}`}>
             <div className="text-center">
               {/* Logo Icon */}
-              <div className={`mx-auto w-12 h-12 bg-gradient-to-br from-gray-900 to-gray-700 rounded-xl flex items-center justify-center shadow-lg mb-3 hover:shadow-xl hover:scale-110 transition-all duration-300 cursor-pointer ${mounted ? 'animate-fadeInUp delay-100' : 'opacity-0'}`}>
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                </svg>
+              <div className={`mx-auto flex items-center justify-center gap-3 mb-4 cursor-pointer  transition-all duration-300 ${mounted ? 'animate-fadeInUp delay-100' : 'opacity-0'}`} onClick={() => router.push('/')}>
+                <img src="/home.png" alt="TessyNTed Logo" className="w-20 h-20 object-contain" />
+                <span className="text-5xl font-black text-gray-900">TessyNTed</span>
               </div>
               <h2 className={`text-2xl font-black text-gray-900 tracking-tight ${mounted ? 'animate-fadeInUp delay-200' : 'opacity-0'}`}>
                 Welcome
               </h2>
               <p className={`mt-1 text-sm text-gray-500 font-medium ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
-                Sign in to your 𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝 account
+                Sign in to your TessyNTed account
               </p>
             </div>
 
