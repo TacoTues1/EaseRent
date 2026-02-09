@@ -8,7 +8,7 @@ export default function Footer() {
           
           {/* Logo */}
           <div className="flex items-center">
-            <span className="text-xl font-black tracking-tighter">EaseRent</span>
+            <span className="text-xl font-black tracking-tighter">TessyNTed</span>
           </div>
           
           {/* Combined Links & Contact */}
@@ -22,9 +22,9 @@ export default function Footer() {
             <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
 
             <span className="hidden sm:inline text-gray-700">|</span>
-            <a href="mailto:admin@easerent.com" className="hover:text-white transition-colors flex items-center gap-1">
+            <a href="mailto:tessynted@gmail.com" className="hover:text-white transition-colors flex items-center gap-1">
                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-               admin@easerent.com
+               tessynted@gmail.com
             </a>
 
             <span className="hidden sm:inline text-gray-700">|</span>

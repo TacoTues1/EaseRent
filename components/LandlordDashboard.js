@@ -900,6 +900,11 @@ export default function LandlordDashboard({ session, profile }) {
       return
     }
 
+    if (!contractMonths || parseInt(contractMonths) < 3) {
+      showToast.error("Minimum contract duration is 3 months", { duration: 4000, transition: "bounceIn" });
+      return
+    }
+
     if (!wifiDueDay || parseInt(wifiDueDay) <= 0 || parseInt(wifiDueDay) > 31) {
       showToast.error("Please enter a valid Wifi Due Day (1-31)", { duration: 4000, transition: "bounceIn" });
       return
@@ -1010,10 +1015,11 @@ export default function LandlordDashboard({ session, profile }) {
       })
     }).catch(err => console.error("Email Error:", err));
 
-    // --- AUTO-SEND MOVE-IN PAYMENT BILL (Rent + Security Deposit) ---
-    // Newly assigned tenants only pay Rent + Security Deposit (NO Advance)
-    // Advance Payment is only for contract renewals
+    // --- AUTO-SEND MOVE-IN PAYMENT BILL (Rent + Advance + Security Deposit) ---
+    // Newly assigned tenants pay Rent + Advance + Security Deposit
+    // Total should equal 60,000 (e.g., 20k rent + 20k advance + 20k security deposit)
     const rentAmount = selectedProperty.price || 0;
+    const advanceAmount = selectedProperty.price || 0; // Advance is 1 month rent
     const dueDate = new Date(startDate); // Due date is the start date of the contract
 
     try {
@@ -1024,11 +1030,11 @@ export default function LandlordDashboard({ session, profile }) {
         occupancy_id: occupancyId, // Link to occupancy so it shows in TenantDashboard
         rent_amount: rentAmount,
         security_deposit_amount: securityDepositAmount, // New assignment = security deposit required
-        advance_amount: 0, // NO advance for new assignments (only for renewals)
+        advance_amount: advanceAmount, // Advance payment for new assignments
         water_bill: 0,
         electrical_bill: 0,
         other_bills: 0,
-        bills_description: 'Move-in Payment (Rent + Security Deposit)',
+        bills_description: 'Move-in Payment (Rent + Advance + Security Deposit)',
         due_date: dueDate.toISOString(),
         status: 'pending',
         is_move_in_payment: true // Mark as move-in payment (new assignment)
@@ -1039,12 +1045,12 @@ export default function LandlordDashboard({ session, profile }) {
         // Don't block assignment, just log the error
       } else {
         // Notify tenant about the bill
-        const totalAmount = rentAmount + securityDepositAmount;
+        const totalAmount = rentAmount + advanceAmount + securityDepositAmount;
         await createNotification({
           recipient: candidate.tenant,
           actor: session.user.id,
           type: 'payment_request',
-          message: `Your move-in payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(securityDepositAmount).toLocaleString()} (Security Deposit) = ₱${Number(totalAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString()}`,
+          message: `Your move-in payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(advanceAmount).toLocaleString()} (Advance) + ₱${Number(securityDepositAmount).toLocaleString()} (Security Deposit) = ₱${Number(totalAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString()}`,
           link: '/payments'
         });
       }
@@ -1721,14 +1727,17 @@ export default function LandlordDashboard({ session, profile }) {
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Contract Duration (Months) <span className="text-red-500">*</span></label>
                   <input
                     type="number"
-                    min="1"
+                    min="3"
                     max="120"
                     className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
                     placeholder="e.g. 12"
                     value={contractMonths}
-                    onChange={(e) => setContractMonths(e.target.value)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setContractMonths(val < 3 ? 3 : e.target.value);
+                    }}
                   />
-                  <p className="text-[10px] text-gray-400 mt-1">Enter how many months the contract will last</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Minimum 3 months. Enter how many months the contract will last.</p>
                 </div>
 
                 {/* Auto-calculated End Date */}
@@ -1744,10 +1753,27 @@ export default function LandlordDashboard({ session, profile }) {
                   <p className="text-[10px] text-gray-400 mt-1">Automatically calculated based on start date and contract duration</p>
                 </div>
 
-                {/* Security Deposit Info - compact */}
-                <div className="mb-3 p-2 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-800">Security Deposit:</span>
-                  <span className="font-black text-amber-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+                {/* Move-in Payment Summary */}
+                <div className="mb-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2">Move-in Payment Summary</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Rent (1 Month):</span>
+                      <span className="font-bold text-emerald-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Advance (1 Month):</span>
+                      <span className="font-bold text-emerald-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-emerald-700">Security Deposit:</span>
+                      <span className="font-bold text-emerald-900">₱{Number(selectedProperty?.price || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="border-t border-emerald-200 mt-2 pt-2 flex justify-between">
+                      <span className="font-bold text-emerald-800">Total Move-in:</span>
+                      <span className="font-black text-emerald-900">₱{Number((selectedProperty?.price || 0) * 3).toLocaleString()}</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Contract PDF Upload */}
