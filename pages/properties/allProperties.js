@@ -61,6 +61,26 @@ export default function AllProperties() {
     'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
   ]
 
+  // Auto-slide images for property cards
+  useEffect(() => {
+    if (properties.length === 0) return
+
+    const interval = setInterval(() => {
+      setCurrentImageIndex(prev => {
+        const newIndex = { ...prev }
+        properties.forEach(property => {
+          if (property.images && Array.isArray(property.images) && property.images.length > 1) {
+            const currentIdx = prev[property.id] || 0
+            newIndex[property.id] = (currentIdx + 1) % property.images.length
+          }
+        })
+        return newIndex
+      })
+    }, 4000) // Change image every 4 seconds
+
+    return () => clearInterval(interval)
+  }, [properties])
+
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -614,7 +634,7 @@ export default function AllProperties() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] font-sans text-black flex flex-col">
+    <div className="min-h-screen bg-[#F3F4F5] font-sans text-black flex flex-col">
       <div className="max-w-[1500px] mx-auto w-full px-4 sm:px-6 py-6 flex-1">
 
         <div className="flex flex-col lg:flex-row gap-8 items-start">

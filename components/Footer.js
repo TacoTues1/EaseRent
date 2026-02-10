@@ -8,12 +8,12 @@ export default function Footer() {
           
           {/* Logo */}
           <div className="flex items-center">
-            <span className="text-xl font-black tracking-tighter">TessyNTed</span>
+            <span className="text-xl font-black tracking-tighter">TessyNTed - A Rental Management Platform</span>
           </div>
           
           {/* Combined Links & Contact */}
           <p className="text-gray-500 text-xs flex flex-wrap items-center justify-center gap-2 ">
-            <span>© 2026 EaseRent, Inc.</span>
+            <span>© 2026 TessyNTed - A Rental Management Platform</span>
             
             <span className="hidden sm:inline text-gray-700">|</span> 
             <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>

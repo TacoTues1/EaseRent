@@ -22,6 +22,30 @@ export default function BookingsPage() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
 
+  // Assign Tenant Modal States
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [assignBooking, setAssignBooking] = useState(null)
+  const [availableProperties, setAvailableProperties] = useState([])
+  const [selectedPropertyId, setSelectedPropertyId] = useState('')
+  const [penaltyDetails, setPenaltyDetails] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [contractMonths, setContractMonths] = useState(12)
+  const [endDate, setEndDate] = useState('')
+  const [wifiDueDay, setWifiDueDay] = useState('')
+  const [showWifiDayPicker, setShowWifiDayPicker] = useState(false)
+  const [contractFile, setContractFile] = useState(null)
+  const [uploadingContract, setUploadingContract] = useState(false)
+  const [showAssignWarning, setShowAssignWarning] = useState(false)
+
+  // Auto-calculate contract end date
+  useEffect(() => {
+    if (startDate && contractMonths) {
+      const start = new Date(startDate)
+      start.setMonth(start.getMonth() + parseInt(contractMonths))
+      setEndDate(start.toISOString().split('T')[0])
+    }
+  }, [startDate, contractMonths])
+
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -160,7 +184,7 @@ export default function BookingsPage() {
 
     const { data: tenantProfiles } = await supabase
       .from('profiles')
-      .select('id, first_name, middle_name, last_name, phone')
+      .select('id, first_name, middle_name, last_name, phone, avatar_url')
       .in('id', tenantIds)
 
     const propertyMap = {}
@@ -187,6 +211,9 @@ export default function BookingsPage() {
 
     const getSortWeight = (booking) => {
       const s = (booking.status || '').toLowerCase();
+
+      // 0. Viewing Success (Top Priority)
+      if (s === 'viewing_done') return 0;
 
       // 1. Pending (First)
       if (['pending', 'pending_approval'].includes(s)) return 1;
@@ -260,6 +287,15 @@ export default function BookingsPage() {
     setLoading(false)
   }
 
+  // Auto-calculate end date
+  useEffect(() => {
+    if (startDate && contractMonths) {
+      const start = new Date(startDate)
+      start.setMonth(start.getMonth() + parseInt(contractMonths))
+      setEndDate(start.toISOString().split('T')[0])
+    }
+  }, [startDate, contractMonths])
+
   // --- ACTIONS ---
   async function approveBooking(booking) {
     const { error } = await supabase
@@ -276,7 +312,7 @@ export default function BookingsPage() {
         recipient: booking.tenant,
         actor: session.user.id,
         type: 'booking_approved',
-        message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString()} has been approved!`,
+        message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString('en-US')} has been approved!`,
         link: '/bookings'
       })
 
@@ -290,7 +326,6 @@ export default function BookingsPage() {
         })
       })
 
-      // Send HTML Email (Keep existing specific email logic if you want)
       try {
         fetch('/api/send-email', {
           method: 'POST',
@@ -299,15 +334,205 @@ export default function BookingsPage() {
         })
       } catch (e) { console.error(e) }
 
-      showToast.success("Booking approved!", 
-        { 
-          duration: 4000, 
-          transition: "bounceIn" 
+      showToast.success("Booking approved!",
+        {
+          duration: 4000,
+          position: "top-center",
+          transition: "bounceIn"
         });
       loadBookings()
     } else {
-      showToast.error('Failed to approve booking', { duration: 4000, transition: "bounceIn" });
+      showToast.error('Failed to approve booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
     }
+  }
+
+  async function markViewingSuccess(booking) {
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'viewing_done' })
+      .eq('id', booking.id)
+
+    if (!error) {
+      await createNotification({
+        recipient: booking.tenant,
+        actor: session.user.id,
+        type: 'viewing_success',
+        message: `Your viewing for ${booking.property?.title} was marked as successful! The landlord may assign you to a property soon.`,
+        link: '/bookings'
+      })
+      showToast.success("Viewing marked as successful!", { duration: 4000, position: "top-center", transition: "bounceIn" });
+      loadBookings()
+    } else {
+      showToast.error('Failed to update booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
+    }
+  }
+
+  async function cancelViewing(booking) {
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', booking.id)
+
+    if (!error) {
+      if (booking.time_slot_id) {
+        await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', booking.time_slot_id)
+      }
+      await createNotification({
+        recipient: booking.tenant,
+        actor: session.user.id,
+        type: 'booking_cancelled',
+        message: `Your viewing for ${booking.property?.title} has been cancelled by the landlord.`,
+        link: '/bookings'
+      })
+      showToast.success('Viewing cancelled', { duration: 4000, position: "top-center", transition: "bounceIn" });
+      loadBookings()
+    } else {
+      showToast.error('Failed to cancel viewing', { duration: 4000, position: "top-center", transition: "bounceIn" });
+    }
+  }
+
+  // --- ASSIGN TENANT FUNCTIONS ---
+  async function openAssignTenantModal(booking) {
+    setAssignBooking(booking)
+    setPenaltyDetails('')
+    setStartDate(new Date().toISOString().split('T')[0])
+    setContractMonths(12)
+    setWifiDueDay('')
+    setContractFile(null)
+    setSelectedPropertyId('')
+    setShowAssignWarning(false)
+    setShowWifiDayPicker(false)
+
+    // Load available properties for this landlord
+    const { data: props } = await supabase
+      .from('properties')
+      .select('id, title, price, status')
+      .eq('landlord', session.user.id)
+      .eq('status', 'available')
+      .eq('is_deleted', false)
+
+    let properties = props || []
+
+    // Sort: Booked property first
+    if (booking.property_id) {
+      properties.sort((a, b) => {
+        if (a.id === booking.property_id) return -1;
+        if (b.id === booking.property_id) return 1;
+        return 0;
+      });
+    }
+
+    setAvailableProperties(properties)
+    setShowAssignModal(true)
+  }
+
+  async function confirmAssignTenant() {
+    if (!assignBooking) return
+    if (!selectedPropertyId) {
+      showToast.error('Please select a property', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!startDate) {
+      showToast.error('Please select a start date', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!endDate) {
+      showToast.error('Please select a contract end date', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!contractMonths || parseInt(contractMonths) < 3) {
+      showToast.error('Minimum contract duration is 3 months', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!wifiDueDay || parseInt(wifiDueDay) <= 0 || parseInt(wifiDueDay) > 31) {
+      showToast.error('Please enter a valid Wifi Due Day (1-31)', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!penaltyDetails || parseFloat(penaltyDetails) <= 0) {
+      showToast.error('Please enter a Late Payment Fee', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!contractFile) {
+      showToast.error('Please upload a contract PDF file', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+
+    if (!showAssignWarning) {
+      setShowAssignWarning(true)
+      return
+    }
+
+    const selectedProp = availableProperties.find(p => p.id === selectedPropertyId)
+    if (!selectedProp) return
+
+    const securityDepositAmount = selectedProp.price || 0
+
+    setUploadingContract(true)
+    let contractUrl = null
+    try {
+      const fileExt = contractFile.name.split('.').pop()
+      const fileName = `${selectedPropertyId}_${assignBooking.tenant}_${Date.now()}.${fileExt}`
+      const filePath = `contracts/${fileName}`
+      const { error: uploadError } = await supabase.storage.from('contracts').upload(filePath, contractFile, { cacheControl: '3600', upsert: false })
+      if (uploadError) {
+        showToast.error('Failed to upload contract.', { duration: 4000, position: "top-center", transition: "bounceIn" })
+        setUploadingContract(false); return
+      }
+      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(filePath)
+      contractUrl = urlData?.publicUrl
+    } catch (err) {
+      showToast.error('Failed to upload contract.', { duration: 4000, position: "top-center", transition: "bounceIn" })
+      setUploadingContract(false); return
+    }
+    setUploadingContract(false)
+
+    const { data: newOccupancy, error } = await supabase.from('tenant_occupancies').insert({
+      property_id: selectedPropertyId,
+      tenant_id: assignBooking.tenant,
+      landlord_id: session.user.id,
+      status: 'active',
+      start_date: new Date(startDate).toISOString(),
+      contract_end_date: endDate,
+      security_deposit: securityDepositAmount,
+      security_deposit_used: 0,
+      wifi_due_day: wifiDueDay ? parseInt(wifiDueDay) : null,
+      late_payment_fee: penaltyDetails ? parseFloat(penaltyDetails) : 0,
+      contract_url: contractUrl
+    }).select('id').single()
+
+    if (error) {
+      showToast.error('Failed to assign tenant.', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+
+    const occupancyId = newOccupancy?.id
+    await supabase.from('properties').update({ status: 'occupied' }).eq('id', selectedPropertyId)
+    await supabase.from('bookings').update({ status: 'completed' }).eq('id', assignBooking.id)
+
+    const rentAmount = selectedProp.price || 0
+    const advanceAmount = selectedProp.price || 0
+    let message = `You have been assigned to occupy "${selectedProp.title}" from ${new Date(startDate).toLocaleDateString('en-US')} to ${new Date(endDate).toLocaleDateString('en-US')}. Security deposit: ₱${Number(securityDepositAmount).toLocaleString()}.`
+    if (penaltyDetails && parseFloat(penaltyDetails) > 0) message += ` Late payment fee: ₱${Number(penaltyDetails).toLocaleString()}`
+
+    await createNotification({ recipient: assignBooking.tenant, actor: session.user.id, type: 'occupancy_assigned', message, link: '/maintenance' })
+
+    if (assignBooking.tenant_profile?.phone) {
+      fetch('/api/send-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phoneNumber: assignBooking.tenant_profile.phone, message }) }).catch(err => console.error('SMS Error:', err))
+    }
+    fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: assignBooking.id, type: 'assignment', customMessage: message }) }).catch(err => console.error('Email Error:', err))
+
+    const dueDate = new Date(startDate)
+    try {
+      const { error: billError } = await supabase.from('payment_requests').insert({
+        landlord: session.user.id, tenant: assignBooking.tenant, property_id: selectedPropertyId, occupancy_id: occupancyId,
+        rent_amount: rentAmount, security_deposit_amount: securityDepositAmount, advance_amount: advanceAmount,
+        water_bill: 0, electrical_bill: 0, other_bills: 0,
+        bills_description: 'Move-in Payment (Rent + Advance + Security Deposit)',
+        due_date: dueDate.toISOString(), status: 'pending', is_move_in_payment: true
+      })
+      if (!billError) {
+        const totalAmount = rentAmount + advanceAmount + securityDepositAmount
+        await createNotification({ recipient: assignBooking.tenant, actor: session.user.id, type: 'payment_request', message: `Move-in payment: ₱${Number(totalAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString('en-US')}`, link: '/payments' })
+      }
+    } catch (err) { console.error('Auto-bill exception:', err) }
+
+    showToast.success('Tenant assigned! Move-in payment bill sent.', { duration: 4000, position: "top-center", transition: "bounceIn" })
+    setShowAssignModal(false)
+    setContractFile(null)
+    setShowAssignWarning(false)
+    loadBookings()
   }
 
   async function rejectBooking(booking) {
@@ -513,7 +738,9 @@ export default function BookingsPage() {
         return <span className="px-2.5 py-0.5 bg-yellow-50 text-yellow-700 text-[10px] font-bold uppercase tracking-wide border border-yellow-100 rounded-full">Pending</span>
       case 'approved':
       case 'accepted':
-        return <span className="px-2.5 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold uppercase tracking-wide border border-green-100 rounded-full">Approved</span>
+        return <span className="px-2.5 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold uppercase tracking-wide border border-green-100 rounded-full">Booking Approved</span>
+      case 'viewing_done':
+        return <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wide border border-indigo-100 rounded-full">Viewing Success</span>
       case 'rejected':
       case 'cancelled':
         return <span className="px-2.5 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold uppercase tracking-wide border border-red-100 rounded-full">{status}</span>
@@ -570,7 +797,7 @@ export default function BookingsPage() {
   )
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-[#FAFAFA] p-4 md:p-8 font-sans">
+    <div className="min-h-[calc(100vh-64px)] bg-[#F3F4F5] p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
@@ -723,6 +950,38 @@ export default function BookingsPage() {
                             </button>
                           </div>
                         )}
+
+                      {/* Landlord: After approval - Viewing Success / Cancel */}
+                      {roleLower === 'landlord' &&
+                        (statusLower === 'approved' || statusLower === 'accepted') && (
+                          <div className="flex gap-2 w-full md:w-auto">
+                            <button
+                              onClick={() => markViewingSuccess(booking)}
+                              className="flex-1 md:flex-none px-4 py-2.5 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
+                            >
+                              Viewing Success
+                            </button>
+                            <button
+                              onClick={() => cancelViewing(booking)}
+                              className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-red-50 transition-colors shadow-sm"
+                            >
+                              Cancel Viewing
+                            </button>
+                          </div>
+                        )}
+
+                      {/* Landlord: After viewing success - Assign Tenant */}
+                      {roleLower === 'landlord' && statusLower === 'viewing_done' && (
+                        <div className="flex gap-2 w-full md:w-auto">
+                          <button
+                            onClick={() => openAssignTenantModal(booking)}
+                            className="flex-1 md:flex-none px-4 py-2.5 bg-black text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-800 transition-colors shadow-sm flex items-center gap-2 justify-center"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                            Assign Tenant
+                          </button>
+                        </div>
+                      )}
 
                       {/* TENANT ACTIONS - Hide all buttons for completed status */}
                       {roleLower !== 'landlord' && !isPast && statusLower !== 'completed' && (
@@ -922,6 +1181,225 @@ export default function BookingsPage() {
                 <span className="ml-2 inline-block text-sm">Note: You can't cancel the booking once approved.</span>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- ASSIGN TENANT MODAL --- */}
+      {showAssignModal && assignBooking && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onClick={() => { setShowAssignModal(false); setShowAssignWarning(false) }}>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            {!showAssignWarning ? (
+              <>
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-lg font-bold text-gray-900">Assign Tenant</h3>
+                  <button onClick={() => setShowAssignModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500 cursor-pointer">✕</button>
+                </div>
+
+                <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm">
+                    {assignBooking.tenant_profile?.avatar_url ? (
+                      <img src={assignBooking.tenant_profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-blue-700 font-bold text-sm bg-blue-100">
+                        {assignBooking.tenant_profile?.first_name?.[0]}{assignBooking.tenant_profile?.last_name?.[0]}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-blue-800 font-bold uppercase tracking-wider mb-0.5">Assigning Tenant</p>
+                    <p className="font-bold text-gray-900 text-sm leading-none">{assignBooking.tenant_profile?.first_name} {assignBooking.tenant_profile?.last_name}</p>
+                  </div>
+                </div>
+
+                {/* Select Property */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Select Property *</label>
+                  {availableProperties.length > 0 ? (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {availableProperties.map(prop => {
+                        const isBookedProperty = prop.id === assignBooking.property_id
+                        const isSelected = selectedPropertyId === prop.id
+
+                        return (
+                          <label
+                            key={prop.id}
+                            className={`block p-3 border rounded-xl cursor-pointer transition-all ${isSelected
+                              ? 'border-black bg-black text-white'
+                              : isBookedProperty
+                                ? 'border-green-500 bg-green-50/50 hover:bg-green-50'
+                                : 'border-gray-200 bg-white hover:border-gray-300'
+                              }`}
+                          >
+                            <input type="radio" name="propSelect" value={prop.id} checked={isSelected} onChange={() => setSelectedPropertyId(prop.id)} className="hidden" />
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold">{prop.title}</span>
+                                {isBookedProperty && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isSelected ? 'bg-white text-green-700' : 'bg-green-100 text-green-700'}`}>Requested</span>}
+                              </div>
+                              <span className="text-xs font-medium">₱{Number(prop.price).toLocaleString()}/mo</span>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg border border-red-100">No available properties found.</p>
+                  )}
+                </div>
+
+                {/* Start Date */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Start Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" />
+                </div>
+
+                {/* Contract Duration */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Contract Duration (months) <span className="text-red-500">*</span></label>
+                  <input type="number" min="3" value={contractMonths} onChange={e => setContractMonths(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" placeholder="e.g. 12" />
+                  <p className="text-[10px] text-gray-400 mt-1">Minimum 3 months</p>
+                </div>
+
+                {/* End Date (auto) */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">End Date (Auto-calculated)</label>
+                  <input
+                    type="text"
+                    value={endDate ? new Date(endDate).toLocaleDateString('en-US') : ''}
+                    readOnly
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Move-in Payment Summary */}
+                {selectedPropertyId && (() => {
+                  const sp = availableProperties.find(p => p.id === selectedPropertyId)
+                  if (!sp) return null
+                  const rent = sp.price || 0
+                  return (
+                    <div className="mb-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2">Move-in Payment Summary</p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between"><span className="text-emerald-700">Rent (1 Month):</span><span className="font-bold text-emerald-900">₱{Number(rent).toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span className="text-emerald-700">Advance (1 Month):</span><span className="font-bold text-emerald-900">₱{Number(rent).toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span className="text-emerald-700">Security Deposit:</span><span className="font-bold text-emerald-900">₱{Number(rent).toLocaleString()}</span></div>
+                        <div className="flex justify-between pt-2 border-t border-emerald-200 mt-1"><span className="text-emerald-800 font-bold">Total Move-in:</span><span className="font-black text-emerald-900 text-base">₱{Number(rent * 3).toLocaleString()}</span></div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Contract PDF Upload */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Contract PDF <span className="text-red-500">*</span></label>
+                  <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-gray-400 transition-colors bg-gray-50/50">
+                    <input type="file" accept=".pdf" id="contractFileBookings" className="hidden" onChange={(e) => setContractFile(e.target.files?.[0] || null)} />
+                    <label htmlFor="contractFileBookings" className="cursor-pointer w-full flex flex-col items-center">
+                      {contractFile ? (
+                        <div className="flex items-center justify-center gap-2 bg-green-50 text-green-700 px-3 py-2 rounded-lg border border-green-200">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <span className="text-sm font-bold">{contractFile.name}</span>
+                          <button type="button" onClick={(e) => { e.preventDefault(); setContractFile(null); }} className="text-red-500 hover:text-red-700 ml-2">✕</button>
+                        </div>
+                      ) : (
+                        <>
+                          <svg className="w-6 h-6 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                          <p className="text-sm font-bold text-gray-600">Click to upload contract PDF</p>
+                          <p className="text-xs text-gray-400 mt-1">PDF files only</p>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                {/* Late Payment Fee */}
+                <div className="mb-3">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Late Payment Fee (₱) <span className="text-red-500">*</span></label>
+                  <input type="number" min="0" step="any" value={penaltyDetails} onChange={e => setPenaltyDetails(e.target.value)} placeholder="e.g. 500" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" />
+                </div>
+
+                {/* Utility Reminders (Wifi Due Day) */}
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 mb-4">
+                  <p className="text-xs text-gray-600 font-medium mb-3">
+                    <span className="font-bold">Utility Reminders:</span> Tenants will receive automated SMS & email reminders 3 days before due dates.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Wifi Due Day (Day of Month) <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowWifiDayPicker(!showWifiDayPicker)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-left flex justify-between items-center focus:border-black outline-none bg-white hover:border-gray-300 transition-colors"
+                      >
+                        <span className={wifiDueDay ? 'text-gray-900 font-medium' : 'text-gray-400'}>
+                          {wifiDueDay ? `Day ${wifiDueDay} of month` : 'Select day (1-31)'}
+                        </span>
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+
+                      {showWifiDayPicker && (
+                        <div className="absolute z-10 bottom-full mb-2 w-full bg-white border border-gray-200 rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-200">
+                          <div className="flex justify-between items-center mb-2 px-1">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select Day</span>
+                            <button onClick={() => setShowWifiDayPicker(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {[...Array(31)].map((_, i) => {
+                              const day = i + 1;
+                              const isSelected = parseInt(wifiDueDay) === day;
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  onClick={() => { setWifiDueDay(day); setShowWifiDayPicker(false); }}
+                                  className={`aspect-square flex items-center justify-center text-xs font-bold rounded-lg transition-all ${isSelected
+                                    ? 'bg-black text-white shadow-md transform scale-105'
+                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:scale-110'
+                                    }`}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Electricity reminders are sent automatically.
+                  </p>
+                </div>
+
+                <button
+                  onClick={confirmAssignTenant}
+                  disabled={uploadingContract || !selectedPropertyId}
+                  className="w-full py-3 bg-black text-white text-sm font-bold rounded-xl cursor-pointer hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+                >
+                  {uploadingContract ? 'Uploading...' : 'Assign Tenant'}
+                </button>
+              </>
+            ) : (
+              /* Confirmation Warning */
+              <div className="text-center">
+                <div className="w-14 h-14 bg-yellow-50 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-500">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Confirm Assignment</h3>
+                <p className="text-gray-500 text-sm mb-1">Are you sure you want to assign</p>
+                <p className="font-bold text-gray-900 mb-1">{assignBooking.tenant_profile?.first_name} {assignBooking.tenant_profile?.last_name}</p>
+                <p className="text-gray-500 text-sm mb-4">to <strong>{availableProperties.find(p => p.id === selectedPropertyId)?.title}</strong>?</p>
+                <p className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded-lg border border-yellow-200 mb-5">This will mark the property as occupied and create a move-in payment bill.</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowAssignWarning(false)} className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Go Back</button>
+                  <button onClick={confirmAssignTenant} disabled={uploadingContract} className="flex-1 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-gray-900 transition-colors shadow-lg cursor-pointer disabled:opacity-50">{uploadingContract ? 'Processing...' : 'Yes, Assign'}</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

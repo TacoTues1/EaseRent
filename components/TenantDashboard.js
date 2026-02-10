@@ -59,6 +59,7 @@ export default function TenantDashboard({ session, profile }) {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+  const [dontShowAgain, setDontShowAgain] = useState(false) // NEW State
   const [submittingRenewal, setSubmittingRenewal] = useState(false)
   const [cleanlinessRating, setCleanlinessRating] = useState(5)
   const [communicationRating, setCommunicationRating] = useState(5)
@@ -863,10 +864,35 @@ export default function TenantDashboard({ session, profile }) {
   async function checkPendingReviews(userId) {
     const { data: endedOccupancies } = await supabase.from('tenant_occupancies').select('*, property:properties(id, title)').eq('tenant_id', userId).eq('status', 'ended')
     if (!endedOccupancies || endedOccupancies.length === 0) return
+
     const { data: existingReviews } = await supabase.from('reviews').select('occupancy_id').eq('user_id', userId)
     const reviewedOccupancyIds = existingReviews?.map(r => r.occupancy_id) || []
-    const unreviewed = endedOccupancies.find(o => !reviewedOccupancyIds.includes(o.id))
-    if (unreviewed) { setReviewTarget(unreviewed); setShowReviewModal(true) }
+
+    // Check localStorage for dismissed reviews
+    const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
+
+    // Find first occupancy that is ENDED, NOT REVIEWED, and NOT DISMISSED
+    const unreviewed = endedOccupancies.find(o =>
+      !reviewedOccupancyIds.includes(o.id) &&
+      !dismissedReviews.includes(o.id)
+    )
+
+    if (unreviewed) {
+      setReviewTarget(unreviewed)
+      setDontShowAgain(false) // Reset checkbox
+      setShowReviewModal(true)
+    }
+  }
+
+  function handleSkipReview() {
+    if (dontShowAgain && reviewTarget) {
+      const dismissed = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
+      if (!dismissed.includes(reviewTarget.id)) {
+        dismissed.push(reviewTarget.id)
+        localStorage.setItem('dismissedReviews', JSON.stringify(dismissed))
+      }
+    }
+    setShowReviewModal(false)
   }
 
   async function submitReview() {
@@ -1571,7 +1597,7 @@ export default function TenantDashboard({ session, profile }) {
                                     </p>
                                     <p
                                       onClick={() => setShowRenewalModal(true)}
-                                      className="text-xs font-bold flex items-center gap-1 text-indigo-600 animate-pulse cursor-pointer hover:underline"
+                                      className="text-xs font-bold flex items-center gap-1 text-indigo-600 cursor-pointer hover:underline"
                                     >
                                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                                       Renew Contract Available
@@ -1906,8 +1932,16 @@ export default function TenantDashboard({ session, profile }) {
       {/* Review Modal */}
       {
         showReviewModal && reviewTarget && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={(e) => {
+            // Optional: clicking outside can also be treated as skip? 
+            // For now, let's keep it strictly on the button as requested or just preventing close on backdrop if strict.
+            // But existing code had onClick to close. Let's redirect to handleSkipReview to be safe/consistent.
+            handleSkipReview()
+          }}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-end mb-2">
+                <button onClick={handleSkipReview} className="text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors cursor-pointer px-3 py-1.5 rounded-lg hover:bg-gray-100">Skip</button>
+              </div>
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-600">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
@@ -1992,19 +2026,33 @@ export default function TenantDashboard({ session, profile }) {
                 <p className="text-xs text-gray-500 mt-1">Average of Cleanliness, Communication & Location</p>
               </div>
 
-              {/* Text Review */}
+              {/* Text Review (Optional) */}
               <textarea
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
-                placeholder="Write your experience here..."
-                className="w-full p-4 border border-gray-200 rounded-xl mb-6 text-sm bg-gray-50 focus:bg-white focus:border-black outline-none resize-none h-32"
+                placeholder="Write your experience here (optional)..."
+                className="w-full p-4 border border-gray-200 rounded-xl mb-4 text-sm bg-gray-50 focus:bg-white focus:border-black outline-none resize-none h-32"
               />
+
+              {/* Don't Show Again Checkbox */}
+              <div className="flex items-center gap-2 mb-6">
+                <input
+                  type="checkbox"
+                  id="dontShowAgain"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                />
+                <label htmlFor="dontShowAgain" className="text-sm text-gray-500 cursor-pointer select-none">
+                  Don't show for this property again
+                </label>
+              </div>
 
               {/* Submit Button */}
               <button
                 onClick={submitReview}
-                disabled={submittingReview || !reviewComment.trim()}
-                className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition-all ${submittingReview || !reviewComment.trim() ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 hover:shadow-xl cursor-pointer'}`}
+                disabled={submittingReview}
+                className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition-all ${submittingReview ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 hover:shadow-xl cursor-pointer'}`}
               >
                 {submittingReview ? 'Submitting...' : 'Submit Review'}
               </button>

@@ -31,6 +31,7 @@ export default function Home() {
   const [chatHistory, setChatHistory] = useState([])
   const chatMessagesRef = useRef(null)
   const [mounted, setMounted] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('')
@@ -72,9 +73,29 @@ export default function Home() {
     'Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly'
   ]
 
-  // Mount animation trigger
+  // Mount animation trigger + splash screen
+  // Mount animation trigger + splash screen
   useEffect(() => {
-    setMounted(true)
+    // Check if splash has already been shown in this session
+    const hasSeenSplash = sessionStorage.getItem('hasSeenSplash')
+
+    if (hasSeenSplash) {
+      setShowSplash(false)
+      setMounted(true)
+    } else {
+      // Mark as seen for future visits in this session
+      sessionStorage.setItem('hasSeenSplash', 'true')
+
+      // Delay setting mounted until after splash starts fading
+      const mountTimer = setTimeout(() => setMounted(true), 1800)
+      // Remove splash from DOM after fade-out completes
+      const splashTimer = setTimeout(() => setShowSplash(false), 2700)
+
+      return () => {
+        clearTimeout(mountTimer)
+        clearTimeout(splashTimer)
+      }
+    }
   }, [])
 
   // Auto-slide images for property cards
@@ -486,6 +507,16 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#F5F5F5] from-gray-50 via-white to-gray-100 font-sans text-black flex flex-col scroll-smooth">
 
+      {/* ===== SPLASH INTRO SCREEN ===== */}
+      {showSplash && (
+        <div className="splash-screen">
+          <img src="/home.png" alt="TessyNTed" className="splash-logo" />
+          <div className="splash-brand">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</div>
+          <div className="splash-tagline">Find your perfect home</div>
+          <div className="splash-bar"></div>
+        </div>
+      )}
+
       <div className="max-w-[1800px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-1">
 
         {/* Search and Filter Bar */}
@@ -666,8 +697,8 @@ export default function Home() {
           {/* Section Header */}
           <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 ${mounted ? 'animate-fadeInLeft delay-200' : 'opacity-0'}`}>
             <div className="mb-2 sm:mb-5 w-full sm:w-auto">
-              <h2 className="text-2xl sm:text-3xl font-black text-black uppercase tracking-tight">
-                Most common Properties
+              <h2 className="text-xl sm:text-3xl font-black text-black tracking-tight">
+                Recommended Properties
               </h2>
               <p className="text-sm text-gray-500 mt-1">Discover your perfect space</p>
             </div>
@@ -707,7 +738,7 @@ export default function Home() {
           ) : (
             /* Updated to use Carousel instead of Grid for TenantDashboard parity */
             <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
-              <CarouselContent className="-ml-1">
+              <CarouselContent className="-ml-2">
                 {properties.slice(0, maxDisplayItems).map((property, idx) => {
 
                   const images = getPropertyImages(property)
@@ -719,79 +750,81 @@ export default function Home() {
 
                   return (
                     <CarouselItem key={property.id} className={carouselItemClass}>
-                      <div
-                        className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full card-hover ${isSelectedForCompare ? 'ring-2 ring-gray-900 border-gray-900' : 'border-gray-100 hover:border-gray-300'} ${mounted ? 'animate-slideInCard' : 'opacity-0'}`}
-                        style={{ animationDelay: `${idx * 0.1}s` }}
-                        onClick={() => router.push(`/properties/${property.id}`)}
-                      >
-                        <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-                          <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <div className="p-1 h-full">
+                        <div
+                          className={`group bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col cursor-pointer h-full card-hover ${isSelectedForCompare ? 'ring-2 ring-gray-900 border-gray-900' : 'border-gray-100 hover:border-gray-300'} ${mounted ? 'animate-slideInCard' : 'opacity-0'}`}
+                          style={{ animationDelay: `${idx * 0.1}s` }}
+                          onClick={() => router.push(`/properties/${property.id}`)}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+                            <img src={images[currentIndex]} alt={property.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
 
-                          {/* Action Buttons (Restored Design) */}
-                          <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={(e) => toggleFavorite(e, property.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
-                              <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-                            </button>
-                            <label className="flex items-center cursor-pointer">
-                              <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
-                              <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
-                                {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                            {/* Action Buttons (Restored Design) */}
+                            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-3 md:right-3 z-20 flex items-center gap-1 sm:gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={(e) => toggleFavorite(e, property.id)} className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all cursor-pointer ${isFavorite ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-400 hover:bg-white hover:text-red-500'}`}>
+                                <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill={isFavorite ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                              </button>
+                              <label className="flex items-center cursor-pointer">
+                                <input type="checkbox" className="hidden" checked={isSelectedForCompare} onChange={(e) => toggleComparison(e, property)} />
+                                <div className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center backdrop-blur-md shadow-sm transition-all ${isSelectedForCompare ? 'bg-black text-white' : 'bg-white/90 text-gray-400 hover:bg-white'}`}>
+                                  {isSelectedForCompare ? (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>) : (<svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>)}
+                                </div>
+                              </label>
+                            </div>
+
+                            {/* Image Indicators */}
+                            {images.length > 1 && (
+                              <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
+                                {images.map((_, idx) => (
+                                  <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
+                                ))}
                               </div>
-                            </label>
-                          </div>
+                            )}
 
-                          {/* Image Indicators */}
-                          {images.length > 1 && (
-                            <div className="absolute bottom-1.5 sm:bottom-2 md:bottom-3 left-1/2 -translate-x-1/2 flex gap-0.5 sm:gap-1 z-10">
-                              {images.map((_, idx) => (
-                                <div key={idx} className={`h-0.5 sm:h-1 rounded-full transition-all duration-300 shadow-sm ${idx === currentIndex ? 'w-3 sm:w-4 bg-white' : 'w-0.5 sm:w-1 bg-white/60'}`} />
-                              ))}
+                            {/* Gradient & Labels */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
+                            <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
+                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                             </div>
-                          )}
-
-                          {/* Gradient & Labels */}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
-                          <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                            <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
-                            {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
-                          </div>
-                          <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
-                            <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
-                            <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
-                          </div>
-                        </div>
-
-                        {/* Card Body */}
-                        <div className="p-1.5 sm:p-2">
-                          <div className="mb-0.5 sm:mb-1">
-                            <div className="flex justify-between items-start">
-                              <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
-                              {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
-                            </div>
-                            <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
-                              <span className="truncate">{property.city}, Philippines</span>
+                            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
+                              <p className="text-sm sm:text-lg font-bold drop-shadow-md">₱{Number(property.price).toLocaleString()}</p>
+                              <p className="text-[8px] sm:text-[9px] opacity-90 font-medium uppercase tracking-wider">per month</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
-                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
-                              <svg
-                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                              </svg>{property.bedrooms}</span>
-                            <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
-                              <svg
-                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                              >
-                                <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                              </svg>{property.bathrooms}</span>
-                            <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
-                            <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{property.area_sqft} sqm</span>
+
+                          {/* Card Body */}
+                          <div className="p-1.5 sm:p-2">
+                            <div className="mb-0.5 sm:mb-1">
+                              <div className="flex justify-between items-start">
+                                <h3 className="text-xs sm:text-base font-bold text-gray-900 line-clamp-1">{property.title}</h3>
+                                {stats.review_count > 0 && (<div className="flex items-center gap-1 text-xs shrink-0"><svg className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg><span className="font-bold text-gray-900">{stats.avg_rating.toFixed(1)}</span><span className="text-gray-400">({stats.review_count})</span></div>)}
+                              </div>
+                              <div className="flex items-center gap-1 text-gray-500 text-[10px] sm:text-xs">
+                                <span className="truncate">{property.city}, Philippines</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 sm:gap-3 text-gray-600 text-[10px] sm:text-xs">
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                                <svg
+                                  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
+                                </svg>{property.bedrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                                <svg
+                                  className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                >
+                                  <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
+                                </svg>{property.bathrooms}</span>
+                              <span className="w-0.5 h-0.5 bg-gray-300 rounded-full"></span>
+                              <span className="flex items-center gap-0.5 sm:gap-1 font-medium"><svg className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>{property.area_sqft} sqm</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -811,7 +844,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-2xl sm:text-3xl font-black text-black">Tenants Favorites</h2>
+                  <h2 className="text-2xl sm:text-2xl font-black text-black">Tenants Favorites</h2>
                 </div>
                 <p className="text-sm text-gray-500">Most loved by our community</p>
               </div>
@@ -925,7 +958,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-2xl sm:text-3xl font-black text-black">Top Rated</h2>
+                  <h2 className="text-2xl font-black text-black">Top Rated</h2>
                 </div>
                 <p className="text-sm text-gray-500">Highest rated by tenants</p>
               </div>

@@ -74,6 +74,72 @@ export default function PaymentsPage() {
     method: 'bank_transfer'
   })
 
+  // Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    type: null, // 'confirm_payment', 'cancel_bill', 'reject_payment'
+    id: null,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    confirmColor: 'bg-black'
+  })
+
+  function closeConfirmModal() {
+    setConfirmModal({ ...confirmModal, isOpen: false })
+  }
+
+  function handleModalConfirm() {
+    if (!confirmModal.id) return
+
+    if (confirmModal.type === 'confirm_payment') {
+      executeConfirmPayment(confirmModal.id)
+    } else if (confirmModal.type === 'cancel_bill') {
+      executeCancelBill(confirmModal.id)
+    } else if (confirmModal.type === 'reject_payment') {
+      executeRejectPayment(confirmModal.id)
+    }
+
+    closeConfirmModal()
+  }
+
+  // Trigger functions
+  function confirmPayment(requestId) {
+    setConfirmModal({
+      isOpen: true,
+      type: 'confirm_payment',
+      id: requestId,
+      title: 'Confirm Payment',
+      message: 'Are you sure you want to confirm this payment? This action cannot be undone and will record the payment in the system.',
+      confirmText: 'Yes, Confirm',
+      confirmColor: 'bg-green-600'
+    })
+  }
+
+  function handleCancelBill(requestId) {
+    setConfirmModal({
+      isOpen: true,
+      type: 'cancel_bill',
+      id: requestId,
+      title: 'Cancel Bill',
+      message: 'Are you sure you want to cancel this bill? This action cannot be undone.',
+      confirmText: 'Yes, Cancel',
+      confirmColor: 'bg-red-600'
+    })
+  }
+
+  function rejectPayment(requestId) {
+    setConfirmModal({
+      isOpen: true,
+      type: 'reject_payment',
+      id: requestId,
+      title: 'Reject Payment',
+      message: 'Are you sure you want to REJECT this payment? The tenant will be notified.',
+      confirmText: 'Yes, Reject',
+      confirmColor: 'bg-red-600'
+    })
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -658,6 +724,13 @@ export default function PaymentsPage() {
   async function submitPayment() {
     if (!selectedBill) return
 
+    // Add confirmation for manual payments
+    if (paymentMethod === 'cash') {
+      if (!window.confirm("Are you sure you want to mark this bill as paid via CASH? This will notify the landlord to confirm your payment.")) {
+        return;
+      }
+    }
+
     const paymentAmount = parseFloat(customAmount) || 0;
 
     // Calculate total bill amount
@@ -912,102 +985,11 @@ export default function PaymentsPage() {
     }
   }
 
-  async function handlePayMongoSuccess(requestId, sessionId) {
-    showToast.info('Verifying PayMongo payment...', { duration: 3000 });
-    try {
-      const res = await fetch('/api/payments/process-paymongo-success', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentRequestId: requestId, sessionId })
-      });
+  // (PayMongo and Stripe success handlers defined below after useEffect)
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Verification failed');
-
-      showToast.success('Payment verified and processed!', { duration: 5000, icon: '🎉' });
-      loadPaymentRequests();
-
-    } catch (error) {
-      console.error(error);
-      showToast.error('Payment verification failed: ' + error.message);
-    }
-  }
-
-  async function handleStripeSuccess(paymentIntent) {
-    try {
-      // Call backend to process payment and handle balances
-      const res = await fetch('/api/payments/process-stripe-success', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          paymentRequestId: selectedBill.id,
-          paymentIntentId: paymentIntent.id
-        }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to process payment')
-      }
-
-      // Notify landlord
-      const amountPaid = paymentIntent.amount / 100;
-
-      await supabase.from('notifications').insert({
-        recipient: selectedBill.landlord,
-        actor: session.user.id,
-        type: 'payment_confirmation_needed',
-        message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${selectedBill.properties?.title || 'property'} via Stripe (Transaction: ${paymentIntent.id}). Please confirm payment receipt.`,
-        link: '/payments',
-        data: { payment_request_id: selectedBill.id }
-      })
-
-      setShowPaymentModal(false)
-      setSelectedBill(null)
-      setPaymentMethod('cash')
-      loadPaymentRequests()
-
-      let successMsg = 'Stripe payment successful!';
-      let successMsg2 = 'Waiting for landlord confirmation.';
-      if (data.excessAmount > 0) {
-        successMsg += ` Excess of ₱${data.excessAmount.toLocaleString()} added to your credit.`;
-      }
-
-      showToast.success(successMsg, {
-        duration: 5000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-      showToast.success(successMsg2, {
-        duration: 5000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-    } catch (error) {
-      console.error('Stripe Success Handler Error:', error)
-      showToast.error('Payment processed but updating status failed. Please contact support.', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-    }
-  }
-
-  // Handle PayMongo Success Return
+  // Handle PayMongo Success Return (page reload / redirect recovery)
   useEffect(() => {
-    // Check if URL has paymongo_success param
+    // 1. Check if URL has paymongo_success param (redirect-based)
     const query = new URLSearchParams(window.location.search);
     if (query.get('paymongo_success') === 'true') {
       const requestId = query.get('payment_request_id');
@@ -1016,10 +998,52 @@ export default function PaymentsPage() {
       if (requestId && storedSessionId) {
         // Clear URL params to prevent re-triggering
         window.history.replaceState({}, document.title, window.location.pathname);
-        localStorage.removeItem(`paymongo_session_${requestId}`); // Clear stored session
+        localStorage.removeItem(`paymongo_session_${requestId}`);
 
         handlePayMongoSuccess(requestId, storedSessionId);
       }
+      return;
+    }
+
+    // 2. Check if there are any pending PayMongo sessions stored in localStorage
+    //    (recovery after the user closed the tab or navigated away while polling)
+    try {
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('paymongo_session_'));
+      for (const key of keys) {
+        const requestId = key.replace('paymongo_session_', '');
+        const storedSessionId = localStorage.getItem(key);
+        if (requestId && storedSessionId) {
+          console.log('Found pending PayMongo session, attempting silent verification:', requestId);
+
+          // Silent check — don't show error toasts, just try to verify
+          fetch('/api/payments/process-paymongo-success', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentRequestId: requestId, sessionId: storedSessionId })
+          })
+            .then(r => r.json().then(d => ({ ok: r.ok, status: r.status, data: d })))
+            .then(({ ok, status, data }) => {
+              if (ok) {
+                // Payment was verified — clean up and notify
+                localStorage.removeItem(key);
+                showToast.success('A pending PayMongo payment was verified!', { duration: 5000, icon: '🎉' });
+                loadPaymentRequests();
+              } else if (status === 500 && (data.error || '').includes('not found')) {
+                // Stale entry — payment request no longer exists. Clean up silently.
+                console.log('Removing stale PayMongo session (payment request not found):', requestId);
+                localStorage.removeItem(key);
+              } else {
+                // Payment not yet completed (400) — leave in localStorage for next visit
+                console.log('PayMongo session not yet paid, will retry later:', requestId);
+              }
+            })
+            .catch(err => {
+              console.error('Silent PayMongo verification error:', err);
+            });
+        }
+      }
+    } catch (e) {
+      console.error('Error checking pending PayMongo sessions:', e);
     }
   }, []);
 
@@ -1035,12 +1059,16 @@ export default function PaymentsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');
 
+      // Clean up localStorage on success
+      localStorage.removeItem(`paymongo_session_${requestId}`);
+
       showToast.success('Payment verified and processed!', { duration: 5000, icon: '🎉' });
       loadPaymentRequests();
 
     } catch (error) {
-      console.error(error);
+      console.error('PayMongo verification error:', error);
       showToast.error('Payment verification failed: ' + error.message);
+      throw error; // Re-throw so callers can handle
     }
   }
 
@@ -1182,7 +1210,14 @@ export default function PaymentsPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to connect to payment gateway');
 
       if (data.checkoutUrl) {
-        // 4. Redirect the new tab to PayMongo
+        // 4. CRITICAL: Store session ID in localStorage BEFORE redirecting
+        //    This ensures the session persists even if the page reloads or polling stops
+        const billId = selectedBill.id;
+        const sessionId = data.checkoutSessionId;
+        localStorage.setItem(`paymongo_session_${billId}`, sessionId);
+        console.log('Stored PayMongo session in localStorage:', `paymongo_session_${billId}`, '=', sessionId);
+
+        // 5. Redirect the new tab to PayMongo
         paymentWindow.location.href = data.checkoutUrl;
 
         showToast.info('Payment tab opened. Waiting for confirmation...', {
@@ -1190,22 +1225,28 @@ export default function PaymentsPage() {
           position: "top-center"
         });
 
-        // 5. START POLLING: Check status every 5 seconds
+        // 6. START POLLING: Check status every 5 seconds
         let attempts = 0;
         const maxAttempts = 60; // Stop after 5 minutes (60 * 5s)
+        let pollingStopped = false; // local flag to prevent stale closure issues
 
         const pollInterval = setInterval(async () => {
+          if (pollingStopped) return;
           attempts++;
 
           // Check if payment is successful
-          const isSuccess = await checkPaymentStatus(selectedBill.id, data.checkoutSessionId);
+          const isSuccess = await checkPaymentStatus(billId, sessionId);
 
           if (isSuccess) {
             // SUCCESS: Stop polling
+            pollingStopped = true;
             clearInterval(pollInterval);
 
+            // Clear localStorage since payment is verified
+            localStorage.removeItem(`paymongo_session_${billId}`);
+
             // Close the payment tab automatically
-            if (paymentWindow) paymentWindow.close();
+            try { if (paymentWindow && !paymentWindow.closed) paymentWindow.close(); } catch (e) { }
 
             // Update UI
             showToast.success('Payment verified successfully!', { duration: 5000, icon: '🎉' });
@@ -1217,15 +1258,27 @@ export default function PaymentsPage() {
           }
           else if (attempts >= maxAttempts) {
             // TIMEOUT: Stop polling after 5 mins
+            // NOTE: We intentionally do NOT remove the localStorage entry here
+            //       so the useEffect on page load can try to verify it later
+            pollingStopped = true;
             clearInterval(pollInterval);
             setUploadingProof(false);
-            showToast.warning('Automatic verification timed out. Please check "View History" later.', { duration: 5000 });
+            showToast.warning('Automatic verification timed out. The system will retry when you revisit this page, or check "View History".', { duration: 6000 });
           }
 
-          // Safety: Stop polling if user closed the modal manually in the app
-          if (!showPaymentModal) {
-            clearInterval(pollInterval);
-            setUploadingProof(false);
+          // Safety: Stop polling if user closed the payment window
+          try {
+            if (paymentWindow && paymentWindow.closed && attempts > 3) {
+              // Give a few extra poll cycles after tab close in case payment just completed
+              if (attempts > 6) {
+                pollingStopped = true;
+                clearInterval(pollInterval);
+                setUploadingProof(false);
+                // Don't remove from localStorage — next page load will retry
+              }
+            }
+          } catch (e) {
+            // Cross-origin check may fail, ignore
           }
 
         }, 5000); // Check every 5 seconds
@@ -1236,14 +1289,14 @@ export default function PaymentsPage() {
       }
 
     } catch (error) {
-      if (paymentWindow) paymentWindow.close();
+      if (paymentWindow) try { paymentWindow.close(); } catch (e) { }
       console.error('PayMongo Error:', error);
       showToast.error(error.message || 'Payment initiation failed', { duration: 4000 });
       setUploadingProof(false);
     }
   }
 
-  async function confirmPayment(requestId) {
+  async function executeConfirmPayment(requestId) {
     setConfirmPaymentId(null)
     const request = paymentRequests.find(r => r.id === requestId)
     if (!request) return
@@ -1636,7 +1689,7 @@ export default function PaymentsPage() {
     }
   }
 
-  async function handleCancelBill(requestId) {
+  async function executeCancelBill(requestId) {
     setCancelBillId(null)
     const { error } = await supabase
       .from('payment_requests')
@@ -1667,8 +1720,8 @@ export default function PaymentsPage() {
   }
 
   // Reject payment request (landlord)
-  async function rejectPayment(requestId) {
-    setConfirmPaymentId(null)
+  async function executeRejectPayment(requestId) {
+
     const request = paymentRequests.find(r => r.id === requestId)
     if (!request) return
 
@@ -1792,8 +1845,8 @@ export default function PaymentsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[#F3F4F5] p-3 sm:p-6">
+      <div className="max-w-[95%] mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Payments</h1>
@@ -2148,19 +2201,12 @@ export default function PaymentsPage() {
                         {/* Add other mobile buttons here similar to desktop */}
                         {userRole === 'landlord' && request.status === 'pending' && (
                           <div className="flex gap-2 w-full mt-2">
-                            {confirmPaymentId === request.id ? (
-                              <div className="flex gap-2 flex-1">
-                                <button onClick={() => confirmPayment(request.id)} className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer">Confirm</button>
-                                <button onClick={() => setConfirmPaymentId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">Cancel</button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setConfirmPaymentId(request.id)}
-                                className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
-                              >
-                                Mark Paid
-                              </button>
-                            )}
+                            <button
+                              onClick={() => confirmPayment(request.id)}
+                              className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
+                            >
+                              Mark Paid
+                            </button>
 
                             <button
                               onClick={() => handleEditBill(request)}
@@ -2169,45 +2215,29 @@ export default function PaymentsPage() {
                               Edit
                             </button>
 
-                            {cancelBillId === request.id ? (
-                              <div className="flex gap-1">
-                                <button onClick={() => handleCancelBill(request.id)} className="px-3 py-2 bg-red-600 text-white text-xs font-bold rounded">Confirm Cancel</button>
-                                <button onClick={() => setCancelBillId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded">Back</button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setCancelBillId(request.id)}
-                                className="px-3 py-2 text-red-600 bg-red-50 text-xs font-bold rounded cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleCancelBill(request.id)}
+                              className="px-3 py-2 text-red-600 bg-red-50 text-xs font-bold rounded cursor-pointer"
+                            >
+                              Cancel
+                            </button>
                           </div>
                         )}
                         {/* Add confirm/reject buttons for pending_confirmation status on mobile */}
                         {userRole === 'landlord' && request.status === 'pending_confirmation' && (
                           <div className="flex gap-2 w-full mt-2">
-                            {confirmPaymentId === request.id ? (
-                              <div className="flex gap-2 flex-1">
-                                <button onClick={() => confirmPayment(request.id)} className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer">Confirm</button>
-                                <button onClick={() => setConfirmPaymentId(null)} className="px-3 py-2 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">Cancel</button>
-                              </div>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => setConfirmPaymentId(request.id)}
-                                  className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
-                                >
-                                  Confirm Payment
-                                </button>
-                                <button
-                                  onClick={() => rejectPayment(request.id)}
-                                  className="px-3 py-2 bg-red-50 text-red-600 text-xs font-bold rounded cursor-pointer"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
+                            <button
+                              onClick={() => confirmPayment(request.id)}
+                              className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
+                            >
+                              Confirm Payment
+                            </button>
+                            <button
+                              onClick={() => rejectPayment(request.id)}
+                              className="px-3 py-2 bg-red-50 text-red-600 text-xs font-bold rounded cursor-pointer"
+                            >
+                              Reject
+                            </button>
                           </div>
                         )}
                       </div>
@@ -2222,17 +2252,19 @@ export default function PaymentsPage() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       {/* UPDATED: Reduced padding (px-3 py-3) for all headers to save space */}
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                         {userRole === 'landlord' ? 'Tenant' : 'Landlord'}
                       </th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bill Type</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Month</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Message</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Due Date</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bill Type</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Month</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Message</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Ref No.</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Method</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Due Date</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-2 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -2257,7 +2289,7 @@ export default function PaymentsPage() {
                       return (
                         <tr key={request.id} className="hover:bg-gray-50 transition-colors">
                           {/* Property - constrained width */}
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <div className="max-w-[150px]">
                               <div className="text-sm font-bold text-black truncate" title={request.properties?.title}>
                                 {request.properties?.title || 'N/A'}
@@ -2272,7 +2304,7 @@ export default function PaymentsPage() {
                           </td>
 
                           {/* Name - constrained width */}
-                          <td className="px-3 py-3 text-sm text-gray-600">
+                          <td className="px-2 py-1.5 text-sm text-gray-600">
                             <div className="max-w-[120px] truncate" title={userRole === 'landlord' ? `${request.tenant_profile?.first_name} ${request.tenant_profile?.last_name}` : `${request.landlord_profile?.first_name} ${request.landlord_profile?.last_name}`}>
                               {userRole === 'landlord'
                                 ? `${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`
@@ -2280,38 +2312,53 @@ export default function PaymentsPage() {
                             </div>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <span className="text-xs font-bold text-white-600 bg-[#F2F3F4] px-2 py-1 rounded whitespace-nowrap">
                               {billType}
                             </span>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <span className="text-xs font-medium text-gray-500 whitespace-nowrap">
                               {billType === 'House Rent' ? getRentMonth(request.due_date) : '-'}
                             </span>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <div className="text-xs text-gray-500 whitespace-normal break-words max-w-[200px]" title={request.bills_description}>
                               {request.bills_description || '-'}
                             </div>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <div className="text-sm font-bold text-black whitespace-nowrap">
                               ₱{total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </div>
                             {rent > 0 && <div className="text-[10px] text-gray-400 whitespace-nowrap">Rent: ₱{rent.toLocaleString()}</div>}
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
+                            <span className="text-xs text-gray-500 font-mono">
+                              {request.tenant_reference_number || '-'}
+                            </span>
+                          </td>
+
+                          <td className="px-2 py-1.5">
+                            <span className="text-xs font-bold text-gray-600 uppercase">
+                              {request.payment_method === 'paymongo' ? 'E-Wallet/Card' :
+                                request.payment_method === 'stripe' ? 'Stripe' :
+                                  request.payment_method === 'qr_code' ? 'QR Code' :
+                                    request.payment_method === 'cash' ? 'Cash' : '-'}
+                            </span>
+                          </td>
+
+                          <td className="px-2 py-1.5">
                             <span className={`text-sm whitespace-nowrap ${isPastDue ? 'text-red-600 font-bold' : 'text-gray-600'}`}>
                               {request.due_date ? new Date(request.due_date).toLocaleDateString() : 'N/A'}
                             </span>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border whitespace-nowrap ${request.status === 'paid' ? 'bg-green-50 text-green-700 border-green-100' :
                               request.status === 'pending_confirmation' ? 'bg-yellow-50 text-yellow-700 border-yellow-100 border-dashed' :
                                 request.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-100' :
@@ -2327,7 +2374,7 @@ export default function PaymentsPage() {
                             </span>
                           </td>
 
-                          <td className="px-3 py-3">
+                          <td className="px-2 py-1.5">
                             <div className="flex gap-2">
                               {userRole === 'tenant' && request.status === 'pending' && (
                                 <button
@@ -2350,64 +2397,42 @@ export default function PaymentsPage() {
                               )}
                               {userRole === 'landlord' && request.status === 'pending' && (
                                 <div className="flex gap-1">
-                                  {confirmPaymentId === request.id ? (
-                                    <div className="flex gap-1 items-center mr-1">
-                                      <button onClick={() => confirmPayment(request.id)} className="px-1.5 py-1 bg-green-600 text-white text-[10px] font-bold rounded cursor-pointer shadow-sm">Confirm</button>
-                                      <button onClick={() => setConfirmPaymentId(null)} className="px-1.5 py-1 bg-gray-200 text-black text-[10px] font-bold rounded cursor-pointer shadow-sm">✕</button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setConfirmPaymentId(request.id)}
-                                      className="px-2 py-1 bg-green-600 text-white hover:bg-green-700 text-xs font-bold rounded cursor-pointer transition-all shadow-sm flex items-center gap-1"
-                                      title="Mark as Paid (Cash)"
-                                    >
-                                      <span>✓</span>
-                                      <span className="hidden xl:inline">Paid</span>
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => confirmPayment(request.id)}
+                                    className="px-2 py-1 bg-green-600 text-white hover:bg-green-700 text-xs font-bold rounded cursor-pointer transition-all shadow-sm flex items-center gap-1"
+                                    title="Mark as Paid (Cash)"
+                                  >
+                                    <span>Paid</span>
+                                  </button>
                                   <button
                                     onClick={() => handleEditBill(request)}
                                     className="px-2 py-1 border border-gray-300 hover:border-black text-black text-xs font-bold rounded cursor-pointer transition-colors"
                                   >
                                     Edit
                                   </button>
-                                  {cancelBillId === request.id ? (
-                                    <div className="flex gap-1">
-                                      <button onClick={() => handleCancelBill(request.id)} className="px-2 py-1 bg-red-600 text-white text-xs font-bold rounded cursor-pointer">Yes</button>
-                                      <button onClick={() => setCancelBillId(null)} className="px-2 py-1 bg-gray-200 text-black text-xs font-bold rounded cursor-pointer">No</button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setCancelBillId(request.id)}
-                                      className="px-2 py-1 text-red-600 hover:bg-red-50 text-xs font-bold rounded cursor-pointer transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => handleCancelBill(request.id)}
+                                    className="px-2 py-1 text-red-600 hover:bg-red-50 text-xs font-bold rounded cursor-pointer transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
                                 </div>
                               )}
                               {userRole === 'landlord' && request.status === 'pending_confirmation' && (
-                                confirmPaymentId === request.id ? (
-                                  <div className="flex gap-1 items-center">
-                                    <button onClick={() => confirmPayment(request.id)} className="px-1.5 py-0.5 bg-black text-white text-[10px] font-bold rounded cursor-pointer">Yes</button>
-                                    <button onClick={() => setConfirmPaymentId(null)} className="px-1.5 py-0.5 border border-gray-300 text-black text-[10px] font-bold rounded cursor-pointer">No</button>
-                                  </div>
-                                ) : (
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => setConfirmPaymentId(request.id)}
-                                      className="px-2 py-1 bg-black text-white hover:bg-gray-800 text-[10px] font-bold rounded cursor-pointer transition-all"
-                                    >
-                                      ✓
-                                    </button>
-                                    <button
-                                      onClick={() => rejectPayment(request.id)}
-                                      className="px-2 py-1 border border-black text-black hover:bg-black hover:text-white text-[10px] font-bold rounded cursor-pointer transition-all"
-                                    >
-                                      ✗
-                                    </button>
-                                  </div>
-                                )
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => confirmPayment(request.id)}
+                                    className="px-2 py-1 bg-black text-white hover:bg-gray-800 text-[10px] font-bold rounded cursor-pointer transition-all"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => rejectPayment(request.id)}
+                                    className="px-2 py-1 border border-black text-black hover:bg-black hover:text-white text-[10px] font-bold rounded cursor-pointer transition-all"
+                                  >
+                                    ✗
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -2813,12 +2838,12 @@ export default function PaymentsPage() {
         {showEditModal && editingBill && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 rounded-xl shadow-2xl">
-              <h3 className="text-xl font-bold mb-4">Edit Bill</h3>
+              <h3 className="text-xl font-bold mb-4">Edit House Rent Bill</h3>
 
               <form onSubmit={handleUpdateBill} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-500 mb-1">Rent Amount</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">House Rent Amount</label>
                     <input
                       type="number"
                       min="0"
@@ -2863,6 +2888,30 @@ export default function PaymentsPage() {
           </div>
         )}
 
+        {/* Generic Confirmation Modal */}
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+            <div className="bg-white border-2 border-black max-w-sm w-full p-6 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-200">
+              <h3 className="text-xl font-bold text-black mb-2">{confirmModal.title}</h3>
+              <p className="text-gray-600 mb-6">{confirmModal.message}</p>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={closeConfirmModal}
+                  className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleModalConfirm}
+                  className={`px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm cursor-pointer transition-transform active:scale-95 ${confirmModal.confirmColor}`}
+                >
+                  {confirmModal.confirmText}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

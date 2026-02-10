@@ -16,12 +16,6 @@ body {
   color: #000000;
 }
 
-/* Remove all transitions and animations globally, EXCEPT for toast notifications and spinners */
-*:not([data-sonner-toast]):not([data-sonner-toast] *):not([role="status"]):not([role="status"] *):not(.animate-spin) {
-  transition: none !important;
-  animation: none !important;
-}
-
 /* Allow spinner animations */
 .animate-spin {
   animation: spin 1s linear infinite !important;
@@ -37,20 +31,7 @@ body {
   }
 }
 
-/* Smooth animations specifically for react-hot-toast */
-[data-sonner-toast],
-[data-sonner-toast] *,
-[role="status"],
-[role="status"] *,
-div[role="status"]>div,
-div[role="status"]>div>*,
-div[role="status"] span,
-div[role="status"] div {
-  transition: none !important;
-  animation: none !important;
-}
-
-/* Fade-in animation for toast container only */
+/* Toast container fade-in */
 @keyframes toast-fade-in {
   0% {
     opacity: 0;
@@ -61,24 +42,116 @@ div[role="status"] div {
   }
 }
 
-/* Apply fade-in animation ONLY to the outermost toast container */
 div[role="status"] {
   animation: toast-fade-in 0.2s ease-out forwards !important;
 }
 
-/* Ensure NO child elements (text, icons) animate at all */
-div[role="status"] *,
-div[role="status"]>*,
-div[role="status"]>*>*,
-div[role="status"] span,
-div[role="status"] div,
-div[role="status"] svg,
-div[role="status"] [data-content],
-div[role="status"] [data-icon] {
-  animation: none !important;
-  transition: none !important;
-  transform: none !important;
-  will-change: auto !important;
+/* ===== SPLASH SCREEN ===== */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #F5F5F5;
+  animation: splashFadeOut 0.6s ease-in-out 2s forwards;
+  pointer-events: all;
+}
+
+.splash-screen.hidden {
+  pointer-events: none;
+}
+
+.splash-logo {
+  width: 90px;
+  height: 90px;
+  animation: splashLogoPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+}
+
+.splash-brand {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #111;
+  letter-spacing: -0.02em;
+  opacity: 0;
+  animation: splashTextReveal 0.7s ease-out 0.6s forwards;
+}
+
+.splash-tagline {
+  font-size: 0.875rem;
+  color: #888;
+  margin-top: 6px;
+  opacity: 0;
+  animation: splashTextReveal 0.6s ease-out 0.9s forwards;
+}
+
+.splash-bar {
+  width: 48px;
+  height: 3px;
+  background: #111;
+  border-radius: 999px;
+  margin-top: 24px;
+  animation: splashBarExpand 1s ease-out 1s forwards;
+  transform-origin: center;
+  transform: scaleX(0);
+}
+
+@keyframes splashLogoPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08) rotate(2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes splashTextReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splashBarExpand {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes splashFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
+    visibility: hidden;
+  }
+}
+
+/* ===== CARD HOVER LIFT ===== */
+.card-hover {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.35s ease !important;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px -8px rgba(0,0,0,0.15);
 }
 
 /* Mobile navbar responsiveness */

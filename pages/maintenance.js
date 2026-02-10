@@ -534,7 +534,7 @@ export default function MaintenancePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans text-black">
+    <div className="min-h-screen bg-[#F3F4F5] p-4 sm:p-8 font-sans text-black">
       <div className="max-w-5xl mx-auto">
 
         {/* Header */}
@@ -597,17 +597,17 @@ export default function MaintenancePage() {
         {/* Requests List */}
         <div className="space-y-4">
           {loading ? (
-             <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading Maintenance list...
-        </p>
-      </div>
-            ) : (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
+              <Lottie
+                animationData={loadingAnimation}
+                loop={true}
+                className="w-64 h-64"
+              />
+              <p className="text-gray-500 font-medium text-lg mt-4">
+                Loading Maintenance list...
+              </p>
+            </div>
+          ) : (
             filteredRequests.map(req => (
               <div key={req.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
                 {/* Header Strip */}

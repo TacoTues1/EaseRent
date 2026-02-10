@@ -155,7 +155,9 @@ export default function Settings() {
       if (updateError) throw updateError
 
       setAvatarUrl(publicUrl)
-      showToast.success('Profile picture updated!')
+      showToast.success('Profile picture updated!', {
+        position: "top-center",
+      })
     } catch (error) {
       console.error('Error uploading avatar:', error)
       showToast.error('Failed to upload profile picture')
@@ -380,7 +382,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
+    <div className="min-h-screen bg-[#F3F4F5] font-sans text-gray-900">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
         {/* Header */}

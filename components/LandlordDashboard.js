@@ -8,10 +8,38 @@ import Lottie from "lottie-react"
 import loadingAnimation from "../assets/loading.json"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
+const CountUpAnimation = ({ target, duration = 1000, prefix = '', suffix = '', decimals = 0 }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let startTimestamp = null;
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+
+      // easeOutExpo
+      const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+      setCount(easeProgress * target);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+
+    window.requestAnimationFrame(step);
+  }, [target, duration]);
+
+  return (
+    <>{prefix}{Number(count).toFixed(decimals)}{suffix}</>
+  );
+};
+
 export default function LandlordDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [statsLoaded, setStatsLoaded] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState({})
 
   // Modal States
@@ -86,6 +114,7 @@ export default function LandlordDashboard({ session, profile }) {
   const [selectedStatementYear, setSelectedStatementYear] = useState(new Date().getFullYear())
   const [monthlyChartData, setMonthlyChartData] = useState([])
   const [sendingStatement, setSendingStatement] = useState(false)
+  const [chartFilter, setChartFilter] = useState('all') // 'all', 'water', 'other'
 
   const router = useRouter()
 
@@ -109,12 +138,16 @@ export default function LandlordDashboard({ session, profile }) {
 
   useEffect(() => {
     if (profile) {
-      loadProperties()
-      loadOccupancies()
-      loadPendingEndRequests()
-      loadPendingRenewalRequests()
-      loadDashboardTasks()
-      loadMonthlyIncome()
+      Promise.all([
+        loadProperties(),
+        loadOccupancies(),
+        loadPendingEndRequests(),
+        loadPendingRenewalRequests(),
+        loadDashboardTasks(),
+        loadMonthlyIncome()
+      ]).then(() => {
+        setStatsLoaded(true)
+      })
     }
     // Check for reminders (only sends at 8:00 AM, once per day)
     fetch('/api/manual-reminders').catch(err => console.error("Reminder check failed", err));
@@ -298,10 +331,12 @@ export default function LandlordDashboard({ session, profile }) {
         const mStart = new Date(selectedYear, month, 1)
         const mEnd = new Date(selectedYear, month + 1, 0, 23, 59, 59)
 
-        const monthTotal = yearPayments?.filter(p => {
+        const monthPaymentsFiltered = yearPayments?.filter(p => {
           const paidDate = new Date(p.paid_at)
           return paidDate >= mStart && paidDate <= mEnd
-        }).reduce((sum, p) => {
+        }) || []
+
+        const monthTotal = monthPaymentsFiltered.reduce((sum, p) => {
           const total = parseFloat(p.amount_paid || 0) || (
             (parseFloat(p.rent_amount) || 0) +
             (parseFloat(p.security_deposit_amount) || 0) +
@@ -312,11 +347,21 @@ export default function LandlordDashboard({ session, profile }) {
             (parseFloat(p.other_bills) || 0)
           )
           return sum + total
-        }, 0) || 0
+        }, 0)
+
+        const waterTotal = monthPaymentsFiltered.reduce((sum, p) => {
+          return sum + (parseFloat(p.water_bill) || 0)
+        }, 0)
+
+        const otherTotal = monthPaymentsFiltered.reduce((sum, p) => {
+          return sum + (parseFloat(p.other_bills) || 0)
+        }, 0)
 
         chartData.push({
           name: monthNames[month],
-          income: monthTotal
+          income: monthTotal,
+          water: waterTotal,
+          other: otherTotal
         })
       }
 
@@ -728,7 +773,7 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   async function loadOccupancies() {
-    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title)`).eq('landlord_id', session.user.id).eq('status', 'active')
+    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title, images)`).eq('landlord_id', session.user.id).eq('status', 'active')
     setOccupancies(data || [])
   }
 
@@ -1276,7 +1321,7 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 flex flex-col scroll-smooth">
+    <div className="min-h-screen bg-[#F3F4F5] flex flex-col scroll-smooth">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 flex-1 w-full">
 
         {/* HERO HEADER WITH STATS */}
@@ -1329,7 +1374,9 @@ export default function LandlordDashboard({ session, profile }) {
                 <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Total</span>
               </div>
               <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{properties.length}</h3>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
+                  <CountUpAnimation target={statsLoaded ? properties.length : 0} />
+                </h3>
                 <p className="text-sm font-medium text-gray-500">Properties Managed</p>
               </div>
             </div>
@@ -1345,7 +1392,9 @@ export default function LandlordDashboard({ session, profile }) {
                 </span>
               </div>
               <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{occupancies.length}</h3>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
+                  <CountUpAnimation target={statsLoaded ? occupancies.length : 0} />
+                </h3>
                 <p className="text-sm font-medium text-gray-500">Active Tenants</p>
               </div>
             </div>
@@ -1359,7 +1408,9 @@ export default function LandlordDashboard({ session, profile }) {
                 <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{selectedStatementYear}</span>
               </div>
               <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">₱{(monthlyIncome.yearTotal / 1000).toFixed(1)}k</h3>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
+                  <CountUpAnimation target={statsLoaded ? monthlyIncome.yearTotal / 1000 : 0} decimals={1} prefix="₱" suffix="k" />
+                </h3>
                 <p className="text-sm font-medium text-gray-500">Total Income</p>
               </div>
             </div>
@@ -1373,7 +1424,9 @@ export default function LandlordDashboard({ session, profile }) {
                 <span className="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Action</span>
               </div>
               <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">{pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length}</h3>
+                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
+                  <CountUpAnimation target={statsLoaded ? (pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) : 0} />
+                </h3>
                 <p className="text-sm font-medium text-gray-500">Pending Tasks</p>
               </div>
             </div>
@@ -1389,10 +1442,28 @@ export default function LandlordDashboard({ session, profile }) {
               <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
                 <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Financial Overview</h3>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Financial Overview Graph</h3>
                     <p className="text-sm text-gray-500 font-medium mt-1">Income Analysis for {selectedStatementYear}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-gray-100 rounded-xl p-1">
+                      {[
+                        { key: 'all', label: 'All' },
+                        { key: 'water', label: 'Water Bill' },
+                        { key: 'other', label: 'Other Bill' },
+                      ].map(tab => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setChartFilter(tab.key)}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${chartFilter === tab.key
+                            ? 'bg-black text-white shadow-sm'
+                            : 'text-gray-500 hover:text-black'
+                            }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
                     <select
                       value={selectedStatementYear}
                       onChange={(e) => setSelectedStatementYear(parseInt(e.target.value))}
@@ -1407,9 +1478,17 @@ export default function LandlordDashboard({ session, profile }) {
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={monthlyChartData}>
                       <defs>
-                        <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#1aff00ff" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#1aff00ff" stopOpacity={0} />
+                        <linearGradient id="colorAll" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#1aff00" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#1aff00" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorWater" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorOther" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -1429,16 +1508,19 @@ export default function LandlordDashboard({ session, profile }) {
                       <Tooltip
                         contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
                         itemStyle={{ color: '#fff' }}
-                        formatter={(value) => [`₱${value.toLocaleString()}`, 'Total Income']}
+                        formatter={(value) => [
+                          `₱${value.toLocaleString()}`,
+                          chartFilter === 'all' ? 'Total Income' : chartFilter === 'water' ? 'Water Bill' : 'Other Bill'
+                        ]}
                         cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
                       />
                       <Area
                         type="monotone"
-                        dataKey="income"
-                        stroke="#55ed44ff"
+                        dataKey={chartFilter === 'all' ? 'income' : chartFilter === 'water' ? 'water' : 'other'}
+                        stroke={chartFilter === 'all' ? '#55ed44' : chartFilter === 'water' ? '#3b82f6' : '#f59e0b'}
                         strokeWidth={3}
                         fillOpacity={1}
-                        fill="url(#colorIncome)"
+                        fill={`url(#${chartFilter === 'all' ? 'colorAll' : chartFilter === 'water' ? 'colorWater' : 'colorOther'})`}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1596,34 +1678,103 @@ export default function LandlordDashboard({ session, profile }) {
                 </div>
               </div>
 
-              {/* My Properties */}
+              {/* Scheduled Tenants Today */}
               <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Properties</h3>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Scheduled Tenants Today</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">Viewings for {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                   </div>
-                  <button onClick={() => router.push('/landlord/properties')} className="text-sm font-bold text-gray-500 hover:text-black transition-colors cursor-pointer">View All My Properties</button>
+                  <button onClick={() => router.push('/bookings')} className="text-sm font-bold text-gray-500 hover:text-black transition-colors cursor-pointer">View All Bookings</button>
                 </div>
 
-                <div className="space-y-4">
-                  {properties.slice(0, 5).map(prop => (
-                    <div key={prop.id} onClick={() => router.push('/landlord/properties')} className="flex items-center gap-4 p-2 rounded-2xl hover:bg-gray-50 transition-colors cursor-pointer group">
-                      <div className="w-12 h-12 rounded-xl bg-gray-200 overflow-hidden relative">
-                        <img src={prop.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="" />
-                        <div className="absolute inset-0 bg-black/10"></div>
+                <div className="space-y-3">
+                  {(() => {
+                    const today = new Date()
+                    const todayStr = today.toISOString().split('T')[0]
+                    // Filter occupancies/bookings — we'll use a placeholder approach since bookings aren't loaded here
+                    // Instead, show tenants with active occupancies scheduled today
+                    const scheduledToday = occupancies.filter(o => {
+                      if (!o.start_date) return false
+                      const startStr = new Date(o.start_date).toISOString().split('T')[0]
+                      return startStr === todayStr
+                    })
+
+                    if (scheduledToday.length === 0) {
+                      return (
+                        <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
+                          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-300">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          </div>
+                          <p className="text-gray-400 text-sm font-medium">No scheduled tenants for today</p>
+                        </div>
+                      )
+                    }
+
+                    return scheduledToday.map(occ => (
+                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl bg-blue-50/50 border border-blue-100">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">
+                          {occ.tenant?.first_name?.charAt(0)}{occ.tenant?.last_name?.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-gray-900 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                          <p className="text-xs text-gray-500 font-medium truncate">{occ.property?.title}</p>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-100 px-2.5 py-1 rounded-full">Today</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-gray-900 truncate">{prop.title}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`w-1.5 h-1.5 rounded-full ${prop.status === 'available' ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                          <p className="text-xs text-gray-500 font-medium capitalize">{prop.status}</p>
+                    ))
+                  })()}
+                </div>
+              </div>
+
+              {/* Occupied Properties */}
+              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Occupied Properties</h3>
+                    <p className="text-sm text-gray-500 font-medium mt-1">Properties with active tenants</p>
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{occupancies.filter(o => o.status === 'active').length} Active</span>
+                </div>
+
+                <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                  {occupancies.filter(o => o.status === 'active').length === 0 ? (
+                    <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
+                      <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-300">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                      </div>
+                      <p className="text-gray-400 text-sm font-medium">No occupied properties</p>
+                    </div>
+                  ) : (
+                    occupancies.filter(o => o.status === 'active').map(occ => (
+                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 transition-colors group">
+                        <div className="w-12 h-12 rounded-xl bg-gray-200 overflow-hidden relative">
+                          <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
+                          <div className="absolute inset-0 bg-black/10"></div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-gray-900 truncate">{occ.property?.title}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="w-4 h-4 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[8px] font-bold">
+                              {occ.tenant?.first_name?.charAt(0)}
+                            </div>
+                            <p className="text-xs text-gray-500 font-medium">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openEndContractModal(occ)
+                            }}
+                            className="text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-lg transition-colors shadow-sm cursor-pointer"
+                          >
+                            End Contract
+                          </button>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs font-black text-gray-900 bg-gray-100 px-2 py-1 rounded-lg">₱{(prop.price / 1000).toFixed(0)}k</span>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 

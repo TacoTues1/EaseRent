@@ -40,21 +40,32 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: 'Payment not paid yet.' });
             }
 
+            // Get the PayMongo checkout reference number (displayed on the payment page)
+            const linkReferenceNumber = linkData.data?.attributes?.reference_number || '';
+            console.log('PayMongo Link reference_number:', linkReferenceNumber);
+            console.log('PayMongo Link full attributes:', JSON.stringify(linkData.data?.attributes, null, 2));
+
             // For Links, we often have to fetch the related payments
             const payments = linkData.data?.attributes?.payments || [];
 
-            // If payments array is empty but status is paid, might be in a different relation or delayed
-            // But usually included.
-            const successPay = payments.find(p => p.data.attributes.status === 'paid') || payments[0]; // fallback
+            const successPay = payments.find(p => p.data?.attributes?.status === 'paid') || payments[0]; // fallback
 
             if (successPay) {
                 amountPaid = successPay.data.attributes.amount / 100;
-                transactionId = successPay.data.id;
+
+                // Use the ACTUAL reference number the user sees, with fallback chain:
+                // 1. Payment's external_reference_number (GCash/Maya ref from the provider)
+                // 2. Link's reference_number (PayMongo checkout reference displayed on screen)
+                // 3. Payment's internal ID (last resort)
+                const externalRef = successPay.data?.attributes?.external_reference_number || '';
+                console.log('PayMongo payment external_reference_number:', externalRef);
+                console.log('PayMongo payment attributes:', JSON.stringify(successPay.data?.attributes, null, 2));
+
+                transactionId = externalRef || linkReferenceNumber || successPay.data.id;
             } else {
-                // Fallback if payments not populated in link response (sometimes happens)
-                // Use link amount
+                // Fallback if payments not populated in link response
                 amountPaid = linkData.data.attributes.amount / 100;
-                transactionId = linkData.data.id; // Use Link ID as reference
+                transactionId = linkReferenceNumber || linkData.data.id;
             }
 
         } else {
@@ -74,7 +85,10 @@ export default async function handler(req, res) {
             }
 
             amountPaid = successfulPayment.attributes.amount / 100;
-            transactionId = successfulPayment.id;
+            // Use external ref or checkout session reference, fallback to payment ID
+            const externalRef = successfulPayment.attributes?.external_reference_number || '';
+            const sessionRef = sessionData.data?.attributes?.reference_number || '';
+            transactionId = externalRef || sessionRef || successfulPayment.id;
         }
 
 
@@ -89,8 +103,8 @@ export default async function handler(req, res) {
             throw new Error('Payment request not found');
         }
 
-        // Avoid Double Processing
-        if (request.status === 'paid' && request.payment_method === 'paymongo' && request.tenant_reference_number === transactionId) {
+        // Avoid Double Processing - if already paid via paymongo, skip
+        if (request.status === 'paid' && request.payment_method === 'paymongo') {
             return res.status(200).json({ success: true, message: 'Already processed' });
         }
 

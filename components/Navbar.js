@@ -5,11 +5,14 @@ import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
 import { showToast } from 'nextjs-toast-notify'
 
+
 export default function Navbar() {
   const router = useRouter()
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [bookingCount, setBookingCount] = useState(0)
+  const [maintenanceCount, setMaintenanceCount] = useState(0)
   const [notifications, setNotifications] = useState([]) // Store fetched notifications
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState('signin')
@@ -222,13 +225,77 @@ export default function Navbar() {
 
   async function loadUnreadCount(userId) {
     try {
-      const { count } = await supabase
+      // 1. Bell Icon: Unread Notifications (from notifications table)
+      const { count: notifCount } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('recipient', userId)
         .eq('read', false)
-      setUnreadCount(count || 0)
-    } catch (err) { setUnreadCount(0) }
+      setUnreadCount(notifCount || 0)
+
+      // 2. Determine Role (if not in state yet)
+      let role = profile?.role
+      if (!role) {
+        const { data } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+        role = data?.role
+      }
+
+      if (!role) return
+
+      // 3. Role-Based Badges (Database Counts)
+      if (role === 'landlord') {
+        // 1. Fetch Landlord's Property IDs first (shared for both queries)
+        const { data: myProps } = await supabase
+          .from('properties')
+          .select('id')
+          .eq('landlord', userId)
+
+        if (myProps && myProps.length > 0) {
+          const propIds = myProps.map(p => p.id)
+
+          // Landlord Bookings: Pending Only
+          const { count: bCount } = await supabase
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .in('property_id', propIds) // Use actual column name from schema
+            .eq('status', 'pending')
+          setBookingCount(bCount || 0)
+
+          // Landlord Maintenance: Active Requests (Pending Only)
+          const { count: mCount } = await supabase
+            .from('maintenance_requests')
+            .select('*', { count: 'exact', head: true })
+            .in('property_id', propIds)
+            .eq('status', 'pending')
+          setMaintenanceCount(mCount || 0)
+
+        } else {
+          setBookingCount(0)
+          setMaintenanceCount(0)
+        }
+      } else if (role === 'tenant') {
+        // Tenant Bookings: Approved Viewings
+        const { count: bCount } = await supabase
+          .from('bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant', userId)
+          .eq('status', 'approved')
+        setBookingCount(bCount || 0)
+
+        // Tenant Maintenance: Active Requests
+        const { count: mCount } = await supabase
+          .from('maintenance_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant', userId) // Changed from user_id to tenant based on maintenance.js schema usage
+          .neq('status', 'completed')
+          .neq('status', 'cancelled')
+          .neq('status', 'closed') // Also exclude closed
+        setMaintenanceCount(mCount || 0)
+      }
+
+    } catch (err) {
+      console.error("loadUnreadCount error:", err)
+    }
   }
 
   async function markAllAsRead() {
@@ -325,6 +392,8 @@ export default function Navbar() {
 
   }
 
+
+
   async function handleSignOut() {
     try {
       // 1. Sign out from Supabase
@@ -387,9 +456,9 @@ export default function Navbar() {
   if (!session) {
     return (
       <>
-        <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+        <div ref={navRef} className="absolute top-2 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
           {/*Logo*/}
-          <div className="absolute left-10 top-0 h-16 flex items-center pointer-events-auto z-50">
+          <div className="absolute left-10 top-0 h-12 flex items-center pointer-events-auto z-50">
             <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
               <img src="/home.png" alt="EaseRent" className="w-11 h-11 object-contain" />
               {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
@@ -397,14 +466,14 @@ export default function Navbar() {
           </div>
 
           {/*Login and Register*/}
-          <div className="absolute right-6 top-0 h-16 hidden sm:flex items-center gap-3 pointer-events-auto z-50">
+          <div className="absolute right-6 top-0 h-12 hidden sm:flex items-center gap-3 pointer-events-auto z-50">
             <button onClick={() => router.push('/login')} className="px-4 py-2 text-md font-semibold bg-gray-100 hover:text-black hover:bg-black/50 rounded-lg transition-all cursor-pointer">Login</button>
             <button onClick={() => router.push('/register')} className="px-6 py-4 text-md font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2">Register</button>
           </div>
 
           <nav className="max-w-lg mx-auto pointer-events-auto transition-all duration-300">
             <div className="px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between items-center h-16">
+              <div className="flex justify-between items-center h-12">
 
                 <div className="flex-1"></div>
                 {/* --- CENTER: Text (Absolute Positioned) --- */}
@@ -440,7 +509,7 @@ export default function Navbar() {
             </div>
           )}
         </div>
-        <div className="h-24"></div>
+        <div className="h-18"></div>
         <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} initialMode={authMode} />
       </>
     )
@@ -449,7 +518,7 @@ export default function Navbar() {
   // --- Authenticated Navbar ---
   return (
     <>
-      <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
+      <div ref={navRef} className="absolute top-4 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none bg-[#F3F4F5]">
         <nav className="max-w-6xl mx-auto bg-white/90 backdrop-blur-md border border-gray-200 shadow-xl rounded-full pointer-events-auto transition-all duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -467,17 +536,45 @@ export default function Navbar() {
 
                   {profile?.role === 'landlord' && (
                     <>
-                      {/* <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Inquiries</Link> */}
-                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Bookings</Link>
-                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Tenants Maintenance</Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors relative group ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>
+                        Tenants Bookings
+                        {bookingCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center border-2 border-white shadow-sm">
+                            {bookingCount > 9 ? '9+' : bookingCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors relative group ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>
+                        Tenants Maintenance
+                        {maintenanceCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center border-2 border-white shadow-sm">
+                            {maintenanceCount > 9 ? '9+' : maintenanceCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link href="/properties/my-properties" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/properties/my-properties') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Properties</Link>
                     </>
                   )}
 
                   {profile?.role === 'tenant' && (
                     <>
                       {/* <Link href="/applications" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/applications') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Inquiries</Link> */}
-                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>My Bookings</Link>
-                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>Maintenance</Link>
+                      <Link href="/bookings" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors relative group ${isActive('/bookings') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>
+                        My Bookings
+                        {bookingCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center border-2 border-white shadow-sm">
+                            {bookingCount > 9 ? '9+' : bookingCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link href="/maintenance" className={`nav-link px-3 py-2 text-sm font-medium rounded-md transition-colors relative group ${isActive('/maintenance') ? 'active text-black' : 'text-gray-600 hover:text-black hover:bg-gray-200'} ${disabledClass}`}>
+                        Maintenance
+                        {maintenanceCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center border-2 border-white shadow-sm">
+                            {maintenanceCount > 9 ? '9+' : maintenanceCount}
+                          </span>
+                        )}
+                      </Link>
                     </>
                   )}
 
@@ -648,6 +745,9 @@ export default function Navbar() {
                             <Link href="/properties/allProperties" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
                               <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> All Properties
                             </Link>
+                            <Link href="/properties/my-properties" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
+                              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg> My Properties
+                            </Link>
                             <Link href="/schedule" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
                               <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Schedule
                             </Link>
@@ -694,17 +794,39 @@ export default function Navbar() {
               {profile?.role === 'landlord' && (
                 <>
                   <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/allProperties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>All Properties</Link>
+                  <Link href="/properties/my-properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/my-properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Properties</Link>
                   <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Add Property</Link>
                   <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Tenants Inquiries</Link>
-                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>TenantsBookings</Link>
+                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                    TenantsBookings
+                    {bookingCount > 0 && (
+                      <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/bookings') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
+                        {bookingCount > 9 ? '9+' : bookingCount}
+                      </span>
+                    )}
+                  </Link>
                   <Link href="/schedule" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/schedule') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Schedule</Link>
                 </>
               )}
 
               {profile?.role === 'tenant' && (
                 <>
-                  {/* <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Inquiries</Link> */}
-                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Maintenance</Link>
+                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                    My Bookings
+                    {bookingCount > 0 && (
+                      <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/bookings') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
+                        {bookingCount > 9 ? '9+' : bookingCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                    Maintenance
+                    {maintenanceCount > 0 && (
+                      <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/maintenance') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
+                        {maintenanceCount > 9 ? '9+' : maintenanceCount}
+                      </span>
+                    )}
+                  </Link>
                 </>
               )}
 
@@ -731,7 +853,7 @@ export default function Navbar() {
         )}
       </div>
 
-      <div className="h-24"></div>
+      <div className="h-24 bg-[#F3F4F5]"></div>
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} initialMode={authMode} />
     </>
   )
