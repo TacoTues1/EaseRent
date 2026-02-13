@@ -609,6 +609,10 @@ export default function PropertyDetail() {
                   {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
                 </span>
               </div>
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <span className="text-gray-600 text-sm font-medium">{fullAddress}</span>
+              </div>
             </div>
 
             <div className="flex flex-col items-start md:items-end">
@@ -625,11 +629,11 @@ export default function PropertyDetail() {
             <div className="rounded-xl overflow-hidden shadow-sm border border-gray-100 relative">
               {propertyImages.length === 1 ? (
                 /* Single image layout */
-                <div className="h-[350px] md:h-[420px] cursor-pointer" onClick={() => setShowGalleryModal(true)}>
+                <div className="h-[350px] md:h-[420px] cursor-pointer group overflow-hidden" onClick={() => setShowGalleryModal(true)}>
                   <img
                     src={propertyImages[0]}
                     alt={property.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop' }}
                   />
                 </div>
@@ -638,13 +642,13 @@ export default function PropertyDetail() {
                 <div className="grid grid-cols-4 grid-rows-2 gap-1 h-[350px] md:h-[420px]">
                   {/* Main large image - takes up left 2/4 columns and both rows */}
                   <div
-                    className="col-span-2 row-span-2 cursor-pointer overflow-hidden"
+                    className="col-span-2 row-span-2 cursor-pointer overflow-hidden group"
                     onClick={() => { setCurrentImageIndex(0); setShowGalleryModal(true); }}
                   >
                     <img
                       src={propertyImages[0]}
                       alt={property.title}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                       onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop' }}
                     />
                   </div>
@@ -653,13 +657,13 @@ export default function PropertyDetail() {
                   {propertyImages.slice(1, 3).map((img, idx) => (
                     <div
                       key={idx}
-                      className="cursor-pointer overflow-hidden"
+                      className="cursor-pointer overflow-hidden group"
                       onClick={() => { setCurrentImageIndex(idx + 1); setShowGalleryModal(true); }}
                     >
                       <img
                         src={img}
                         alt={`${property.title} ${idx + 2}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop' }}
                       />
                     </div>
@@ -669,19 +673,19 @@ export default function PropertyDetail() {
                   {propertyImages.slice(3, 5).map((img, idx) => (
                     <div
                       key={idx}
-                      className="relative cursor-pointer overflow-hidden"
+                      className="relative cursor-pointer overflow-hidden group"
                       onClick={() => { setCurrentImageIndex(idx + 3); setShowGalleryModal(true); }}
                     >
                       <img
                         src={img}
                         alt={`${property.title} ${idx + 4}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop' }}
                       />
 
                       {/* Show "View all" overlay on last visible image if there are more */}
                       {idx === 1 && propertyImages.length > 5 && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity duration-300 group-hover:bg-black/40">
                           <span className="text-white font-bold text-sm">+{propertyImages.length - 5} more</span>
                         </div>
                       )}
@@ -708,7 +712,7 @@ export default function PropertyDetail() {
               {propertyImages.length > 1 && (
                 <button
                   onClick={() => setShowGalleryModal(true)}
-                  className="absolute bottom-4 right-4 bg-white hover:bg-gray-50 text-black text-xs font-bold px-4 py-2 rounded-lg shadow-md border border-gray-200 cursor-pointer flex items-center gap-2 transition-colors"
+                  className="absolute bottom-4 right-4 bg-white hover:bg-gray-50 text-black text-xs font-bold px-4 py-2 rounded-lg shadow-md border border-gray-200 cursor-pointer flex items-center gap-2 transition-transform hover:scale-105"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -724,33 +728,34 @@ export default function PropertyDetail() {
             {/* Left Column - Details */}
             <div className="lg:col-span-2 flex flex-col gap-5">
               {/* Specs & Description */}
-              <div className="p-6">
-                <div className="flex items-center gap-8 md:gap-12 pb-6 mb-6 overflow-x-auto">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg
-                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden">
+
+                <div className="flex flex-wrap items-center gap-4 md:gap-8 pb-6 mb-6 border-b border-gray-100">
+                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg
+                      className="w-5 h-5"
                       fill="currentColor"
                       viewBox="0 0 24 24"
                     >
                       <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
                     </svg></div>
-                    <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bedrooms}</p><p className="text-xs text-gray-500 font-medium">Bedrooms</p></div>
+                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.bedrooms}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Bedrooms</p></div>
                   </div>
-                  <div className="w-px h-8 bg-gray-100"></div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg
-                      className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5"
+
+                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg
+                      className="w-5 h-5"
                       viewBox="0 0 24 24"
                       fill="currentColor"
                     >
                       <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
                     </svg></div>
-                    <div><p className="text-xl font-bold text-gray-900 leading-none">{property.bathrooms}</p><p className="text-xs text-gray-500 font-medium">Bathrooms</p></div>
+                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.bathrooms}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Bathrooms</p></div>
                   </div>
-                  <div className="w-px h-8 bg-gray-100"></div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-700"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></div>
-                    <div><p className="text-xl font-bold text-gray-900 leading-none">{property.area_sqft}</p><p className="text-xs text-gray-500 font-medium">Sq. Ft.</p></div>
+
+                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></div>
+                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.area_sqft}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sq. Ft.</p></div>
                   </div>
                 </div>
                 <div className="mb-8">

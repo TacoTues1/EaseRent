@@ -459,10 +459,26 @@ export default function Navbar() {
         <div ref={navRef} className="absolute top-2 left-0 right-0 z-50 px-4 md:px-6 pointer-events-none">
           {/*Logo*/}
           <div className="absolute left-10 top-0 h-12 flex items-center pointer-events-auto z-50">
-            <Link href="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold text-black hover:opacity-80 transition-opacity">
-              <img src="/home.png" alt="EaseRent" className="w-11 h-11 object-contain" />
-              {/* <span className="hidden sm:inline text-3xl">EaseRent</span> */}
-            </Link>
+          <Link
+  href="/"
+  className="flex items-center gap-3 text-black hover:opacity-80 transition-opacity"
+>
+  <img
+    src="/home.png"
+    alt="EaseRent"
+    className="w-11 h-11 object-contain"
+  />
+
+  <div className="flex flex-col leading-tight">
+    <span className="text-1xl sm:text-2xl font-bold">
+      TessyNTed
+    </span>
+
+    <span className="text-xs sm:text-sm text-gray-600">
+      A Rental Management Platform
+    </span>
+  </div>
+</Link>
           </div>
 
           {/*Login and Register*/}
@@ -483,11 +499,11 @@ export default function Navbar() {
                 </div>
 
                 {/* Desktop Center Welcome Text */}
-                <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
+                {/* <div className="absolute left-1/2 transform -translate-x-1/2 hidden lg:block w-full max-w-4xl text-center">
                   <span className="text-5xl lg:text-3xl font-bold text-gray-800 tracking-tight">
                     Welcome to 𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝
                   </span>
-                </div>
+                </div> */}
 
                 <div className="sm:hidden flex items-center">
                   <button onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)} className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto">
