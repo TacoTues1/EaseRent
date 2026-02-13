@@ -820,11 +820,14 @@ export default function PaymentsPage() {
 
       // Calculate advance payment amount (rent paid beyond first month)
       // Security deposit and utilities are one-time, not counted as "advance rent"
+      // For move-in payments, advance_amount is also a one-time deposit charge
+      const isMoveIn = selectedBill.is_move_in_payment;
       const oneTimeCharges = (
         parseFloat(selectedBill.security_deposit_amount || 0) +
         parseFloat(selectedBill.water_bill || 0) +
         parseFloat(selectedBill.electrical_bill || 0) +
-        parseFloat(selectedBill.other_bills || 0)
+        parseFloat(selectedBill.other_bills || 0) +
+        (isMoveIn ? parseFloat(selectedBill.advance_amount || 0) : 0)
       );
       const firstMonthRent = parseFloat(selectedBill.rent_amount || 0);
       const amountPaid = parseFloat(customAmount) + appliedCredit;
@@ -832,10 +835,11 @@ export default function PaymentsPage() {
       // Rent portion = total paid minus one-time charges
       const rentPortion = Math.max(0, amountPaid - oneTimeCharges);
 
-      // Advance = rent paid beyond first month
-      const advancePaymentAmount = Math.max(0, rentPortion - firstMonthRent);
+      // For move-in: keep original advance_amount (it's a deposit, not advance rent months)
+      // For regular payments: advance = rent paid beyond first month
+      const advancePaymentAmount = isMoveIn ? parseFloat(selectedBill.advance_amount || 0) : Math.max(0, rentPortion - firstMonthRent);
 
-      console.log('Advance calculation:', { amountPaid, oneTimeCharges, rentPortion, firstMonthRent, advancePaymentAmount });
+      console.log('Advance calculation:', { isMoveIn, amountPaid, oneTimeCharges, rentPortion, firstMonthRent, advancePaymentAmount });
 
       // Update payment request status to pending_confirmation
       const { error } = await supabase

@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { createNotification } from '../lib/notifications'
+import Lottie from "lottie-react"
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
-import Footer from './Footer'
-import Lottie from "lottie-react"
+import { useEffect, useState } from 'react'
 import loadingAnimation from "../assets/loading.json"
+import { createNotification } from '../lib/notifications'
+import { supabase } from '../lib/supabaseClient'
+import Footer from './Footer'
 import {
   Carousel,
   CarouselContent,
@@ -862,19 +862,26 @@ export default function TenantDashboard({ session, profile }) {
   }, [pendingPayments, tenantOccupancy])
 
   async function checkPendingReviews(userId) {
-    const { data: endedOccupancies } = await supabase.from('tenant_occupancies').select('*, property:properties(id, title)').eq('tenant_id', userId).eq('status', 'ended')
+    // Fetch ended occupancies, ordered to be deterministic
+    const { data: endedOccupancies } = await supabase
+      .from('tenant_occupancies')
+      .select('*, property:properties(id, title)')
+      .eq('tenant_id', userId)
+      .eq('status', 'ended')
+      .order('created_at', { ascending: false })
+
     if (!endedOccupancies || endedOccupancies.length === 0) return
 
     const { data: existingReviews } = await supabase.from('reviews').select('occupancy_id').eq('user_id', userId)
     const reviewedOccupancyIds = existingReviews?.map(r => r.occupancy_id) || []
 
-    // Check localStorage for dismissed reviews
-    const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
+    // Check localStorage for dismissed reviews - Ensure ID string comparison
+    const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]').map(String)
 
     // Find first occupancy that is ENDED, NOT REVIEWED, and NOT DISMISSED
     const unreviewed = endedOccupancies.find(o =>
       !reviewedOccupancyIds.includes(o.id) &&
-      !dismissedReviews.includes(o.id)
+      !dismissedReviews.includes(String(o.id))
     )
 
     if (unreviewed) {
@@ -886,10 +893,16 @@ export default function TenantDashboard({ session, profile }) {
 
   function handleSkipReview() {
     if (dontShowAgain && reviewTarget) {
-      const dismissed = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
-      if (!dismissed.includes(reviewTarget.id)) {
-        dismissed.push(reviewTarget.id)
-        localStorage.setItem('dismissedReviews', JSON.stringify(dismissed))
+      const dismissedRaw = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
+      const targetId = String(reviewTarget.id)
+
+      // Ensure we treat everything as strings for check
+      const dismissedStrings = dismissedRaw.map(String)
+
+      if (!dismissedStrings.includes(targetId)) {
+        // Push the string version for consistency
+        dismissedRaw.push(targetId)
+        localStorage.setItem('dismissedReviews', JSON.stringify(dismissedRaw))
       }
     }
     setShowReviewModal(false)
@@ -1947,7 +1960,7 @@ export default function TenantDashboard({ session, profile }) {
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">How was your stay?</h2>
-                <p className="text-gray-500 text-sm">You recently ended your contract at <strong>{reviewTarget.property?.title}</strong>. Please rate your experience.</p>
+                <p className="text-gray-500 text-sm">You recently ended your contract at <strong>{reviewTarget.property?.title}</strong> ({new Date(reviewTarget.start_date || reviewTarget.created_at).toLocaleDateString()} - {new Date(reviewTarget.contract_end_date || reviewTarget.end_date || new Date()).toLocaleDateString()}). Please rate your experience.</p>
               </div>
 
               {/* Rating Categories */}
