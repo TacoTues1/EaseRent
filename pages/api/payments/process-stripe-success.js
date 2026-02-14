@@ -1,6 +1,6 @@
 
-import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -17,11 +17,12 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 1. Verify Payment with Stripe
+        // 1. Verify Payment with Stripe via PaymentIntent
         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
+        // Ensure status is 'succeeded'
         if (paymentIntent.status !== 'succeeded') {
-            return res.status(400).json({ error: 'Payment not succeeded' });
+            return res.status(400).json({ error: 'Payment not completed or failed.' });
         }
 
         const amountPaid = paymentIntent.amount / 100; // Convert cents to whole units
