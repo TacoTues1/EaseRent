@@ -1,8 +1,26 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { Button, Input, Badge, Spinner } from './UI'
 import { showToast } from 'nextjs-toast-notify'
 import { useRouter } from 'next/router'
+
+function useRealTimeClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
+  return now
+}
+
+function AnimatedCounter({ value, prefix = '', duration = 1200 }) {
+  const [display, setDisplay] = useState(0)
+  useEffect(() => {
+    const num = typeof value === 'number' ? value : parseInt(String(value).replace(/[^0-9]/g, '')) || 0
+    if (num === 0) { setDisplay(0); return }
+    let start = 0; const step = Math.ceil(num / (duration / 16))
+    const timer = setInterval(() => { start += step; if (start >= num) { setDisplay(num); clearInterval(timer) } else setDisplay(start) }, 16)
+    return () => clearInterval(timer)
+  }, [value, duration])
+  return <>{prefix}{display.toLocaleString()}</>
+}
 
 export default function AdminDashboard({ session, profile }) {
   const router = useRouter()
@@ -29,80 +47,106 @@ export default function AdminDashboard({ session, profile }) {
     }
   }
 
+  const clock = useRealTimeClock()
+  const greeting = clock.getHours() < 12 ? 'Good Morning' : clock.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
+  const currentLabel = navItems.find(n => n.id === activeTab)?.label || 'Overview'
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen flex flex-col md:flex-row font-sans" style={{ background: 'linear-gradient(135deg,#f8fafc 0%,#eef2ff 50%,#f0fdf4 100%)' }}>
       {/* SIDEBAR (Desktop) */}
-      <aside className="w-64 bg-black text-white flex-shrink-0 hidden md:flex flex-col shadow-2xl z-20 h-screen sticky top-0">
-        <div className="p-8">
-          <h1 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-2">
-            <span className="w-2 h-8 bg-white rounded-full"></span>
-            Admin<span className="text-gray-500">Panel</span>
-          </h1>
+      <aside className={`${sidebarCollapsed ? 'w-20' : 'w-72'} hidden md:flex flex-col flex-shrink-0 h-screen sticky top-0 z-20 transition-all duration-300`} style={{ background: 'linear-gradient(180deg,#0f172a 0%,#1e293b 100%)' }}>
+        <div className={`p-6 ${sidebarCollapsed ? 'px-4' : ''} flex items-center justify-between`}>
+          {!sidebarCollapsed && (
+            <h1 className="text-xl font-black tracking-tighter uppercase flex items-center gap-2">
+              <span className="w-2 h-8 rounded-full" style={{ background: 'linear-gradient(180deg,#818cf8,#6366f1)' }}></span>
+              <span className="text-white">Admin</span><span className="text-indigo-400">Panel</span>
+            </h1>
+          )}
+          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-all cursor-pointer">
+            <svg className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+          </button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-3 overflow-y-auto">
+        <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto mt-2">
           {navItems.map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-sm font-bold transition-all cursor-pointer ${activeTab === item.id
-                ? 'bg-white text-black shadow-lg transform scale-105'
-                : 'text-gray-400 hover:bg-gray-900 hover:text-white hover:pl-6'
+              title={sidebarCollapsed ? item.label : ''}
+              className={`w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer relative overflow-hidden ${activeTab === item.id
+                ? 'text-white shadow-lg shadow-indigo-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
+              style={activeTab === item.id ? { background: 'linear-gradient(135deg,#6366f1,#818cf8)' } : {}}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
-              {item.label}
+              {activeTab === item.id && <div className="absolute inset-0 bg-white/10 rounded-xl"></div>}
+              <svg className="w-5 h-5 flex-shrink-0 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
+              {!sidebarCollapsed && <span className="relative z-10 truncate">{item.label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="p-6 border-t border-gray-900 bg-gray-900/50 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center font-bold text-sm shadow-inner">
+        <div className={`p-4 border-t border-white/5 space-y-3 ${sidebarCollapsed ? 'px-2' : ''}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-lg flex-shrink-0" style={{ background: 'linear-gradient(135deg,#6366f1,#a78bfa)' }}>
               {profile?.first_name?.[0]}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold truncate">{profile?.first_name}</p>
-              <p className="text-[10px] text-gray-400 truncate uppercase tracking-wider font-bold">Administrator</p>
-            </div>
+            {!sidebarCollapsed && (
+              <div className="overflow-hidden">
+                <p className="text-sm font-bold text-white truncate">{profile?.first_name} {profile?.last_name}</p>
+                <p className="text-[10px] text-indigo-300 truncate uppercase tracking-wider font-bold">Administrator</p>
+              </div>
+            )}
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600/10 text-red-500 hover:bg-red-600 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer group"
-          >
+          <button onClick={handleLogout} className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-center gap-2'} px-3 py-2.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer group border border-red-500/10`}>
             <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Log Out
+            {!sidebarCollapsed && 'Log Out'}
           </button>
         </div>
       </aside>
 
       {/* MOBILE NAV (Bottom Fixed) */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-black z-50 flex justify-between px-6 py-4 pb-6 overflow-x-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-between px-4 py-3 pb-5 overflow-x-auto border-t border-white/10" style={{ background: 'linear-gradient(180deg,#0f172a,#1e293b)' }}>
         {navItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`p-3 rounded-full transition-all cursor-pointer flex-shrink-0 ${activeTab === item.id ? 'bg-white text-black transform -translate-y-2 shadow-lg' : 'text-gray-500'}`}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`p-3 rounded-2xl transition-all cursor-pointer flex-shrink-0 ${activeTab === item.id ? 'text-white transform -translate-y-1.5 shadow-lg shadow-indigo-500/30' : 'text-slate-500'}`} style={activeTab === item.id ? { background: 'linear-gradient(135deg,#6366f1,#818cf8)' } : {}}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
           </button>
         ))}
-        <button onClick={handleLogout} className="p-3 rounded-full text-red-500 hover:bg-red-900/30 cursor-pointer flex-shrink-0">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+        <button onClick={handleLogout} className="p-3 rounded-2xl text-red-400 hover:bg-red-900/30 cursor-pointer flex-shrink-0">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
       </div>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-10 pb-24 md:pb-10 w-full max-w-7xl mx-auto">
-        {activeTab === 'overview' && <OverviewView />}
-        {activeTab === 'users' && <UsersView />}
-        {activeTab === 'properties' && <PropertiesView />}
-        {activeTab === 'payments' && <PaymentsView />}
-        {activeTab === 'bookings' && <BookingsView />}
-        {activeTab === 'applications' && <ApplicationsView />}
-        {activeTab === 'schedules' && <SchedulesView />}
-      </main>
+      <div className="flex-1 flex flex-col min-h-screen">
+        {/* TOP BAR */}
+        <header className="hidden md:flex items-center justify-between px-8 py-5 bg-white/70 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-10">
+          <div>
+            <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+              <span>Admin</span><span>/</span><span className="text-gray-700 font-semibold">{currentLabel}</span>
+            </div>
+            <h2 className="text-xl font-black text-gray-900 tracking-tight">{greeting}, {profile?.first_name} 👋</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-sm font-bold text-gray-900 tabular-nums">{clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+              <p className="text-[10px] text-gray-400 font-medium">{clock.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg" style={{ background: 'linear-gradient(135deg,#6366f1,#a78bfa)' }}>{profile?.first_name?.[0]}</div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full max-w-[1400px] mx-auto">
+          {activeTab === 'overview' && <OverviewView />}
+          {activeTab === 'users' && <UsersView />}
+          {activeTab === 'properties' && <PropertiesView />}
+          {activeTab === 'payments' && <PaymentsView />}
+          {activeTab === 'bookings' && <BookingsView />}
+          {activeTab === 'applications' && <ApplicationsView />}
+          {activeTab === 'schedules' && <SchedulesView />}
+        </main>
+      </div>
     </div>
   )
 }
@@ -112,16 +156,16 @@ export default function AdminDashboard({ session, profile }) {
 function DeleteModal({ isOpen, onClose, onConfirm, title, message }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-sm p-6 text-center shadow-2xl mx-4">
-        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-7 text-center shadow-2xl mx-4 border border-gray-100">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: 'linear-gradient(135deg,#fee2e2,#fecaca)' }}>
+          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
         </div>
         <h3 className="text-xl font-black text-gray-900 mb-2">{title}</h3>
-        <p className="text-sm text-gray-500 mb-6">{message}</p>
+        <p className="text-sm text-gray-500 mb-7 leading-relaxed">{message}</p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={onClose} className="w-full py-3 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancel</button>
-          <button onClick={onConfirm} className="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-200 transition-colors cursor-pointer">Delete</button>
+          <button onClick={onClose} className="w-full py-3 bg-gray-50 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-100 transition-all cursor-pointer">Cancel</button>
+          <button onClick={onConfirm} className="w-full py-3 text-white font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-red-200 hover:opacity-90" style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)' }}>Delete</button>
         </div>
       </div>
     </div>
@@ -131,14 +175,14 @@ function DeleteModal({ isOpen, onClose, onConfirm, title, message }) {
 function EmptyStateRow({ colSpan, message }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="p-12 text-center">
+      <td colSpan={colSpan} className="p-16 text-center">
         <div className="flex flex-col items-center justify-center text-gray-400 gap-3">
-          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#f1f5f9,#e2e8f0)' }}>
+            <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
           </div>
-          <p className="font-medium">{message}</p>
+          <p className="font-semibold text-gray-400">{message}</p>
         </div>
       </td>
     </tr>
@@ -274,47 +318,47 @@ function OverviewView() {
   }
 
   const statCards = [
-    { label: 'Total Users', value: stats.users, icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', color: 'bg-blue-500' },
-    { label: 'Properties', value: stats.properties, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', color: 'bg-purple-500' },
-    { label: 'Bookings', value: stats.bookings, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'bg-orange-500' },
-    { label: 'Total Revenue', value: `₱${stats.revenue.toLocaleString()}`, icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', color: 'bg-green-500' },
+    { label: 'Total Users', value: stats.users, icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z', gradient: 'linear-gradient(135deg,#3b82f6,#1d4ed8)', shadow: 'rgba(59,130,246,0.3)' },
+    { label: 'Properties', value: stats.properties, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', gradient: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', shadow: 'rgba(139,92,246,0.3)' },
+    { label: 'Bookings', value: stats.bookings, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', gradient: 'linear-gradient(135deg,#f59e0b,#d97706)', shadow: 'rgba(245,158,11,0.3)' },
+    { label: 'Total Revenue', value: stats.revenue, prefix: '₱', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', gradient: 'linear-gradient(135deg,#10b981,#059669)', shadow: 'rgba(16,185,129,0.3)' },
   ]
 
   if (loading) return <Spinner />
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div>
-        <h2 className="text-3xl font-black text-gray-900 tracking-tight">Dashboard Overview</h2>
-        <p className="text-gray-500 mt-1">Welcome back! Here's what's happening.</p>
-      </div>
-
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
         {statCards.map((card, i) => (
-          <div key={i} className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className={`w-12 h-12 ${card.color} rounded-2xl flex items-center justify-center mb-4`}>
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} /></svg>
+          <div key={i} className="rounded-2xl p-5 text-white relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 cursor-default" style={{ background: card.gradient, boxShadow: `0 10px 30px -5px ${card.shadow}` }}>
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
+            <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-white/5 rounded-full"></div>
+            <div className="relative z-10">
+              <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center mb-3">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} /></svg>
+              </div>
+              <p className="text-2xl font-black">{card.prefix ? <AnimatedCounter value={card.value} prefix={card.prefix} /> : <AnimatedCounter value={card.value} />}</p>
+              <p className="text-sm font-medium text-white/70 mt-0.5">{card.label}</p>
             </div>
-            <p className="text-2xl font-black text-gray-900">{card.value}</p>
-            <p className="text-sm text-gray-500 font-medium">{card.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Automated Processes (Manual Trigger) */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-500"></span>Automated Processes
-          {autoSendStatus === 'sending' && <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md ml-2">Auto-sending...</span>}
-          {autoSendStatus === 'sent' && <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-md ml-2">✓ Auto-sent this month</span>}
+      {/* Automated Processes */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/80">
+        <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
+          <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></span>
+          Automated Processes
+          {autoSendStatus === 'sending' && <span className="text-xs text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full ml-2 animate-pulse font-semibold">⏳ Auto-sending...</span>}
+          {autoSendStatus === 'sent' && <span className="text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full ml-2 font-semibold">✓ Auto-sent this month</span>}
         </h3>
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
-          <div>
-            <h4 className="font-bold text-gray-900">Monthly Statements</h4>
+        <div className="flex flex-col lg:flex-row items-stretch gap-4 p-5 bg-gradient-to-r from-slate-50 to-indigo-50/50 rounded-xl border border-gray-100">
+          <div className="flex-1">
+            <h4 className="font-bold text-gray-900 text-base">Monthly Statements</h4>
             <p className="text-sm text-gray-500 mt-1">Send payment statements to tenants and financial overviews to landlords via email.</p>
-            <p className="text-xs text-indigo-600 font-medium mt-2 bg-indigo-50 inline-block px-2 py-1 rounded-md">
-              📅 Auto-sends on the 30th of each month • Or click to send manually
+            <p className="text-xs text-indigo-600 font-semibold mt-3 bg-indigo-50 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full">
+              📅 Auto-sends on the 30th • Or click to send manually
             </p>
           </div>
           <button
@@ -323,40 +367,32 @@ function OverviewView() {
               const originalText = btn.innerText
               btn.innerText = 'Sending...'
               btn.disabled = true
-
               try {
                 const res = await fetch('/api/admin/send-monthly-statements', { method: 'POST' })
                 const data = await res.json()
-                if (res.ok) {
-                  showToast.success(`Sent to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`)
-                } else {
-                  showToast.error(data.error || 'Failed to send statements')
-                }
-              } catch (err) {
-                showToast.error("Failed to connect to server")
-              } finally {
-                btn.innerText = originalText
-                btn.disabled = false
-              }
+                if (res.ok) { showToast.success(`Sent to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`) }
+                else { showToast.error(data.error || 'Failed to send statements') }
+              } catch (err) { showToast.error("Failed to connect to server") }
+              finally { btn.innerText = originalText; btn.disabled = false }
             }}
-            className="px-5 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="self-center px-6 py-3 text-white font-bold rounded-xl hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-lg whitespace-nowrap" style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}
           >
             Send Now
           </button>
         </div>
 
         {/* Reminder Toggle */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 mt-4">
-          <div>
-            <h4 className="font-bold text-gray-900">Payment Reminders</h4>
+        <div className="flex flex-col lg:flex-row items-stretch gap-4 p-5 bg-gradient-to-r from-slate-50 to-green-50/50 rounded-xl border border-gray-100 mt-4">
+          <div className="flex-1">
+            <h4 className="font-bold text-gray-900 text-base">Payment Reminders</h4>
             <p className="text-sm text-gray-500 mt-1">Automatically email/SMS tenants about upcoming due dates.</p>
             <div className="mt-2">
               {remindersEnabled ? (
-                <span className="text-xs text-green-700 font-bold bg-green-100 px-2 py-1 rounded-md flex items-center gap-1 w-fit">
+                <span className="text-xs text-green-700 font-bold bg-green-100 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ACTIVE
                 </span>
               ) : (
-                <span className="text-xs text-red-700 font-bold bg-red-100 px-2 py-1 rounded-md flex items-center gap-1 w-fit">
+                <span className="text-xs text-red-700 font-bold bg-red-100 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
                   <span className="w-2 h-2 rounded-full bg-red-500"></span> STOPPED
                 </span>
               )}
@@ -365,32 +401,37 @@ function OverviewView() {
           <button
             onClick={toggleReminders}
             disabled={togglingReminders}
-            className={`px-5 py-3 font-bold rounded-xl transition-colors cursor-pointer min-w-[120px] ${remindersEnabled
-              ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-100'
-              : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
+            className={`self-center px-6 py-3 font-bold rounded-xl transition-all cursor-pointer min-w-[140px] whitespace-nowrap ${remindersEnabled
+              ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200'
+              : 'text-white shadow-lg hover:opacity-90'
               }`}
+            style={!remindersEnabled ? { background: 'linear-gradient(135deg,#10b981,#059669)' } : {}}
           >
             {togglingReminders ? 'Processing...' : remindersEnabled ? 'Stop Reminders' : 'Start Reminders'}
           </button>
         </div>
       </div>
 
-
       {/* Recent Users */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500"></span>Recent Users
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-100/80">
+        <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
+          <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)' }}><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg></span>
+          Recent Users
+          <span className="text-xs text-gray-400 font-medium ml-auto">Last 5 registered</span>
         </h3>
         <div className="space-y-3">
-          {recentUsers.map(user => (
-            <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+          {recentUsers.map((user, idx) => (
+            <div key={user.id} className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-transparent rounded-xl hover:from-indigo-50/50 transition-all duration-300 group">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-600">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-md" style={{ background: `linear-gradient(135deg,${['#6366f1', '#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'][idx % 5]},${['#818cf8', '#60a5fa', '#a78bfa', '#fbbf24', '#34d399'][idx % 5]})` }}>
                   {user.first_name?.[0]}
                 </div>
                 <div>
                   <p className="font-bold text-gray-900">{user.first_name} {user.last_name}</p>
-                  <p className="text-xs text-gray-500">{new Date(user.created_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-gray-400 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
                 </div>
               </div>
               <Badge variant={user.role === 'admin' ? 'danger' : user.role === 'landlord' ? 'info' : 'success'}>{user.role}</Badge>
@@ -507,7 +548,7 @@ function UsersView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Users Directory</h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">Manage tenants and landlords.</p>
@@ -531,7 +572,8 @@ function UsersView() {
           </select>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors cursor-pointer flex items-center gap-2 justify-center"
+            className="px-4 py-2 text-white font-bold rounded-xl hover:opacity-90 transition-all cursor-pointer flex items-center gap-2 justify-center shadow-lg shadow-indigo-200"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
             Add User
@@ -592,7 +634,7 @@ function UsersView() {
 
       {/* EDIT USER MODAL */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl md:text-2xl font-black tracking-tight">Edit User Profile</h3>
@@ -617,14 +659,14 @@ function UsersView() {
                   <input
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter new password to reset..."
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-black outline-none"
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 outline-none"
                     value={editForm.password || ''}
                     onChange={e => setEditForm({ ...editForm, password: e.target.value })}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 cursor-pointer"
                   >
                     {showPassword ? "Hide" : "Show"}
                   </button>
@@ -637,7 +679,7 @@ function UsersView() {
                 <select
                   value={editForm.role}
                   onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                  className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-black outline-none transition-shadow"
+                  className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
                 >
                   <option value="tenant">Tenant</option>
                   <option value="landlord">Landlord</option>
@@ -648,7 +690,7 @@ function UsersView() {
 
             <div className="flex flex-col sm:flex-row gap-3 pt-8">
               <Button variant="secondary" className="flex-1 py-3.5 cursor-pointer rounded-xl" onClick={() => setEditingUser(null)}>Cancel</Button>
-              <Button className="flex-1 py-3.5 bg-black text-white hover:bg-gray-800 cursor-pointer rounded-xl shadow-lg" onClick={handleUpdate}>Save Changes</Button>
+              <Button className="flex-1 py-3.5 text-white hover:opacity-90 cursor-pointer rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }} onClick={handleUpdate}>Save Changes</Button>
             </div>
           </div>
         </div>
@@ -656,8 +698,8 @@ function UsersView() {
 
       {/* ADD USER MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto border border-gray-100">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl md:text-2xl font-black tracking-tight">Create New User</h3>
               <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-400">✕</button>
@@ -678,7 +720,7 @@ function UsersView() {
                 <select
                   value={newUserForm.role}
                   onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })}
-                  className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-black outline-none transition-shadow"
+                  className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
                 >
                   <option value="tenant">Tenant</option>
                   <option value="landlord">Landlord</option>
@@ -690,7 +732,8 @@ function UsersView() {
             <div className="flex flex-col sm:flex-row gap-3 pt-8">
               <Button variant="secondary" className="flex-1 py-3.5 cursor-pointer rounded-xl" onClick={() => setShowAddModal(false)}>Cancel</Button>
               <Button
-                className="flex-1 py-3.5 bg-black text-white hover:bg-gray-800 cursor-pointer rounded-xl shadow-lg disabled:opacity-50"
+                className="flex-1 py-3.5 text-white hover:opacity-90 cursor-pointer rounded-xl shadow-lg disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}
                 onClick={handleCreateUser}
                 disabled={isCreating}
               >
@@ -747,7 +790,7 @@ function PropertiesView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">All Properties</h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">Manage listings and view associated landlords.</p>
@@ -798,8 +841,8 @@ function PropertiesView() {
 
       {/* EDIT PROPERTY MODAL */}
       {editingProp && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] overflow-y-auto border border-gray-100">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl md:text-2xl font-black tracking-tight">Edit Property</h3>
               <button onClick={() => setEditingProp(null)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer text-gray-400">✕</button>
@@ -816,7 +859,7 @@ function PropertiesView() {
               <Input label="Area (Sqft)" type="number" value={propForm.area_sqft || ''} onChange={e => setPropForm({ ...propForm, area_sqft: e.target.value })} />
               <div className="space-y-1">
                 <label className="block text-sm font-bold text-gray-700 mb-1">Status</label>
-                <select value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })} className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-black outline-none">
+                <select value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })} className="w-full border rounded-xl px-4 py-3 cursor-pointer bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
                   <option value="available">Available</option>
                   <option value="occupied">Occupied</option>
                   <option value="not available">Not Available</option>
@@ -833,12 +876,12 @@ function PropertiesView() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-bold text-gray-700 mb-1">Description</label>
-                <textarea className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-black outline-none transition-all resize-none" rows={4} value={propForm.description || ''} onChange={e => setPropForm({ ...propForm, description: e.target.value })} />
+                <textarea className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none" rows={4} value={propForm.description || ''} onChange={e => setPropForm({ ...propForm, description: e.target.value })} />
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 pt-8">
               <Button variant="secondary" className="flex-1 py-3.5 cursor-pointer rounded-xl" onClick={() => setEditingProp(null)}>Cancel</Button>
-              <Button className="flex-1 py-3.5 bg-black text-white hover:bg-gray-800 cursor-pointer rounded-xl shadow-lg" onClick={handleUpdateProperty}>Update Property</Button>
+              <Button className="flex-1 py-3.5 text-white hover:opacity-90 cursor-pointer rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }} onClick={handleUpdateProperty}>Update Property</Button>
             </div>
           </div>
         </div>
@@ -905,26 +948,29 @@ function PaymentsView() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
+      <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h3 className="font-bold text-lg flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500"></span>Income Analytics</h3>
-            <p className="text-sm text-gray-500">Showing: <span className="font-bold text-black">{selectedLandlordId === 'all' ? 'All Landlords' : landlords.find(l => l.id === selectedLandlordId)?.name}</span></p>
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#10b981,#059669)' }}><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></span>
+              Income Analytics
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">Showing: <span className="font-bold text-gray-900">{selectedLandlordId === 'all' ? 'All Landlords' : landlords.find(l => l.id === selectedLandlordId)?.name}</span></p>
           </div>
-          <select value={selectedLandlordId} onChange={(e) => setSelectedLandlordId(e.target.value)} className="bg-gray-50 border border-gray-200 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full md:w-auto">
+          <select value={selectedLandlordId} onChange={(e) => setSelectedLandlordId(e.target.value)} className="bg-gray-50 border border-gray-200 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer font-medium w-full md:w-auto">
             <option value="all">All Landlords (Total)</option>
             {landlords.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
           </select>
         </div>
-        <div className="flex items-end justify-between h-48 gap-4 px-4 pt-4 border-t border-gray-50 overflow-x-auto">
+        <div className="flex items-end justify-between h-52 gap-3 px-2 pt-4 overflow-x-auto">
           {graphData.length === 0 ? <div className="w-full h-full flex items-center justify-center text-gray-400 italic">No income data</div> :
             graphData.map(([month, value]) => (
-              <div key={month} className="flex flex-col items-center flex-1 group min-w-[50px]">
-                <div className="relative w-full flex items-end justify-center h-40 bg-gray-50 rounded-2xl overflow-hidden ring-1 ring-gray-100">
-                  <div className="w-full mx-2 bg-black rounded-t-lg transition-all duration-700 ease-out group-hover:bg-gray-800" style={{ height: `${Math.max((value / maxIncome) * 100, 5)}%` }}></div>
-                  <div className="absolute top-2 bg-white/90 backdrop-blur shadow-sm border border-gray-100 text-black text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all">₱{value.toLocaleString()}</div>
+              <div key={month} className="flex flex-col items-center flex-1 group min-w-[55px]">
+                <div className="relative w-full flex items-end justify-center h-44 bg-gradient-to-b from-gray-50 to-white rounded-2xl overflow-hidden border border-gray-100">
+                  <div className="w-full mx-1.5 rounded-t-xl transition-all duration-700 ease-out group-hover:opacity-90" style={{ height: `${Math.max((value / maxIncome) * 100, 5)}%`, background: 'linear-gradient(180deg,#6366f1,#818cf8)' }}></div>
+                  <div className="absolute top-2 bg-white/95 backdrop-blur shadow-lg border border-gray-100 text-gray-900 text-[10px] font-bold px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:-translate-y-1">₱{value.toLocaleString()}</div>
                 </div>
-                <p className="mt-3 text-xs font-bold text-gray-400 uppercase tracking-wider">{month}</p>
+                <p className="mt-2.5 text-xs font-bold text-gray-400 uppercase tracking-wider">{month}</p>
               </div>
             ))
           }
@@ -1015,7 +1061,7 @@ function BookingsView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">All Bookings</h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">Manage and review booking requests.</p>
@@ -1111,7 +1157,7 @@ function ApplicationsView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">All Applications</h2>
           <p className="text-gray-500 mt-1 text-sm md:text-base">Review rental applications.</p>
