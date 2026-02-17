@@ -1060,6 +1060,27 @@ export default function LandlordDashboard({ session, profile }) {
       })
     }).catch(err => console.error("Email Error:", err));
 
+    // Send dedicated Move-In Welcome notification (Email + SMS with premium templates)
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'move_in',
+        recordId: occupancyId,
+        tenantName: `${candidate.tenant_profile?.first_name || ''} ${candidate.tenant_profile?.last_name || ''}`.trim(),
+        tenantPhone: candidate.tenant_profile?.phone,
+        tenantEmail: null,
+        propertyTitle: selectedProperty.title,
+        propertyAddress: selectedProperty.address || '',
+        startDate: startDate,
+        endDate: endDate,
+        landlordName: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+        landlordPhone: profile?.phone || '',
+        securityDeposit: securityDepositAmount,
+        rentAmount: selectedProperty.price || 0
+      })
+    }).catch(err => console.error('Move-in notification error:', err));
+
     // --- AUTO-SEND MOVE-IN PAYMENT BILL (Rent + Advance + Security Deposit) ---
     // Newly assigned tenants pay Rent + Advance + Security Deposit
     // Total should equal 60,000 (e.g., 20k rent + 20k advance + 20k security deposit)

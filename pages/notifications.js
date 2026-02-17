@@ -97,27 +97,56 @@ export default function NotificationsPage() {
       markAsRead(notif.id)
     }
 
-    // Navigate based on notification type
+    // 1. If the notification has an explicit link, use it
     if (notif.link) {
       router.push(notif.link)
-    } else {
-      // Default navigation based on type
-      if (notif.type === 'payment' || notif.type === 'payment_confirmed') {
-        router.push('/payments')
-      } else if (notif.type === 'maintenance') {
-        router.push('/maintenance')
-      } else if (notif.type === 'end_occupancy_request' || notif.type === 'end_request_approved' || notif.type === 'end_request_rejected') {
-        router.push('/dashboard')
-      } else if (notif.type === 'application' || notif.type.includes('application_')) {
-        router.push('/applications')
-      } else if (notif.type === 'message') {
-        router.push('/messages')
-      } else if (notif.type === 'booking_request' || notif.type === 'booking_approved' || notif.type === 'booking_rejected') {
-        router.push('/bookings')
-      } else {
-        // Fallback to applications for any unknown type
-        router.push('/applications')
-      }
+      return
+    }
+
+    // 2. Otherwise, route based on notification type
+    const type = notif.type || ''
+
+    // --- Payment-related types → /payments ---
+    if ([
+      'payment', 'payment_confirmed', 'payment_rejected', 'payment_request',
+      'payment_bill', 'payment_confirmation_needed', 'cash_payment',
+      'confirm_payment', 'cancel_bill', 'reject_payment',
+      'rent_bill_reminder', 'security_deposit_deduction'
+    ].includes(type)) {
+      router.push('/payments')
+    }
+    // --- Maintenance-related types → /maintenance ---
+    else if ([
+      'maintenance', 'maintenance_status', 'maintenance_request'
+    ].includes(type)) {
+      router.push('/maintenance')
+    }
+    // --- Booking-related types → /bookings ---
+    else if ([
+      'booking', 'booking_request', 'booking_approved', 'booking_rejected',
+      'booking_cancelled', 'booking_status', 'new_booking', 'booking_new',
+      'viewing_success'
+    ].includes(type)) {
+      router.push('/bookings')
+    }
+    // --- Message-related → /messages ---
+    else if (type === 'message') {
+      router.push('/messages')
+    }
+    // --- Occupancy / Move-out related → /dashboard ---
+    else if ([
+      'end_occupancy_request', 'end_request_approved', 'end_request_rejected',
+      'occupancy_assigned'
+    ].includes(type)) {
+      router.push('/dashboard')
+    }
+    // --- Application-related → /applications ---
+    else if (type === 'application' || type === 'assign_user' || type.includes('application_')) {
+      router.push('/applications')
+    }
+    // --- Fallback: go to notifications page ---
+    else {
+      router.push('/notifications')
     }
   }
 
@@ -248,8 +277,8 @@ export default function NotificationsPage() {
                 key={notif.id}
                 onClick={() => handleNotificationClick(notif)}
                 className={`group relative p-5 rounded-xl border transition-all cursor-pointer ${!notif.read
-                    ? 'bg-white border-black shadow-sm'
-                    : 'bg-gray-50 border-transparent hover:bg-white hover:border-gray-200'
+                  ? 'bg-white border-black shadow-sm'
+                  : 'bg-gray-50 border-transparent hover:bg-white hover:border-gray-200'
                   }`}
               >
                 <div className="flex justify-between items-start gap-4">
@@ -277,8 +306,8 @@ export default function NotificationsPage() {
                     <button
                       onClick={(e) => toggleReadStatus(notif.id, notif.read, e)}
                       className={`p-2 rounded-lg transition-colors cursor-pointer ${notif.read
-                          ? 'text-gray-400 hover:text-black hover:bg-gray-100'
-                          : 'text-green-500 hover:text-green-600 hover:bg-green-50'
+                        ? 'text-gray-400 hover:text-black hover:bg-gray-100'
+                        : 'text-green-500 hover:text-green-600 hover:bg-green-50'
                         }`}
                       title={notif.read ? 'Mark as unread' : 'Mark as read'}
                     >

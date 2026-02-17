@@ -2,8 +2,8 @@
 // Centralized API for sending SMS and Email notifications
 
 import { createClient } from '@supabase/supabase-js'
-import { sendBillNotification, sendNewBookingNotification } from '../../lib/sms'
-import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail } from '../../lib/email'
+import { sendBillNotification, sendNewBookingNotification, sendMoveInNotification } from '../../lib/sms'
+import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail, sendMoveInEmail } from '../../lib/email'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -250,6 +250,75 @@ export default async function handler(req, res) {
             }
 
             return res.status(200).json({ success: true, type: 'cash_payment', results })
+        }
+
+        // ============================================
+        // NOTIFICATION TYPE: MOVE-IN (For Tenant)
+        // ============================================
+        if (type === 'move_in') {
+            const { tenantEmail, tenantName, tenantPhone, propertyTitle, propertyAddress, startDate, endDate, landlordName, landlordPhone, securityDeposit, rentAmount } = req.body
+
+            const results = { email: false, sms: false }
+
+            // Resolve tenant email - fetch from auth if not provided
+            let resolvedEmail = tenantEmail
+            if (!resolvedEmail && recordId) {
+                try {
+                    // Try to get email from occupancy -> tenant -> auth
+                    const { data: occ } = await supabaseAdmin
+                        .from('tenant_occupancies')
+                        .select('tenant_id')
+                        .eq('id', recordId)
+                        .maybeSingle()
+                    if (occ?.tenant_id) {
+                        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(occ.tenant_id)
+                        resolvedEmail = userData?.user?.email
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch tenant email:', e)
+                }
+            }
+
+            // Send Move-In Email
+            if (resolvedEmail) {
+                try {
+                    await sendMoveInEmail({
+                        to: resolvedEmail,
+                        tenantName: tenantName || 'Tenant',
+                        propertyTitle: propertyTitle || 'Property',
+                        propertyAddress: propertyAddress || '',
+                        startDate: startDate,
+                        endDate: endDate,
+                        landlordName: landlordName || '',
+                        landlordPhone: landlordPhone || '',
+                        securityDeposit: securityDeposit || 0,
+                        rentAmount: rentAmount || 0
+                    })
+                    results.email = true
+                    console.log(`✅ Move-in email sent to ${resolvedEmail}`)
+                } catch (err) {
+                    console.error(`Move-in email failed for ${resolvedEmail}:`, err.message)
+                }
+            }
+
+            // Send Move-In SMS
+            const phone = formatPhoneNumber(tenantPhone)
+            if (phone) {
+                try {
+                    await sendMoveInNotification(phone, {
+                        propertyName: propertyTitle || 'Property',
+                        startDate: new Date(startDate).toLocaleDateString('en-US'),
+                        endDate: new Date(endDate).toLocaleDateString('en-US'),
+                        rentAmount: Number(rentAmount || 0).toLocaleString()
+                    })
+                    results.sms = true
+                    console.log(`✅ Move-in SMS sent to ${phone}`)
+                } catch (err) {
+                    console.error(`Move-in SMS failed for ${phone}:`, err.message)
+                }
+            }
+
+            return res.status(200).json({ success: true, type: 'move_in', results })
         }
 
         return res.status(400).json({ error: `Unknown notification type: ${type}` })

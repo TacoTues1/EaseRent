@@ -56,9 +56,9 @@ export default function TenantDashboard({ session, profile }) {
   const [submittingEndRequest, setSubmittingEndRequest] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewTarget, setReviewTarget] = useState(null)
-  const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+  const [dontShowReviewAgain, setDontShowReviewAgain] = useState(false)
 
   const [submittingRenewal, setSubmittingRenewal] = useState(false)
   const [cleanlinessRating, setCleanlinessRating] = useState(5)
@@ -862,7 +862,7 @@ export default function TenantDashboard({ session, profile }) {
   }, [pendingPayments, tenantOccupancy])
 
   async function checkPendingReviews(userId) {
-    // Fetch ended occupancies, ordered to be deterministic
+    // Fetch ended occupancies
     const { data: endedOccupancies } = await supabase
       .from('tenant_occupancies')
       .select('*, property:properties(id, title)')
@@ -875,10 +875,10 @@ export default function TenantDashboard({ session, profile }) {
     const { data: existingReviews } = await supabase.from('reviews').select('occupancy_id').eq('user_id', userId)
     const reviewedOccupancyIds = existingReviews?.map(r => r.occupancy_id) || []
 
-    // Check localStorage for dismissed reviews - Ensure ID string comparison
+    // Check localStorage for permanently dismissed reviews
     const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]').map(String)
 
-    // Find first occupancy that is ENDED, NOT REVIEWED, and NOT DISMISSED
+    // Find first occupancy that is ENDED, NOT REVIEWED, and NOT permanently DISMISSED
     const unreviewed = endedOccupancies.find(o =>
       !reviewedOccupancyIds.includes(o.id) &&
       !dismissedReviews.includes(String(o.id))
@@ -890,21 +890,26 @@ export default function TenantDashboard({ session, profile }) {
     }
   }
 
+  // Simply close the modal — does NOT permanently dismiss. Modal will reappear next load.
+  function handleCancelReview() {
+    setShowReviewModal(false)
+    setDontShowReviewAgain(false)
+  }
+
+  // Skip with optional "don't show again" — permanently dismisses only if checkbox is checked
   function handleSkipReview() {
-    if (reviewTarget) {
+    if (dontShowReviewAgain && reviewTarget) {
       const dismissedRaw = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
       const targetId = String(reviewTarget.id)
-
-      // Ensure we treat everything as strings for check
       const dismissedStrings = dismissedRaw.map(String)
 
       if (!dismissedStrings.includes(targetId)) {
-        // Push the string version for consistency
         dismissedRaw.push(targetId)
         localStorage.setItem('dismissedReviews', JSON.stringify(dismissedRaw))
       }
     }
     setShowReviewModal(false)
+    setDontShowReviewAgain(false)
   }
 
   async function submitReview() {
@@ -926,15 +931,14 @@ export default function TenantDashboard({ session, profile }) {
     if (error) {
       showToast.error("Failed to submit review")
       console.error(error)
-    }
-    else {
+    } else {
       showToast.success("Review submitted successfully!")
       setShowReviewModal(false)
-      // Reset all ratings
       setCleanlinessRating(5)
       setCommunicationRating(5)
       setLocationRating(5)
       setReviewComment('')
+      setDontShowReviewAgain(false)
       checkPendingReviews(session.user.id)
     }
     setSubmittingReview(false)
@@ -1769,8 +1773,8 @@ export default function TenantDashboard({ session, profile }) {
             <div className={`mb-0 mt-8 transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
                 <div className="mb-2 sm:mb-0 w-full sm:w-auto">
-                  <h2 className="text-2xl font-black text-black uppercase">All Properties</h2>
-                  <p className="text-sm text-gray-500">List of Properties</p>
+                  <h2 className="text-2xl font-black text-black">Recommended Properties</h2>
+                  <p className="text-sm text-gray-500">Based on your preferences</p>
                 </div>
                 <span onClick={handleSeeMore} className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1 hover:underline transition-all">
                   See More Properties<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -1944,20 +1948,25 @@ export default function TenantDashboard({ session, profile }) {
       {/* Review Modal */}
       {
         showReviewModal && reviewTarget && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={(e) => {
-            // Optional: clicking outside can also be treated as skip? 
-            // For now, let's keep it strictly on the button as requested or just preventing close on backdrop if strict.
-            // But existing code had onClick to close. Let's redirect to handleSkipReview to be safe/consistent.
-            handleSkipReview()
-          }}>
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleCancelReview}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 max-h-[90vh] overflow-y-auto relative" style={{ animation: 'reviewModalIn 0.25s ease-out' }} onClick={e => e.stopPropagation()}>
 
+              {/* Close (X) Button — just closes, doesn't permanently dismiss */}
+              <button
+                onClick={handleCancelReview}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+
+              {/* Header */}
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-600">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">How was your stay?</h2>
-                <p className="text-gray-500 text-sm">You recently ended your contract at <strong>{reviewTarget.property?.title}</strong> ({new Date(reviewTarget.start_date || reviewTarget.created_at).toLocaleDateString()} - {new Date(reviewTarget.contract_end_date || reviewTarget.end_date || new Date()).toLocaleDateString()}). Please rate your experience.</p>
+                <p className="text-gray-500 text-sm">You recently ended your contract at <strong>{reviewTarget.property?.title}</strong> ({new Date(reviewTarget.start_date || reviewTarget.created_at).toLocaleDateString()} - {new Date(reviewTarget.contract_end_date || reviewTarget.end_date || new Date()).toLocaleDateString()}). We&apos;d love to hear your feedback!</p>
               </div>
 
               {/* Rating Categories */}
@@ -2041,10 +2050,19 @@ export default function TenantDashboard({ session, profile }) {
                 value={reviewComment}
                 onChange={(e) => setReviewComment(e.target.value)}
                 placeholder="Write your experience here (optional)..."
-                className="w-full p-4 border border-gray-200 rounded-xl mb-4 text-sm bg-gray-50 focus:bg-white focus:border-black outline-none resize-none h-32"
+                className="w-full p-4 border border-gray-200 rounded-xl mb-4 text-sm bg-gray-50 focus:bg-white focus:border-black outline-none resize-none h-28"
               />
 
-
+              {/* Don't show again checkbox */}
+              <label className="flex items-center gap-2 mb-5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={dontShowReviewAgain}
+                  onChange={(e) => setDontShowReviewAgain(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                />
+                <span className="text-sm text-gray-500">Don&apos;t show this again for this property</span>
+              </label>
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
@@ -2052,7 +2070,7 @@ export default function TenantDashboard({ session, profile }) {
                   onClick={handleSkipReview}
                   className="flex-1 py-3.5 rounded-xl font-bold border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-all cursor-pointer"
                 >
-                  I Don&apos;t Want to Review
+                  Skip Review
                 </button>
                 <button
                   onClick={submitReview}
@@ -2066,6 +2084,14 @@ export default function TenantDashboard({ session, profile }) {
           </div>
         )
       }
+
+      {/* Review Modal Animation */}
+      <style jsx>{`
+        @keyframes reviewModalIn {
+          from { opacity: 0; transform: scale(0.95) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+      `}</style>
 
       {/* Contract Renewal Modal */}
       {

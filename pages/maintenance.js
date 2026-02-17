@@ -742,12 +742,23 @@ export default function MaintenancePage() {
                       <div className="w-full md:w-72 flex-shrink-0">
                         <p className="text-xs font-bold uppercase text-gray-400 mb-2">Proof ({req.attachment_urls.length})</p>
                         <div className="grid grid-cols-2 gap-2">
-                          {req.attachment_urls.map((url, index) => (
-                            <a key={index} href={url} target="_blank" rel="noreferrer" className="block group relative overflow-hidden rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all">
-                              <img src={url} alt={`Proof ${index + 1}`} className="w-full h-20 object-cover" />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
-                            </a>
-                          ))}
+                          {req.attachment_urls.map((url, index) => {
+                            const isVideo = /\.(mp4|mov|webm|avi|mkv|ogg)$/i.test(url)
+                            return (
+                              <a key={index} href={url} target="_blank" rel="noreferrer" className="block group relative overflow-hidden rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all">
+                                {isVideo ? (
+                                  <video src={url} className="w-full h-20 object-cover" muted playsInline preload="metadata" />
+                                ) : (
+                                  <img src={url} alt={`Proof ${index + 1}`} className="w-full h-20 object-cover" />
+                                )}
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                  {isVideo && (
+                                    <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-90 transition-opacity drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                  )}
+                                </div>
+                              </a>
+                            )
+                          })}
                         </div>
                       </div>
                     )}
@@ -874,24 +885,42 @@ export default function MaintenancePage() {
                     {/* File Previews */}
                     {proofFiles.length > 0 && (
                       <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                        {proofFiles.map((file, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`Preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
+                        {proofFiles.map((file, index) => {
+                          const isVideo = file.type.startsWith('video/')
+                          return (
+                            <div key={index} className="relative group">
+                              <div className="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
+                                {isVideo ? (
+                                  <video
+                                    src={URL.createObjectURL(file)}
+                                    className="w-full h-full object-cover"
+                                    muted
+                                    playsInline
+                                    preload="metadata"
+                                  />
+                                ) : (
+                                  <img
+                                    src={URL.createObjectURL(file)}
+                                    alt={`Preview ${index + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )}
+                                {isVideo && (
+                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <svg className="w-8 h-8 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeFile(index)}
+                                className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => removeFile(index)}
-                              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>

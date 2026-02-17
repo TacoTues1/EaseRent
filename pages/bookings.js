@@ -513,6 +513,27 @@ export default function BookingsPage() {
     }
     fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: assignBooking.id, type: 'assignment', customMessage: message }) }).catch(err => console.error('Email Error:', err))
 
+    // Send dedicated Move-In Welcome notification (Email + SMS with premium templates)
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'move_in',
+        recordId: occupancyId,
+        tenantName: `${assignBooking.tenant_profile?.first_name || ''} ${assignBooking.tenant_profile?.last_name || ''}`.trim(),
+        tenantPhone: assignBooking.tenant_profile?.phone,
+        tenantEmail: null, // Will be fetched server-side if needed
+        propertyTitle: selectedProp.title,
+        propertyAddress: '',
+        startDate: startDate,
+        endDate: endDate,
+        landlordName: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+        landlordPhone: profile?.phone || '',
+        securityDeposit: securityDepositAmount,
+        rentAmount: rentAmount
+      })
+    }).catch(err => console.error('Move-in notification error:', err))
+
     const dueDate = new Date(startDate)
     try {
       const { error: billError } = await supabase.from('payment_requests').insert({

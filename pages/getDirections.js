@@ -14,6 +14,9 @@ export default function GetDirections() {
   const isInitializing = useRef(false);
   const watchId = useRef(null);
 
+  // Track whether origin was manually typed (true) or from GPS (false)
+  const manualOrigin = useRef(false);
+
   // Throttle ref to prevent API spamming during navigation
   const lastRouteUpdate = useRef(0);
 
@@ -27,6 +30,7 @@ export default function GetDirections() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [isPanelHidden, setIsPanelHidden] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
+  const [noRouteAvailable, setNoRouteAvailable] = useState(false);
 
   // Autocomplete State
   const [suggestions, setSuggestions] = useState([]);
@@ -58,6 +62,27 @@ export default function GetDirections() {
     if (!meters && meters !== 0) return '--';
     if (meters < 1000) return `${Math.round(meters)} m`;
     return `${(meters / 1000).toFixed(1)} km`;
+  };
+
+  // Haversine formula: straight-line distance between two lat/lng points (in meters)
+  const haversineDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000; // Earth radius in meters
+    const toRad = (deg) => deg * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Estimate travel time from distance in meters (returns seconds)
+  const estimateTravelTime = (distanceMeters, mode) => {
+    // Average speeds in m/s
+    const speeds = {
+      driving: 16.67, // ~60 km/h average (accounting for traffic, stops)
+      bike: 4.44,     // ~16 km/h average cycling speed
+      foot: 1.39      // ~5 km/h average walking speed
+    };
+    return Math.round(distanceMeters / (speeds[mode] || speeds.driving));
   };
 
   // 1. Initialize Leaflet Map
@@ -115,26 +140,33 @@ export default function GetDirections() {
   // 2. Handle URL Params
   useEffect(() => {
     if (router.isReady) {
-      const { to, lat, lng, auto } = router.query;
+      const { to, lat, lng, auto, from, fromLat, fromLng } = router.query;
       if (to) setToAddress(to);
 
       const checkMapReady = setInterval(() => {
         if (mapInstance.current) {
           clearInterval(checkMapReady);
           import('leaflet').then((L) => {
+            // Set destination marker
             if (lat && lng) {
               const dLat = parseFloat(lat);
               const dLng = parseFloat(lng);
               setDestLocation({ lat: dLat, lng: dLng });
               addDestinationMarker(dLat, dLng, L);
-              // Auto locate if destination is present
-              handleShowMyLocation();
             } else if (to) {
-              geocodeAddress(to, L).then(() => {
-                // Auto locate after geocoding
-                handleShowMyLocation();
-              });
-            } else if (auto === 'true') {
+              geocodeAddress(to, L);
+            }
+
+            // Set origin: use "from" params if provided (user typed a location on property page)
+            if (from && fromLat && fromLng) {
+              const fLat = parseFloat(fromLat);
+              const fLng = parseFloat(fromLng);
+              setFromAddress(from);
+              setUserLocation({ lat: fLat, lng: fLng });
+              manualOrigin.current = true; // Mark as manual origin
+              updateUserMarker(fLat, fLng, L);
+            } else {
+              // No from address provided — auto-detect GPS location
               handleShowMyLocation();
             }
           });
@@ -147,11 +179,10 @@ export default function GetDirections() {
   // --- Auto-Route Trigger ---
   // This useEffect ensures that once both userLocation and destLocation are set,
   // the route calculation is triggered automatically.
+  // It only fires for the INITIAL route (when no routes exist yet).
+  // Manual origin changes (via selectSuggestion) handle their own route calculation.
   useEffect(() => {
     if (userLocation && destLocation && mapInstance.current) {
-      // Only calculate if we haven't already (or if forced by some other logic)
-      // But here we just want to ensure the initial line is drawn upon loading both points.
-      // We check if routes are empty to avoid re-fetching on every small update unless explicitly navigating
       if (routesData.driving.length === 0 && !isRouting) {
         import('leaflet').then(L => {
           calculateAllRoutes(userLocation, destLocation, L);
@@ -296,6 +327,41 @@ export default function GetDirections() {
     } catch (error) { return []; }
   };
 
+  // Build estimated routes for bike/foot from driving route data
+  const buildEstimatedRoutes = (drivingRoutes, mode) => {
+    if (!drivingRoutes || drivingRoutes.length === 0) return [];
+    return drivingRoutes.map(route => ({
+      ...route,
+      // Recalculate duration using realistic average speed for this mode
+      duration: estimateTravelTime(route.distance, mode),
+      // Keep same distance and geometry (road path is approximate for bike/foot)
+      _estimated: true
+    }));
+  };
+
+  // Draw a straight dashed line between two points (fallback when no road route exists)
+  const drawStraightLine = (start, end, L) => {
+    if (!mapInstance.current) return;
+    // Clear existing
+    routeLines.current.forEach(line => { if (line && line.remove) line.remove(); });
+    routeLines.current = [];
+
+    const coords = [[start.lat, start.lng], [end.lat, end.lng]];
+    const dashLine = L.polyline(coords, {
+      color: '#ef4444',
+      weight: 3,
+      opacity: 0.6,
+      dashArray: '10, 10',
+      lineJoin: 'round'
+    }).addTo(mapInstance.current);
+    routeLines.current.push(dashLine);
+
+    mapInstance.current.fitBounds(dashLine.getBounds(), {
+      paddingTopLeft: [50, 50],
+      paddingBottomRight: [50, 350]
+    });
+  };
+
   // Wrapped in useCallback to use in useEffect
   const calculateAllRoutes = useCallback(async (start, end, L, preserveMode = false) => {
     if (!start || !end) return;
@@ -304,15 +370,47 @@ export default function GetDirections() {
     if (!preserveMode) {
       setIsRouting(true);
       setStatusMsg('Calculating routes...');
+      setNoRouteAvailable(false);
     }
 
-    const [drivingRoutes, bikeRoutes, footRoutes] = await Promise.all([
-      fetchRouteData('driving', start, end),
-      fetchRouteData('bike', start, end),
-      fetchRouteData('foot', start, end)
-    ]);
+    // Only fetch driving from OSRM (the demo server only reliably supports driving)
+    const drivingRoutes = await fetchRouteData('driving', start, end);
+
+    // Derive bike & foot estimates from driving route distance
+    const bikeRoutes = buildEstimatedRoutes(drivingRoutes, 'bike');
+    const footRoutes = buildEstimatedRoutes(drivingRoutes, 'foot');
+
+    // FALLBACK: If no driving route (cross-ocean, different islands), use straight-line distance
+    if (drivingRoutes.length === 0) {
+      const straightDist = haversineDistance(start.lat, start.lng, end.lat, end.lng);
+      const fallbackRoute = {
+        distance: straightDist,
+        duration: estimateTravelTime(straightDist, 'driving'),
+        geometry: { coordinates: [[start.lng, start.lat], [end.lng, end.lat]] },
+        legs: [{ steps: [] }],
+        _estimated: true,
+        _straightLine: true
+      };
+      const fallbackBike = { ...fallbackRoute, duration: estimateTravelTime(straightDist, 'bike') };
+      const fallbackFoot = { ...fallbackRoute, duration: estimateTravelTime(straightDist, 'foot') };
+
+      setRoutesData({ driving: [fallbackRoute], bike: [fallbackBike], foot: [fallbackFoot] });
+      setNoRouteAvailable(true);
+
+      if (!preserveMode) {
+        setIsRouting(false);
+        setStatusMsg('');
+        setSelectedRouteIndex(0);
+        setSelectedMode('driving');
+      }
+
+      // Draw dashed straight line on map
+      drawStraightLine(start, end, L);
+      return;
+    }
 
     setRoutesData({ driving: drivingRoutes, bike: bikeRoutes, foot: footRoutes });
+    setNoRouteAvailable(false);
 
     if (!preserveMode) {
       setIsRouting(false);
@@ -324,7 +422,7 @@ export default function GetDirections() {
     // Determine mode: if preserving, keep current. If new calculation, pick best available.
     let modeToUse = selectedMode;
     if (!preserveMode) {
-      modeToUse = drivingRoutes.length > 0 ? 'driving' : bikeRoutes.length > 0 ? 'bike' : 'foot';
+      modeToUse = 'driving';
       setSelectedMode(modeToUse);
     }
 
@@ -332,9 +430,9 @@ export default function GetDirections() {
     const routeIdx = preserveMode ? selectedRouteIndex : 0;
 
     // Draw based on the determined mode
-    if (modeToUse === 'driving' && drivingRoutes.length > 0) drawRoutes(drivingRoutes, L, 'driving', routeIdx);
-    else if (modeToUse === 'bike' && bikeRoutes.length > 0) drawRoutes(bikeRoutes, L, 'bike', routeIdx);
-    else if (modeToUse === 'foot' && footRoutes.length > 0) drawRoutes(footRoutes, L, 'foot', routeIdx);
+    // All modes use the same geometry (driving road path), different times
+    const routesToDraw = modeToUse === 'bike' ? bikeRoutes : modeToUse === 'foot' ? footRoutes : drivingRoutes;
+    if (routesToDraw.length > 0) drawRoutes(routesToDraw, L, modeToUse, routeIdx);
   }, [selectedMode, isNavigating, selectedRouteIndex, drawRoutes]);
 
   // --- Real-time Route Updater ---
@@ -377,11 +475,27 @@ export default function GetDirections() {
     const lng = parseFloat(suggestion.lon);
     setFromAddress(suggestion.display_name);
     setShowSuggestions(false);
+
+    // Mark origin as manually typed (NOT from GPS)
+    manualOrigin.current = true;
+
+    // Reset existing route data so fresh routes are calculated from the new origin
+    setRoutesData({ driving: [], bike: [], foot: [] });
+    setSelectedRouteIndex(0);
+    setNoRouteAvailable(false);
+
+    // Clear existing route lines from the map
+    routeLines.current.forEach(line => {
+      if (line && line.remove) line.remove();
+    });
+    routeLines.current = [];
+
     setUserLocation({ lat, lng });
     if (mapInstance.current) {
       import('leaflet').then((L) => {
         updateUserMarker(lat, lng, L);
         if (destLocation) {
+          // Directly calculate routes from the NEW origin to destination
           calculateAllRoutes({ lat, lng }, destLocation, L);
         } else {
           mapInstance.current.setView([lat, lng], 15);
@@ -444,6 +558,9 @@ export default function GetDirections() {
     setStatusMsg('Locating...');
     setShowSuggestions(false);
 
+    // Mark origin as GPS-based (not manually typed)
+    manualOrigin.current = false;
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const lat = position.coords.latitude;
@@ -455,8 +572,6 @@ export default function GetDirections() {
         if (mapInstance.current) {
           import('leaflet').then((L) => {
             updateUserMarker(lat, lng, L);
-            // We rely on the useEffect([userLocation, destLocation]) to trigger the route
-            // so we don't need to explicity call calculateAllRoutes here, avoiding potential closure concurrency issues.
             if (!destLocation) {
               mapInstance.current.setView([lat, lng], 15);
             }
@@ -488,44 +603,65 @@ export default function GetDirections() {
       // Zoom out to see full route
       recenterMap();
     } else {
-      // Start Tracking
+      // Start Navigation
       if (!userLocation) {
-        alert("We need your location first. Locating you now...");
-        handleShowMyLocation();
+        alert("Please set a starting location first (type an address or tap the locate button).");
         return;
       }
 
-      if (!navigator.geolocation) return alert("Geolocation not supported");
-
       setIsNavigating(true);
-      setStatusMsg('Live Navigation Active');
       setIsPanelHidden(true); // Auto hide panel for better view
 
-      // Zoom in close with user at bottom of screen
-      if (mapInstance.current && userLocation) {
-        const offsetCenter = getOffsetCenter(userLocation.lat, userLocation.lng);
-        mapInstance.current.setView(offsetCenter, 18, { animate: true });
-      }
+      if (manualOrigin.current) {
+        // MANUAL ORIGIN (typed address like "New York")
+        // Do NOT use GPS watchPosition — the origin stays as the typed address
+        setStatusMsg('Route Preview Active');
 
-      watchId.current = navigator.geolocation.watchPosition(
-        (position) => {
-          const lat = position.coords.latitude;
-          const lng = position.coords.longitude;
-          const heading = position.coords.heading;
-          setUserLocation({ lat, lng });
-
-          if (mapInstance.current) {
-            import('leaflet').then((L) => {
-              updateUserMarker(lat, lng, L, heading);
-              // Position user at bottom of screen so they see road ahead
-              const offsetCenter = getOffsetCenter(lat, lng);
-              mapInstance.current.setView(offsetCenter, 18, { animate: true, duration: 0.3 });
+        // Zoom to show the full route between typed origin and destination
+        if (mapInstance.current && userLocation && destLocation) {
+          import('leaflet').then(L => {
+            const bounds = L.latLngBounds(
+              [userLocation.lat, userLocation.lng],
+              [destLocation.lat, destLocation.lng]
+            );
+            mapInstance.current.fitBounds(bounds, {
+              paddingTopLeft: [50, 80],
+              paddingBottomRight: [50, 120]
             });
-          }
-        },
-        (err) => console.error(err),
-        { enableHighAccuracy: true, maximumAge: 0 }
-      );
+          });
+        }
+      } else {
+        // GPS ORIGIN ("My Location")
+        // Use real-time GPS tracking for live navigation
+        if (!navigator.geolocation) return alert("Geolocation not supported");
+
+        setStatusMsg('Live Navigation Active');
+
+        // Zoom in close with user at bottom of screen
+        if (mapInstance.current && userLocation) {
+          const offsetCenter = getOffsetCenter(userLocation.lat, userLocation.lng);
+          mapInstance.current.setView(offsetCenter, 18, { animate: true });
+        }
+
+        watchId.current = navigator.geolocation.watchPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const heading = position.coords.heading;
+            setUserLocation({ lat, lng });
+
+            if (mapInstance.current) {
+              import('leaflet').then((L) => {
+                updateUserMarker(lat, lng, L, heading);
+                const offsetCenter = getOffsetCenter(lat, lng);
+                mapInstance.current.setView(offsetCenter, 18, { animate: true, duration: 0.3 });
+              });
+            }
+          },
+          (err) => console.error(err),
+          { enableHighAccuracy: true, maximumAge: 0 }
+        );
+      }
     }
   };
 
@@ -566,6 +702,12 @@ export default function GetDirections() {
 
   // Get current active route stats
   const activeRoute = routesData[selectedMode]?.[selectedRouteIndex];
+
+  // Helper: get duration for a specific mode (for the mode selector buttons)
+  const getModeDuration = (modeId) => {
+    const route = routesData[modeId]?.[0];
+    return route?.duration || null;
+  };
 
   return (
     <>
@@ -699,6 +841,17 @@ export default function GetDirections() {
                 {/* ACTION CARD */}
                 {activeRoute ? (
                   <div className="flex flex-col gap-4">
+                    {/* No Route Warning */}
+                    {noRouteAvailable && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                        <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                        <div>
+                          <p className="text-sm font-bold text-amber-800">No road route available</p>
+                          <p className="text-xs text-amber-600 mt-0.5">These locations are not connected by roads. Showing straight-line distance with estimated times.</p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Stats Row */}
                     <div className="flex items-end justify-between px-2">
                       <div>
@@ -706,12 +859,16 @@ export default function GetDirections() {
                         <div className="flex items-center gap-2 text-sm text-gray-500 font-medium">
                           <span>{formatDistance(activeRoute.distance)}</span>
                           <span>•</span>
-                          <span className="text-green-600">Fastest route</span>
+                          <span className={noRouteAvailable ? 'text-amber-600' : 'text-green-600'}>
+                            {noRouteAvailable ? 'Estimated (straight-line)' : (activeRoute._estimated ? 'Estimated time' : 'Fastest route')}
+                          </span>
                         </div>
                       </div>
-                      <button onClick={() => setShowSteps(true)} className="text-sm font-bold text-blue-600 hover:text-blue-700 underline underline-offset-4 cursor-pointer">
-                        View Steps
-                      </button>
+                      {!noRouteAvailable && (
+                        <button onClick={() => setShowSteps(true)} className="text-sm font-bold text-blue-600 hover:text-blue-700 underline underline-offset-4 cursor-pointer">
+                          View Steps
+                        </button>
+                      )}
                     </div>
 
                     {/* Controls Grid */}
@@ -722,7 +879,7 @@ export default function GetDirections() {
                         { id: 'bike', label: 'Bike', icon: <path d="M15.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM5 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm5.8-10l2.4-2.4.8.8c1.3 1.3 3 2.1 5.1 2.1V9c-1.5 0-2.7-.6-3.6-1.5l-1.9-1.9c-.5-.4-1-.6-1.6-.6s-1.1.2-1.4.6L7.8 8.4c-.4.4-.6.9-.6 1.4 0 .6.2 1.1.6 1.4L11 14v5h2v-6.2l-2.2-2.3zM19 12c-2.8 0-5 2.2-5 5s2.2 5 5 5 5-2.2 5-5-2.2-5-5-5zm0 8.5c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5z" /> },
                         { id: 'foot', label: 'Walk', icon: <path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7" /> }
                       ].map((mode) => {
-                        const duration = routesData[mode.id]?.[0]?.duration;
+                        const duration = getModeDuration(mode.id);
                         return (
                           <button
                             key={mode.id}

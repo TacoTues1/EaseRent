@@ -399,13 +399,30 @@ export default function PropertyDetail() {
     e.preventDefault();
     const coords = extractCoordinates(property?.location_link);
     const fullAddr = `${property.address}, ${property.city}`;
+
+    // Build query with destination info
+    const query = {
+      to: fullAddr,
+      lat: coords ? coords.lat : undefined,
+      lng: coords ? coords.lng : undefined
+    };
+
+    // If user typed a "from" address and a route was calculated, pass the from info too
+    if (locationFromAddress && locationFromAddress !== 'My Location' && locationRouteInfo) {
+      // We need the from coordinates — get them from the user marker on the mini-map
+      if (locationUserMarker.current) {
+        const latlng = locationUserMarker.current.getLatLng();
+        query.from = locationFromAddress;
+        query.fromLat = latlng.lat;
+        query.fromLng = latlng.lng;
+      } else {
+        query.from = locationFromAddress;
+      }
+    }
+
     router.push({
       pathname: '/getDirections',
-      query: {
-        to: fullAddr,
-        lat: coords ? coords.lat : undefined,
-        lng: coords ? coords.lng : undefined
-      }
+      query
     });
   };
 

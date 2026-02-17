@@ -76,7 +76,11 @@ export default function AllProperties() {
         })
         return newIndex
       })
-    }, 4000) // Change image every 4 seconds
+      // ⏱ SPEED CONTROL: Change the number below to adjust auto-slide speed
+      // 1450 = 1.45 seconds (fast, matches visitor dashboard)
+      // 3000 = 3 seconds (moderate)
+      // 5000 = 5 seconds (slow)
+    }, 2450)
 
     return () => clearInterval(interval)
   }, [properties])
