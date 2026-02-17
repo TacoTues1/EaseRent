@@ -18,32 +18,32 @@ export default function ForgotPassword() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         // Redirect user to this page after they click the email link
         // You will need to create 'pages/update-password.js' to handle the new password input
-        redirectTo: `${window.location.origin}/updatePassword`,
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://tessynted.vercel.app'}/updatePassword`,
       })
 
       if (error) throw error
-      
+
       showToast.success("Password reset link sent! Please check your email.", {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
 
       // Optional: Redirect back to login after a delay
       // setTimeout(() => router.push('/login'), 3000)
-      
+
     } catch (error) {
       showToast.error(error.message, {
-    duration: 4000,
-    progress: true,
-    position: "top-center",
-    transition: "bounceIn",
-    icon: '',
-    sound: true,
-  });
+        duration: 4000,
+        progress: true,
+        position: "top-center",
+        transition: "bounceIn",
+        icon: '',
+        sound: true,
+      });
     } finally {
       setLoading(false)
     }
@@ -51,7 +51,7 @@ export default function ForgotPassword() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-black">
-      
+
       <div className="flex-grow flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-gray-100">
           <div className="text-center">
@@ -115,7 +115,7 @@ export default function ForgotPassword() {
           </div>
         </div>
       </div>
-      
+
       <Footer />
     </div>
   )

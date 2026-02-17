@@ -324,9 +324,6 @@ export default function Login() {
                 <img src="/home.png" alt="TessyNTed Logo" className="w-20 h-20 object-contain" />
                 <span className="text-5xl font-black text-gray-900">TessyNTed</span>
               </div>
-              <h2 className={`text-2xl font-black text-gray-900 tracking-tight ${mounted ? 'animate-fadeInUp delay-200' : 'opacity-0'}`}>
-                Welcome
-              </h2>
               <p className={`mt-1 text-sm text-gray-500 font-medium ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
                 Sign in to your TessyNTed account
               </p>
