@@ -878,11 +878,17 @@ export default function TenantDashboard({ session, profile }) {
     // Check localStorage for permanently dismissed reviews
     const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]').map(String)
 
+    console.log('[ReviewModal] Ended occupancies:', endedOccupancies.map(o => ({ id: o.id, property: o.property?.title })))
+    console.log('[ReviewModal] Already reviewed IDs:', reviewedOccupancyIds)
+    console.log('[ReviewModal] Dismissed IDs from localStorage:', dismissedReviews)
+
     // Find first occupancy that is ENDED, NOT REVIEWED, and NOT permanently DISMISSED
     const unreviewed = endedOccupancies.find(o =>
       !reviewedOccupancyIds.includes(o.id) &&
       !dismissedReviews.includes(String(o.id))
     )
+
+    console.log('[ReviewModal] Unreviewed occupancy found:', unreviewed ? { id: unreviewed.id, property: unreviewed.property?.title } : 'NONE')
 
     if (unreviewed) {
       setReviewTarget(unreviewed)
@@ -890,14 +896,8 @@ export default function TenantDashboard({ session, profile }) {
     }
   }
 
-  // Simply close the modal — does NOT permanently dismiss. Modal will reappear next load.
+  // Close the modal — if "don't show again" is checked, permanently dismiss for this property
   function handleCancelReview() {
-    setShowReviewModal(false)
-    setDontShowReviewAgain(false)
-  }
-
-  // Skip with optional "don't show again" — permanently dismisses only if checkbox is checked
-  function handleSkipReview() {
     if (dontShowReviewAgain && reviewTarget) {
       const dismissedRaw = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
       const targetId = String(reviewTarget.id)
@@ -907,6 +907,28 @@ export default function TenantDashboard({ session, profile }) {
         dismissedRaw.push(targetId)
         localStorage.setItem('dismissedReviews', JSON.stringify(dismissedRaw))
       }
+    }
+    setShowReviewModal(false)
+    setDontShowReviewAgain(false)
+  }
+
+  // Skip Review — ALWAYS permanently dismisses the review for this property
+  function handleSkipReview() {
+    console.log('[ReviewModal] Skip clicked. reviewTarget:', reviewTarget?.id, 'property:', reviewTarget?.property?.title)
+    if (reviewTarget) {
+      const dismissedRaw = JSON.parse(localStorage.getItem('dismissedReviews') || '[]')
+      const targetId = String(reviewTarget.id)
+      const dismissedStrings = dismissedRaw.map(String)
+
+      if (!dismissedStrings.includes(targetId)) {
+        dismissedRaw.push(targetId)
+        localStorage.setItem('dismissedReviews', JSON.stringify(dismissedRaw))
+        console.log('[ReviewModal] ✅ Saved to localStorage. New dismissed list:', JSON.stringify(dismissedRaw))
+      } else {
+        console.log('[ReviewModal] Already in dismissed list')
+      }
+    } else {
+      console.log('[ReviewModal] ⚠️ No reviewTarget! Cannot save dismissal.')
     }
     setShowReviewModal(false)
     setDontShowReviewAgain(false)

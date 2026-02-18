@@ -183,8 +183,10 @@ export default async function handler(req, res) {
         let monthlyRent = parseFloat(request.rent_amount || 0);
         // If rent is 0 but item is renewal, try to fetch from property? Usually rent_amount is set.
 
+        // IMPORTANT: Skip for move-in payments! Move-in advance is a deposit, not a prepayment for future months.
+        // Only renewal payments should create future "paid" bill records.
         let extraMonths = 0;
-        if (monthlyRent > 0) {
+        if (monthlyRent > 0 && !request.is_move_in_payment) {
             const advanceAmount = parseFloat(request.advance_amount || 0);
             if (advanceAmount > 0) {
                 extraMonths = Math.floor(advanceAmount / monthlyRent);

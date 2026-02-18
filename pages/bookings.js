@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import Lottie from "lottie-react"
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
-import { createNotification } from '../lib/notifications'
-import Lottie from "lottie-react"
+import { useEffect, useState } from 'react'
 import loadingAnimation from "../assets/loading.json"
+import { createNotification } from '../lib/notifications'
+import { supabase } from '../lib/supabaseClient'
 
 export default function BookingsPage() {
   const router = useRouter()
@@ -1392,7 +1392,7 @@ export default function BookingsPage() {
                   </div>
                   <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Electricity reminders are sent automatically.
+                    Electricity and Water reminders are sent automatically.
                   </p>
                 </div>
 

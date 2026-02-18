@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
-import { sendNotificationEmail, sendContractNearingEndEmail } from '../../lib/email'
-import { sendSMS, sendBookingReminder, sendUnreadMessageNotification, sendContractNearingEnd } from '../../lib/sms'
+import { createClient } from '@supabase/supabase-js';
+import { sendContractNearingEndEmail, sendNotificationEmail } from '../../lib/email';
+import { sendBookingReminder, sendContractNearingEnd, sendSMS, sendUnreadMessageNotification } from '../../lib/sms';
 
 // Initialize Admin Client
 const supabaseAdmin = createClient(
@@ -19,7 +19,7 @@ function formatPhoneNumber(phone) {
 }
 
 export default async function handler(req, res) {
-  const results = { bookings_processed: 0, messages_processed: 0, rent_reminders_sent: 0, wifi_reminders_sent: 0, electricity_reminders_sent: 0, errors: 0, skipped: null }
+  const results = { bookings_processed: 0, messages_processed: 0, rent_reminders_sent: 0, wifi_reminders_sent: 0, electricity_reminders_sent: 0, water_reminders_sent: 0, errors: 0, skipped: null }
 
   try {
     // ====================================================
@@ -507,10 +507,67 @@ export default async function handler(req, res) {
       }
 
       console.log(`[Electric Reminder] ========================================`);
+
+      // ====================================================
+      // F. WATER BILL DUE DATE NOTIFICATIONS (First Week of Month - Daily Reminders)
+      // Sends notifications every day at 8:00 AM on days 1, 2, 3 of the month
+      // Water is due in the first week, so we remind at the start of that week
+      // ====================================================
+      console.log(`[Water Reminder] ========================================`);
+      console.log(`[Water Reminder] Today is day ${todayDay} of the month`);
+
+      // Send water reminders on days 1, 2, 3 of every month (start of first week)
+      if (todayDay >= 1 && todayDay <= 3) {
+        console.log(`[Water Reminder] First 3 days of month - sending to ALL active tenants`);
+
+        for (const occ of (allOccupancies || [])) {
+          if (!occ.tenant) continue;
+
+          // Check if notification already sent TODAY
+          const todayStartW = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
+          const todayEndW = new Date(todayYear, todayMonth, todayDay, 23, 59, 59, 999);
+
+          const { data: todayNotificationW } = await supabaseAdmin
+            .from('notifications')
+            .select('id')
+            .eq('recipient', occ.tenant_id)
+            .eq('type', 'water_due_reminder')
+            .gte('created_at', todayStartW.toISOString())
+            .lte('created_at', todayEndW.toISOString())
+            .limit(1);
+
+          const alreadySentTodayW = todayNotificationW && todayNotificationW.length > 0;
+
+          console.log(`[Water Reminder] Processing ${occ.tenant?.first_name}: alreadySentToday=${alreadySentTodayW}`);
+
+          if (!alreadySentTodayW) {
+            const monthYear = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const daysText = todayDay === 1 ? '3 days' : todayDay === 2 ? '2 days' : '1 day';
+
+            const waterMessage = `Water Bill Reminder (${daysText} into first week): Your water bill for "${occ.property?.title || 'your property'}" is due in the first week of ${monthYear}. Please ensure timely payment to avoid service interruption.`;
+
+            console.log(`[Water Reminder] Sending reminder (day ${todayDay}): ${waterMessage}`);
+
+            occ.tenant.profile_id = occ.tenant.id;
+            await sendUtilityReminder(supabaseAdmin, occ.tenant, 'water_due_reminder',
+              waterMessage,
+              `💧 Water Bill Due Reminder (${daysText} into first week)`
+            );
+            results.water_reminders_sent = (results.water_reminders_sent || 0) + 1;
+            console.log(`[Water Reminder] ✅ Reminder sent to ${occ.tenant?.first_name}`);
+          } else {
+            console.log(`[Water Reminder] ⏭️ Skipped ${occ.tenant?.first_name} - already sent today`);
+          }
+        }
+      } else {
+        console.log(`[Water Reminder] Not first 3 days of month - skipping water reminders`);
+      }
+
+      console.log(`[Water Reminder] ========================================`);
     } // End of shouldSendBillReminders check
 
     // ====================================================
-    // F. CONTRACT NEARING END REMINDERS (40 Days Before End)
+    // G. CONTRACT NEARING END REMINDERS (40 Days Before End)
     // Sends once when contract is exactly 40 days from expiry
     // ====================================================
     console.log(`[Contract Nearing End] ========================================`);
@@ -639,7 +696,7 @@ export default async function handler(req, res) {
     console.log(`[Contract Nearing End] ========================================`);
 
     // ====================================================
-    // G. APPLY LATE FEES (Day after due date)
+    // H. APPLY LATE FEES (Day after due date)
     // Run daily to check for overdue bills and apply penalty
     // ====================================================
     console.log(`[Late Fee Check] ========================================`);
@@ -651,12 +708,12 @@ export default async function handler(req, res) {
         const todayISO = new Date().toISOString();
 
         // Fetch all PENDING bills that are PAST DUE
-        // And have an occupancy linked
+        // And have an occupancy linked — include security deposit fields
         const { data: overdueBills, error: overdueError } = await supabaseAdmin
           .from('payment_requests')
           .select(`
             *,
-            occupancy:tenant_occupancies(id, late_payment_fee, tenant_id),
+            occupancy:tenant_occupancies(id, late_payment_fee, tenant_id, landlord_id, security_deposit, security_deposit_used),
             property:properties(title)
           `)
           .eq('status', 'pending')
@@ -697,25 +754,77 @@ export default async function handler(req, res) {
                 } else {
                   results.late_fees_applied = (results.late_fees_applied || 0) + 1;
 
-                  // Notify Tenant
-                  const message = `A late payment fee of ₱${lateFee.toLocaleString()} has been added to your rent bill for "${bill.property?.title}". Total due: ₱${(
+                  // === AUTO-DEDUCT PENALTY FROM SECURITY DEPOSIT ===
+                  const securityDeposit = parseFloat(bill.occupancy?.security_deposit || 0);
+                  const securityDepositUsed = parseFloat(bill.occupancy?.security_deposit_used || 0);
+                  const availableDeposit = securityDeposit - securityDepositUsed;
+
+                  let deductedFromDeposit = 0;
+
+                  if (availableDeposit > 0) {
+                    // Deduct penalty from security deposit (up to available amount)
+                    deductedFromDeposit = Math.min(lateFee, availableDeposit);
+                    const newDepositUsed = securityDepositUsed + deductedFromDeposit;
+
+                    const { error: depositUpdateError } = await supabaseAdmin
+                      .from('tenant_occupancies')
+                      .update({ security_deposit_used: newDepositUsed })
+                      .eq('id', bill.occupancy.id);
+
+                    if (depositUpdateError) {
+                      console.error(`[Late Fee Check] Failed to update security deposit for occupancy ${bill.occupancy.id}:`, depositUpdateError);
+                      deductedFromDeposit = 0; // Reset if failed
+                    } else {
+                      console.log(`[Late Fee Check] ✅ Deducted ₱${deductedFromDeposit.toLocaleString()} from security deposit (Remaining: ₱${(availableDeposit - deductedFromDeposit).toLocaleString()})`);
+
+                      // Notify Tenant about security deposit deduction
+                      const depositMsg = `₱${deductedFromDeposit.toLocaleString()} has been auto-deducted from your security deposit as a late payment penalty for "${bill.property?.title}". Remaining deposit: ₱${(availableDeposit - deductedFromDeposit).toLocaleString()}.`;
+                      await supabaseAdmin.from('notifications').insert({
+                        recipient: bill.tenant,
+                        actor: bill.landlord || bill.occupancy?.landlord_id,
+                        type: 'security_deposit_deduction',
+                        message: depositMsg,
+                        link: '/payments'
+                      });
+
+                      // Also notify the Landlord
+                      if (bill.occupancy?.landlord_id) {
+                        await supabaseAdmin.from('notifications').insert({
+                          recipient: bill.occupancy.landlord_id,
+                          actor: bill.tenant,
+                          type: 'security_deposit_deduction',
+                          message: `₱${deductedFromDeposit.toLocaleString()} has been auto-deducted from tenant's security deposit as a late payment penalty for "${bill.property?.title}".`,
+                          link: '/dashboard'
+                        });
+                      }
+
+                      results.deposit_deductions = (results.deposit_deductions || 0) + 1;
+                    }
+                  } else {
+                    console.log(`[Late Fee Check] No available security deposit for occupancy ${bill.occupancy?.id} — penalty added to bill only.`);
+                  }
+
+                  // Notify Tenant about late fee
+                  const totalDue = (
                     (parseFloat(bill.rent_amount) || 0) +
                     (parseFloat(bill.water_bill) || 0) +
                     (parseFloat(bill.electrical_bill) || 0) +
                     (parseFloat(bill.wifi_bill) || 0) +
                     newOtherBills
-                  ).toLocaleString()}. Please pay immediately.`;
+                  );
+                  let message = `A late payment fee of ₱${lateFee.toLocaleString()} has been added to your rent bill for "${bill.property?.title}". Total due: ₱${totalDue.toLocaleString()}. Please pay immediately.`;
+                  if (deductedFromDeposit > 0) {
+                    message += ` ₱${deductedFromDeposit.toLocaleString()} was deducted from your security deposit.`;
+                  }
 
                   await supabaseAdmin.from('notifications').insert({
                     recipient: bill.tenant,
-                    actor: bill.landlord, // Landlord or System
-                    type: 'payment_late_fee', // You might need to handle this type in frontend or just use generic
+                    actor: bill.landlord,
+                    type: 'payment_late_fee',
                     message: message,
                     link: '/payments'
                   });
 
-                  // Try to send SMS if we have tenant phone (would need extra fetch or join)
-                  // For now, in-app notification is critical.
                   console.log(`[Late Fee Check] Applied late fee to bill ${bill.id}`);
                 }
               } else {

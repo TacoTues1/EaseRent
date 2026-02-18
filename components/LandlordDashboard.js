@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { createNotification } from '../lib/notifications'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
+import { useEffect, useState } from 'react'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { createNotification } from '../lib/notifications'
+import { supabase } from '../lib/supabaseClient'
 import Footer from './Footer'
-import Lottie from "lottie-react"
-import loadingAnimation from "../assets/loading.json"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 const CountUpAnimation = ({ target, duration = 1000, prefix = '', suffix = '', decimals = 0 }) => {
   const [count, setCount] = useState(0);
@@ -1470,7 +1468,7 @@ export default function LandlordDashboard({ session, profile }) {
                     <div className="flex items-center bg-gray-100 rounded-xl p-1">
                       {[
                         { key: 'all', label: 'All' },
-                        { key: 'water', label: 'Water Bill' },
+                        
                         { key: 'other', label: 'Other Bill' },
                       ].map(tab => (
                         <button
@@ -1985,7 +1983,7 @@ export default function LandlordDashboard({ session, profile }) {
                     <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black bg-white" placeholder="e.g. 10" value={wifiDueDay} onChange={(e) => setWifiDueDay(e.target.value)} />
                   </div>
                   <p className="text-[10px] text-gray-400 mt-2">
-                    Note: Electricity reminders are sent automatically (due date is always 1st week of the month).
+                    Note: Electricity and Water reminders are sent automatically (due date is always 1st week of the month).
                   </p>
                 </div>
               </div>

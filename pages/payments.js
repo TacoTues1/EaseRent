@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import Lottie from "lottie-react"
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
-import Link from 'next/link'
-import Lottie from "lottie-react"
+import { useEffect, useState } from 'react'
 import loadingAnimation from "../assets/loading.json"
 import StripePaymentForm from '../components/StripePaymentForm'
+import { supabase } from '../lib/supabaseClient'
 
 export default function PaymentsPage() {
   const router = useRouter()
@@ -1345,8 +1345,9 @@ export default function PaymentsPage() {
       // Calculate how many months this payment covers
       // For renewal payments: rent_amount (1 month) + advance_amount (1 month) = 2 months total
       // The original bill covers month 1, extraMonths creates additional "paid" bills for month 2+
+      // IMPORTANT: Skip for move-in payments! Move-in advance is a deposit, not a prepayment for future months.
       let extraMonths = 0;
-      if (monthlyRent > 0) {
+      if (monthlyRent > 0 && !request.is_move_in_payment) {
         // If there's an advance_amount field, calculate additional months from that
         // For renewals: advance_amount = 1 month rent, so extraMonths = 1
         const advanceAmount = parseFloat(request.advance_amount || 0);
@@ -1922,7 +1923,7 @@ export default function PaymentsPage() {
               {/* Info about automatic billing */}
               <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <p className="text-xs text-gray-600">
-                  <span className="font-bold">Note:</span> House rent payment bills are sent automatically 3 days before due date. WiFi and electricity only send <strong>reminder notifications</strong> (SMS & email).
+                  <span className="font-bold">Note:</span> House rent payment bills are sent automatically 3 days before due date. WiFi, electricity, and water only send <strong>reminder notifications</strong> (SMS & email).
                 </p>
               </div>
 
