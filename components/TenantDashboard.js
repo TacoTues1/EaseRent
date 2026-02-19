@@ -878,9 +878,9 @@ export default function TenantDashboard({ session, profile }) {
     // Check localStorage for permanently dismissed reviews
     const dismissedReviews = JSON.parse(localStorage.getItem('dismissedReviews') || '[]').map(String)
 
-    console.log('[ReviewModal] Ended occupancies:', endedOccupancies.map(o => ({ id: o.id, property: o.property?.title })))
-    console.log('[ReviewModal] Already reviewed IDs:', reviewedOccupancyIds)
-    console.log('[ReviewModal] Dismissed IDs from localStorage:', dismissedReviews)
+    // console.log('[ReviewModal] Ended occupancies:', endedOccupancies.map(o => ({ id: o.id, property: o.property?.title })))
+    // console.log('[ReviewModal] Already reviewed IDs:', reviewedOccupancyIds)
+    // console.log('[ReviewModal] Dismissed IDs from localStorage:', dismissedReviews)
 
     // Find first occupancy that is ENDED, NOT REVIEWED, and NOT permanently DISMISSED
     const unreviewed = endedOccupancies.find(o =>
@@ -1085,7 +1085,7 @@ export default function TenantDashboard({ session, profile }) {
       return
     }
 
-    // Notify landlord
+    // Notify landlord (Internal)
     await createNotification({
       recipient: tenantOccupancy.landlord_id,
       actor: session.user.id,
@@ -1095,6 +1095,24 @@ export default function TenantDashboard({ session, profile }) {
     })
 
     showToast.success('Renewal request submitted!')
+
+    // Notify landlord (SMS & Email)
+    try {
+      await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'renewal_request',
+          recordId: tenantOccupancy.id, // REQUIRED by notify.js
+          landlordId: tenantOccupancy.landlord_id,
+          tenantName: `${profile.first_name} ${profile.last_name}`.trim(),
+          propertyTitle: tenantOccupancy.property?.title,
+          proposedDate: renewalMeetingDate
+        })
+      })
+    } catch (err) {
+      console.error('Failed to send renewal notification:', err)
+    }
     setRenewalRequested(true)
     setCanRenew(false)
     setShowRenewalModal(false)
@@ -1456,6 +1474,19 @@ export default function TenantDashboard({ session, profile }) {
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
                         <p className="text-sm font-bold text-gray-800">Electricity Bill</p>
+                      </div>
+                      <p className="text-xs text-gray-500 leading-snug pl-1">
+                        Friendly reminder: The receipt usually arrives during the <strong>1st week of the month</strong>.
+                      </p>
+                    </div>
+
+                    {/* Water */}
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                        </div>
+                        <p className="text-sm font-bold text-gray-800">Water Bill</p>
                       </div>
                       <p className="text-xs text-gray-500 leading-snug pl-1">
                         Friendly reminder: The receipt usually arrives during the <strong>1st week of the month</strong>.
@@ -1959,8 +1990,19 @@ export default function TenantDashboard({ session, profile }) {
               </div>
 
               <div className="flex gap-2">
-                <button onClick={() => setShowEndRequestModal(false)} className="flex-1 py-2 bg-gray-100 rounded-xl cursor-pointer">Cancel</button>
-                <button onClick={requestEndOccupancy} disabled={submittingEndRequest} className="flex-1 py-2 bg-black text-white rounded-xl cursor-pointer">Submit</button>
+                <button onClick={() => setShowEndRequestModal(false)} className="flex-1 py-2 bg-gray-100 rounded-xl cursor-pointer hover:bg-gray-200 transition-colors">Cancel</button>
+                <button
+                  onClick={requestEndOccupancy}
+                  disabled={submittingEndRequest}
+                  className={`flex-1 py-2 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${submittingEndRequest ? 'bg-black/70 cursor-not-allowed' : 'bg-black hover:bg-gray-800 cursor-pointer'}`}
+                >
+                  {submittingEndRequest ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      Submitting...
+                    </>
+                  ) : 'Submit'}
+                </button>
               </div>
             </div>
           </div>
@@ -2097,9 +2139,14 @@ export default function TenantDashboard({ session, profile }) {
                 <button
                   onClick={submitReview}
                   disabled={submittingReview}
-                  className={`flex-1 py-3.5 rounded-xl font-bold text-white shadow-lg transition-all ${submittingReview ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 hover:shadow-xl cursor-pointer'}`}
+                  className={`flex-1 py-3.5 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${submittingReview ? 'bg-gray-400 cursor-not-allowed' : 'bg-black hover:bg-gray-800 hover:shadow-xl cursor-pointer'}`}
                 >
-                  {submittingReview ? 'Submitting...' : 'Submit Review'}
+                  {submittingReview ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      Submitting...
+                    </>
+                  ) : 'Submit Review'}
                 </button>
               </div>
             </div>
@@ -2167,9 +2214,14 @@ export default function TenantDashboard({ session, profile }) {
                 </button>
                 <button
                   onClick={requestContractRenewal}
-                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold cursor-pointer hover:bg-indigo-700 shadow-lg"
+                  className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition-all ${submittingRenewal ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'}`}
                 >
-                  Submit Request
+                  {submittingRenewal ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      Sending Request...
+                    </>
+                  ) : 'Submit Request'}
                 </button>
               </div>
             </div>

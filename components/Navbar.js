@@ -486,9 +486,9 @@ export default function Navbar() {
 
   const isActive = (path) => router.pathname === path
 
-  // if (profile?.role === 'admin') {
-  //     return null
-  // }
+  if (profile?.role === 'admin') {
+    return null
+  }
 
   // --- Public Navbar ---
   if (!session) {

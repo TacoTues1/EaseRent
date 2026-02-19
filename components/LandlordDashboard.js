@@ -29,7 +29,7 @@ const CountUpAnimation = ({ target, duration = 1000, prefix = '', suffix = '', d
   }, [target, duration]);
 
   return (
-    <>{prefix}{Number(count).toFixed(decimals)}{suffix}</>
+    <>{prefix}{Number(count).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</>
   );
 };
 
@@ -113,6 +113,7 @@ export default function LandlordDashboard({ session, profile }) {
   const [monthlyChartData, setMonthlyChartData] = useState([])
   const [sendingStatement, setSendingStatement] = useState(false)
   const [chartFilter, setChartFilter] = useState('all') // 'all', 'water', 'other'
+  const [totalIncome, setTotalIncome] = useState(0)
 
   const router = useRouter()
 
@@ -142,7 +143,8 @@ export default function LandlordDashboard({ session, profile }) {
         loadPendingEndRequests(),
         loadPendingRenewalRequests(),
         loadDashboardTasks(),
-        loadMonthlyIncome()
+        loadMonthlyIncome(),
+        loadTotalIncome()
       ]).then(() => {
         setStatsLoaded(true)
       })
@@ -158,6 +160,33 @@ export default function LandlordDashboard({ session, profile }) {
     }
   }, [selectedStatementMonth, selectedStatementYear])
 
+  // Load total income from 'payment_requests' table (status = paid)
+  async function loadTotalIncome() {
+    try {
+      const { data } = await supabase
+        .from('payment_requests')
+        .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills')
+        .eq('landlord', session.user.id)
+        .eq('status', 'paid')
+
+      const total = (data || []).reduce((sum, p) => {
+        const t = parseFloat(p.amount_paid || 0) || (
+          parseFloat(p.rent_amount || 0) +
+          parseFloat(p.security_deposit_amount || 0) +
+          parseFloat(p.advance_amount || 0) +
+          parseFloat(p.water_bill || 0) +
+          parseFloat(p.electrical_bill || 0) +
+          parseFloat(p.wifi_bill || 0) +
+          parseFloat(p.other_bills || 0)
+        )
+        return sum + t
+      }, 0)
+
+      setTotalIncome(total)
+    } catch (err) {
+      console.error('Error loading total income:', err)
+    }
+  }
   // Auto-calculate end date when start date or contract months change
   useEffect(() => {
     if (startDate && contractMonths) {
@@ -608,7 +637,11 @@ export default function LandlordDashboard({ session, profile }) {
     setRenewalEndDate('')
   }
 
-  // Process renewal after modal confirmation
+  const [processingRenewal, setProcessingRenewal] = useState(false)
+  const [processingBookingId, setProcessingBookingId] = useState(null)
+  const [processingEndRequest, setProcessingEndRequest] = useState(false) // For modal actions
+  const [processingEndRequestId, setProcessingEndRequestId] = useState(null) // For inline actions (if any)
+
   // Process renewal after modal confirmation
   async function confirmRenewalRequest() {
     const { occupancy, action } = renewalModal
@@ -628,146 +661,193 @@ export default function LandlordDashboard({ session, profile }) {
       }
     }
 
-    const newEndDateObj = new Date(renewalEndDate) // Use the editable date
+    setProcessingRenewal(true)
+    try {
+      const newEndDateObj = new Date(renewalEndDate) // Use the editable date
 
-    const updateData = {
-      renewal_status: approved ? 'approved' : 'rejected',
-      renewal_requested: false
-    }
+      const updateData = {
+        renewal_status: approved ? 'approved' : 'rejected',
+        renewal_requested: false
+      }
 
-    if (approved) {
-      updateData.contract_end_date = renewalEndDate
-      updateData.renewal_signing_date = renewalSigningDate // Store signing date
-    }
+      if (approved) {
+        updateData.contract_end_date = renewalEndDate
+        updateData.renewal_signing_date = renewalSigningDate // Store signing date
+      }
 
-    const { error } = await supabase
-      .from('tenant_occupancies')
-      .update(updateData)
-      .eq('id', occupancy.id)
+      const { error } = await supabase
+        .from('tenant_occupancies')
+        .update(updateData)
+        .eq('id', occupancy.id)
 
-    if (error) {
-      showToast.error('Failed to process renewal request')
-      return
-    }
+      if (error) {
+        showToast.error('Failed to process renewal request')
+        return
+      }
 
-    // Notify tenant
-    let message = ''
-    if (approved) {
-      message = `Your contract renewal for "${occupancy.property?.title}" has been approved! New contract end date: ${newEndDateObj.toLocaleDateString()}. Please come for contract signing on ${new Date(renewalSigningDate).toLocaleDateString()}.`
-    } else {
-      message = `Your contract renewal request for "${occupancy.property?.title}" was not approved. Please contact your landlord for more details.`
-    }
+      // Notify tenant
+      let message = ''
+      if (approved) {
+        message = `Your contract renewal for "${occupancy.property?.title}" has been approved! New contract end date: ${newEndDateObj.toLocaleDateString()}. Please come for contract signing on ${new Date(renewalSigningDate).toLocaleDateString()}.`
+      } else {
+        message = `Your contract renewal request for "${occupancy.property?.title}" was not approved. Please contact your landlord for more details.`
+      }
 
-    await createNotification({
-      recipient: occupancy.tenant_id,
-      actor: session.user.id,
-      type: approved ? 'contract_renewal_approved' : 'contract_renewal_rejected',
-      message: message,
-      link: '/dashboard'
-    })
+      await createNotification({
+        recipient: occupancy.tenant_id,
+        actor: session.user.id,
+        type: approved ? 'contract_renewal_approved' : 'contract_renewal_rejected',
+        message: message,
+        link: '/dashboard'
+      })
 
-    // --- AUTO-SEND RENEWAL PAYMENT BILL (Rent + Advance) ---
-    // Renewal payment = 1 month rent + 1 month advance = 2 months total
-    // After payment, tenant's next due date will advance by 2 months from contract end
-    // 
-    // Example: Contract ends April 2, 2026
-    // - Rent covers: April → May (due May 2)
-    // - Advance covers: May → June (due June 2, auto-created when confirmed)
-    // - Next bill: June → July (due July 2)
-    //
-    // Security deposit is NOT required for renewal (it carries forward from original contract)
-    if (approved) {
-      const rentAmount = occupancy.property?.price || 0
-      const advanceAmount = rentAmount // Advance equals one month's rent (total = 2 months)
-
-      // Calculate the due date:
-      // Try to find the ACTUAL next due date based on payment history
-      // This prevents "skipping" months if there's a gap between last payment and contract end
-      // Default to contract end date if no history
-      let renewalBillDueDate = new Date(occupancy.contract_end_date);
+      // Notify tenant via Email & SMS
+      const landlordName = profile
+        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+        : `${session?.user?.user_metadata?.first_name || ''} ${session?.user?.user_metadata?.last_name || ''}`.trim();
 
       try {
-        const { data: lastPaidBills } = await supabase
-          .from('payment_requests')
-          .select('due_date, rent_amount, advance_amount')
-          .eq('occupancy_id', occupancy.id)
-          .or('status.eq.paid,status.eq.pending_confirmation')
-          .gt('rent_amount', 0)
-          .order('due_date', { ascending: false })
-          .limit(1);
+        const notifyRes = await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'renewal_status',
+            recordId: occupancy.id, // REQUIRED by notify.js
+            tenantId: occupancy.tenant_id,
+            tenantName: `${occupancy.tenant?.first_name || ''} ${occupancy.tenant?.last_name || ''}`.trim(),
+            tenantPhone: occupancy.tenant?.phone,
+            propertyTitle: occupancy.property?.title,
+            status: approved ? 'approved' : 'rejected',
+            newEndDate: renewalEndDate,
+            signingDate: renewalSigningDate,
+            landlordName: landlordName || 'Landlord'
+          })
+        })
+        if (!notifyRes.ok) {
+          console.error('Notify API failed:', await notifyRes.text())
+        }
+      } catch (error) {
+        console.error('Failed to send renewal notification:', error)
+      }
 
-        if (lastPaidBills && lastPaidBills.length > 0) {
-          const lastBill = lastPaidBills[0];
-          const lastDate = new Date(lastBill.due_date);
-          let monthsCovered = 1;
-          // Calculate how many months the last bill covered
-          if (lastBill.rent_amount > 0 && lastBill.advance_amount > 0) {
-            monthsCovered = 1 + Math.floor(lastBill.advance_amount / lastBill.rent_amount);
-          } else if (lastBill.rent_amount > 0 && lastBill.advance_amount === 0) {
-            // Standard bill covers 1 month
-            monthsCovered = 1;
+      // --- AUTO-SEND RENEWAL PAYMENT BILL (Rent + Advance) ---
+      // Renewal payment = 1 month rent + 1 month advance = 2 months total
+      // After payment, tenant's next due date will advance by 2 months from contract end
+      // 
+      // Example: Contract ends April 2, 2026
+      // - Rent covers: April → May (due May 2)
+      // - Advance covers: May → June (due June 2, auto-created when confirmed)
+      // - Next bill: June → July (due July 2)
+      //
+      // Security deposit is NOT required for renewal (it carries forward from original contract)
+      if (approved) {
+        const rentAmount = occupancy.property?.price || 0
+        const advanceAmount = rentAmount // Advance equals one month's rent (total = 2 months)
+
+        // Calculate the due date:
+        // Try to find the ACTUAL next due date based on payment history
+        // This prevents "skipping" months if there's a gap between last payment and contract end
+        // Default to contract end date if no history
+        let renewalBillDueDate = new Date(occupancy.contract_end_date);
+
+        try {
+          const { data: lastPaidBills } = await supabase
+            .from('payment_requests')
+            .select('due_date, rent_amount, advance_amount')
+            .eq('occupancy_id', occupancy.id)
+            .or('status.eq.paid,status.eq.pending_confirmation')
+            .gt('rent_amount', 0)
+            .order('due_date', { ascending: false })
+            .limit(1);
+
+          if (lastPaidBills && lastPaidBills.length > 0) {
+            const lastBill = lastPaidBills[0];
+            const lastDate = new Date(lastBill.due_date);
+            let monthsCovered = 1;
+            // Calculate how many months the last bill covered
+            if (lastBill.rent_amount > 0 && lastBill.advance_amount > 0) {
+              monthsCovered = 1 + Math.floor(lastBill.advance_amount / lastBill.rent_amount);
+            } else if (lastBill.rent_amount > 0 && lastBill.advance_amount === 0) {
+              // Standard bill covers 1 month
+              monthsCovered = 1;
+            }
+
+            // Calculate next due date based on history
+            const nextDue = new Date(lastDate);
+            nextDue.setMonth(nextDue.getMonth() + monthsCovered);
+
+            console.log("Calculated Renewal Bill Date from history:", nextDue.toISOString());
+
+            // Use this as the renewal bill date
+            renewalBillDueDate = nextDue;
+          } else {
+            console.log("No payment history found for renewal, using contract end date");
           }
-
-          // Calculate next due date based on history
-          const nextDue = new Date(lastDate);
-          nextDue.setMonth(nextDue.getMonth() + monthsCovered);
-
-          console.log("Calculated Renewal Bill Date from history:", nextDue.toISOString());
-
-          // Use this as the renewal bill date
-          renewalBillDueDate = nextDue;
-        } else {
-          console.log("No payment history found for renewal, using contract end date");
+        } catch (err) {
+          console.error("Error calculating renewal date:", err);
         }
-      } catch (err) {
-        console.error("Error calculating renewal date:", err);
+
+        const signingDate = new Date(renewalSigningDate) // When payment should be made
+
+        try {
+          const { data: newBill, error: billError } = await supabase.from('payment_requests').insert({
+            landlord: session.user.id,
+            tenant: occupancy.tenant_id,
+            property_id: occupancy.property_id,
+            occupancy_id: occupancy.id, // Link to occupancy so it shows in TenantDashboard
+            rent_amount: rentAmount,
+            advance_amount: advanceAmount, // Renewal = Rent + Advance (2 months total)
+            security_deposit_amount: 0, // NO security deposit for renewal - it carries forward
+            water_bill: 0,
+            electrical_bill: 0,
+            other_bills: 0,
+            bills_description: 'Contract Renewal Payment (1 Month Rent + 1 Month Advance)',
+            due_date: renewalBillDueDate.toISOString(), // Due on the start of renewal (e.g., April 2)
+            status: 'pending',
+            is_renewal_payment: true // Mark as renewal payment
+          }).select().single();
+
+          if (billError) {
+            console.error('Renewal bill creation error:', billError);
+          } else if (newBill) {
+            // Notify tenant about the bill (Internal)
+            await createNotification({
+              recipient: occupancy.tenant_id,
+              actor: session.user.id,
+              type: 'payment_request',
+              message: `Your renewal payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(advanceAmount).toLocaleString()} (Advance) = ₱${Number(rentAmount + advanceAmount).toLocaleString()} Total. Please pay on signing date: ${signingDate.toLocaleDateString()}. This covers your first 2 months of the renewed contract.`,
+              link: '/payments'
+            });
+
+            // Notify tenant (SMS & Email)
+            try {
+              await fetch('/api/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'payment_bill',
+                  recordId: newBill.id, // Use the new bill ID
+                  actorId: session.user.id
+                })
+              })
+            } catch (notifyErr) {
+              console.error('Failed to send renewal bill notification:', notifyErr)
+            }
+          }
+        } catch (err) {
+          console.error('Renewal bill exception:', err);
+        }
+
+
+        showToast.success('Renewal approved! Payment bill sent automatically.', { duration: 4000, transition: "bounceIn" })
+      } else {
+        showToast.success('Renewal rejected', { duration: 4000, transition: "bounceIn" })
       }
 
-      const signingDate = new Date(renewalSigningDate) // When payment should be made
-
-      try {
-        const { error: billError } = await supabase.from('payment_requests').insert({
-          landlord: session.user.id,
-          tenant: occupancy.tenant_id,
-          property_id: occupancy.property_id,
-          occupancy_id: occupancy.id, // Link to occupancy so it shows in TenantDashboard
-          rent_amount: rentAmount,
-          advance_amount: advanceAmount, // Renewal = Rent + Advance (2 months total)
-          security_deposit_amount: 0, // NO security deposit for renewal - it carries forward
-          water_bill: 0,
-          electrical_bill: 0,
-          other_bills: 0,
-          bills_description: 'Contract Renewal Payment (1 Month Rent + 1 Month Advance)',
-          due_date: renewalBillDueDate.toISOString(), // Due on the start of renewal (e.g., April 2)
-          status: 'pending',
-          is_renewal_payment: true // Mark as renewal payment
-        });
-
-        if (billError) {
-          console.error('Renewal bill creation error:', billError);
-        } else {
-          // Notify tenant about the bill
-          await createNotification({
-            recipient: occupancy.tenant_id,
-            actor: session.user.id,
-            type: 'payment_request',
-            message: `Your renewal payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(advanceAmount).toLocaleString()} (Advance) = ₱${Number(rentAmount + advanceAmount).toLocaleString()} Total. Please pay on signing date: ${signingDate.toLocaleDateString()}. This covers your first 2 months of the renewed contract.`,
-            link: '/payments'
-          });
-        }
-      } catch (err) {
-        console.error('Renewal bill exception:', err);
-      }
-
-
-      showToast.success('Renewal approved! Payment bill sent automatically.', { duration: 4000, transition: "bounceIn" })
-    } else {
-      showToast.success('Renewal rejected', { duration: 4000, transition: "bounceIn" })
-    }
-
-    closeRenewalModal()
-    loadPendingRenewalRequests()
-    loadOccupancies()
+      closeRenewalModal()
+      loadPendingRenewalRequests()
+      loadOccupancies()
+    } catch (err) { console.error(err) } finally { setProcessingRenewal(false) }
   }
 
   async function loadOccupancies() {
@@ -1022,72 +1102,42 @@ export default function LandlordDashboard({ session, profile }) {
 
     await supabase.from('properties').update({ status: 'occupied' }).eq('id', selectedProperty.id)
 
-    // UPDATED: Notification message includes start date, end date and security deposit
-    let message = `You have been assigned to occupy "${selectedProperty.title}" from ${new Date(startDate).toLocaleDateString()} to ${new Date(endDate).toLocaleDateString()}. Security deposit: ₱${Number(securityDepositAmount).toLocaleString()}.`
-    if (penaltyDetails && parseFloat(penaltyDetails) > 0) {
-      message += ` Late payment fee: ₱${Number(penaltyDetails).toLocaleString()}`
-    }
+    // Updated: Uses exclusively /api/notify for move-in and payment notifications
 
-    await createNotification({
-      recipient: candidate.tenant,
-      actor: session.user.id,
-      type: 'occupancy_assigned',
-      message: message,
-      link: '/maintenance'
-    })
-
-    if (candidate.tenant_profile.phone) {
-      fetch('/api/send-sms', {
+    // 1. Send Move-In Notification (Email + SMS)
+    // This handles both the "Welcome Home" email and SMS via the centralized API
+    try {
+      await fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phoneNumber: candidate.tenant_profile.phone,
-          message: message
+          type: 'move_in',
+          recordId: occupancyId,
+          tenantName: `${candidate.tenant_profile?.first_name || ''} ${candidate.tenant_profile?.last_name || ''}`.trim(),
+          tenantPhone: candidate.tenant_profile?.phone,
+          tenantEmail: null, // API works better if it looks this up itself via recordId, but we can rely on recordId lookup logic in notify.js
+          propertyTitle: selectedProperty.title,
+          propertyAddress: selectedProperty.address || '',
+          startDate: startDate,
+          endDate: endDate,
+          landlordName: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+          landlordPhone: profile?.phone || '',
+          securityDeposit: securityDepositAmount,
+          rentAmount: selectedProperty.price || 0
         })
-      }).catch(err => console.error("SMS Error:", err));
+      })
+    } catch (err) {
+      console.error('Move-in notification error:', err);
     }
-
-    // --- NEW CODE: Send Email ---
-    fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bookingId: candidate.id, // Using the booking ID to look up details
-        type: 'assignment',      // New type we will handle in the API
-        customMessage: message
-      })
-    }).catch(err => console.error("Email Error:", err));
-
-    // Send dedicated Move-In Welcome notification (Email + SMS with premium templates)
-    fetch('/api/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'move_in',
-        recordId: occupancyId,
-        tenantName: `${candidate.tenant_profile?.first_name || ''} ${candidate.tenant_profile?.last_name || ''}`.trim(),
-        tenantPhone: candidate.tenant_profile?.phone,
-        tenantEmail: null,
-        propertyTitle: selectedProperty.title,
-        propertyAddress: selectedProperty.address || '',
-        startDate: startDate,
-        endDate: endDate,
-        landlordName: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
-        landlordPhone: profile?.phone || '',
-        securityDeposit: securityDepositAmount,
-        rentAmount: selectedProperty.price || 0
-      })
-    }).catch(err => console.error('Move-in notification error:', err));
 
     // --- AUTO-SEND MOVE-IN PAYMENT BILL (Rent + Advance + Security Deposit) ---
     // Newly assigned tenants pay Rent + Advance + Security Deposit
-    // Total should equal 60,000 (e.g., 20k rent + 20k advance + 20k security deposit)
     const rentAmount = selectedProperty.price || 0;
     const advanceAmount = selectedProperty.price || 0; // Advance is 1 month rent
     const dueDate = new Date(startDate); // Due date is the start date of the contract
 
     try {
-      const { error: billError } = await supabase.from('payment_requests').insert({
+      const { data: newBill, error: billError } = await supabase.from('payment_requests').insert({
         landlord: session.user.id,
         tenant: candidate.tenant,
         property_id: selectedProperty.id,
@@ -1102,13 +1152,13 @@ export default function LandlordDashboard({ session, profile }) {
         due_date: dueDate.toISOString(),
         status: 'pending',
         is_move_in_payment: true // Mark as move-in payment (new assignment)
-      });
+      }).select().single();
 
       if (billError) {
         console.error('Auto-bill creation error:', billError);
         // Don't block assignment, just log the error
-      } else {
-        // Notify tenant about the bill
+      } else if (newBill) {
+        // Notify tenant about the bill (Internal)
         const totalAmount = rentAmount + advanceAmount + securityDepositAmount;
         await createNotification({
           recipient: candidate.tenant,
@@ -1117,6 +1167,21 @@ export default function LandlordDashboard({ session, profile }) {
           message: `Your move-in payment bill has been sent: ₱${Number(rentAmount).toLocaleString()} (Rent) + ₱${Number(advanceAmount).toLocaleString()} (Advance) + ₱${Number(securityDepositAmount).toLocaleString()} (Security Deposit) = ₱${Number(totalAmount).toLocaleString()} Total. Due: ${dueDate.toLocaleDateString()}`,
           link: '/payments'
         });
+
+        // Notify tenant (SMS & Email) about the BILL
+        try {
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'payment_bill',
+              recordId: newBill.id, // Use the new bill ID
+              actorId: session.user.id
+            })
+          })
+        } catch (notifyErr) {
+          console.error('Failed to send move-in bill notification:', notifyErr)
+        }
       }
     } catch (err) {
       console.error('Auto-bill exception:', err);
@@ -1132,26 +1197,31 @@ export default function LandlordDashboard({ session, profile }) {
   async function cancelAssignment(booking) {
     if (!confirm(`Cancel assignment for ${booking.tenant_profile?.first_name}?`)) return
 
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'rejected' })
-      .eq('id', booking.id)
+    setProcessingBookingId(booking.id)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'rejected' })
+        .eq('id', booking.id)
 
-    if (error) {
-      showToast.error('Failed to cancel assignment', { duration: 4000, transition: "bounceIn" });
-      return
+      if (error) {
+        showToast.error('Failed to cancel assignment', { duration: 4000, transition: "bounceIn" });
+        return
+      }
+
+      await createNotification({
+        recipient: booking.tenant,
+        actor: session.user.id,
+        type: 'booking_rejected',
+        message: `The assignment for "${selectedProperty.title}" was cancelled.`,
+        link: '/bookings'
+      })
+
+      showToast.success('Cancelled', { duration: 4000, transition: "bounceIn" });
+      loadAcceptedApplicationsForProperty(selectedProperty.id)
+    } finally {
+      setProcessingBookingId(null)
     }
-
-    await createNotification({
-      recipient: booking.tenant,
-      actor: session.user.id,
-      type: 'booking_rejected',
-      message: `The assignment for "${selectedProperty.title}" was cancelled.`,
-      link: '/bookings'
-    })
-
-    showToast.success('Cancelled', { duration: 4000, transition: "bounceIn" });
-    loadAcceptedApplicationsForProperty(selectedProperty.id)
   }
 
   function openEndContractModal(occupancy) {
@@ -1238,13 +1308,18 @@ export default function LandlordDashboard({ session, profile }) {
     setConfirmationModal({ isOpen: true, type, requestId })
   }
 
-  function handleConfirmEndAction() {
-    if (confirmationModal.type === 'approve') {
-      approveEndRequest(confirmationModal.requestId)
-    } else if (confirmationModal.type === 'reject') {
-      rejectEndRequest(confirmationModal.requestId)
+  async function handleConfirmEndAction() {
+    setProcessingEndRequest(true)
+    try {
+      if (confirmationModal.type === 'approve') {
+        await approveEndRequest(confirmationModal.requestId)
+      } else if (confirmationModal.type === 'reject') {
+        await rejectEndRequest(confirmationModal.requestId)
+      }
+      setConfirmationModal({ isOpen: false, type: null, requestId: null })
+    } finally {
+      setProcessingEndRequest(false)
     }
-    setConfirmationModal({ isOpen: false, type: null, requestId: null })
   }
 
   // --- ACTION FUNCTIONS ---
@@ -1289,25 +1364,20 @@ export default function LandlordDashboard({ session, profile }) {
     // 1. In-App
     await createNotification({ recipient: occupancy.tenant_id, actor: session.user.id, type: 'end_request_approved', message: message, link: '/dashboard' })
 
-    // 2. SMS
-    if (occupancy.tenant?.phone) {
-      fetch('/api/send-sms', {
+    // 3. Notification (Email & SMS via centralized API)
+    try {
+      await fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phoneNumber: occupancy.tenant.phone, message })
-      }).catch(err => console.error("SMS Error:", err));
-    }
-
-    // 3. Email
-    fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        occupancyId: occupancyId, // Using occupancyId
-        type: 'end_contract',
-        customMessage: message
+        body: JSON.stringify({
+          type: 'end_contract',
+          recordId: occupancyId,
+          reason: message // Pass the constructed message as the reason/customMessage
+        })
       })
-    }).catch(err => console.error("Email Error:", err));
+    } catch (err) {
+      console.error('End contract notification error:', err)
+    }
 
     showToast.success('Approved successfully', { duration: 4000, transition: "bounceIn" });
     loadPendingEndRequests(); loadOccupancies(); loadProperties()
@@ -1338,6 +1408,7 @@ export default function LandlordDashboard({ session, profile }) {
     showToast.success('Request rejected', { duration: 4000, transition: "bounceIn" });
     loadPendingEndRequests()
   }
+
 
   return (
     <div className="min-h-screen bg-[#F3F4F5] flex flex-col scroll-smooth">
@@ -1424,11 +1495,11 @@ export default function LandlordDashboard({ session, profile }) {
                 <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">{selectedStatementYear}</span>
+                <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Total</span>
               </div>
               <div>
                 <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                  <CountUpAnimation target={statsLoaded ? monthlyIncome.yearTotal / 1000 : 0} decimals={1} prefix="₱" suffix="k" />
+                  <CountUpAnimation target={statsLoaded ? totalIncome : 0} decimals={2} prefix="₱" />
                 </h3>
                 <p className="text-sm font-medium text-gray-500">Total Income</p>
               </div>
@@ -1468,7 +1539,7 @@ export default function LandlordDashboard({ session, profile }) {
                     <div className="flex items-center bg-gray-100 rounded-xl p-1">
                       {[
                         { key: 'all', label: 'All' },
-                        
+
                         { key: 'other', label: 'Other Bill' },
                       ].map(tab => (
                         <button
@@ -1835,9 +1906,15 @@ export default function LandlordDashboard({ session, profile }) {
                   </button>
                   <button
                     onClick={handleConfirmEndAction}
-                    className={`flex-1 px-4 py-2 text-white font-bold rounded-xl cursor-pointer shadow-lg ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
+                    disabled={processingEndRequest}
+                    className={`flex-1 px-4 py-2 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 ${processingEndRequest ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'} ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
                   >
-                    Confirm
+                    {processingEndRequest ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        Processing...
+                      </>
+                    ) : 'Confirm'}
                   </button>
                 </div>
               </div>
@@ -1866,7 +1943,18 @@ export default function LandlordDashboard({ session, profile }) {
                           <p className="text-xs text-gray-500">{app.tenant_profile?.phone}</p>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => cancelAssignment(app)} disabled={uploadingContract} className="text-xs bg-white text-red-600 border border-red-100 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-red-50 font-bold transition-colors disabled:opacity-50">Cancel</button>
+                          <button
+                            onClick={() => cancelAssignment(app)}
+                            disabled={uploadingContract || processingBookingId === app.id}
+                            className={`text-xs bg-white text-red-600 border border-red-100 px-2 py-1.5 rounded-lg transition-colors font-bold disabled:opacity-50 flex items-center gap-1 ${processingBookingId === app.id ? 'opacity-70 cursor-not-allowed' : 'hover:bg-red-50 cursor-pointer'}`}
+                          >
+                            {processingBookingId === app.id ? (
+                              <>
+                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                <span>...</span>
+                              </>
+                            ) : <span>Cancel</span>}
+                          </button>
                           <button onClick={() => assignTenant(app)} disabled={uploadingContract} className="text-xs bg-black text-white px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-800 font-bold shadow-md transition-all disabled:opacity-50 flex items-center gap-1">
                             {uploadingContract ? (
                               <>
@@ -2057,113 +2145,159 @@ export default function LandlordDashboard({ session, profile }) {
       {
         renewalModal.isOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200">
-              {/* Warning Icon */}
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 mx-auto ${renewalModal.action === 'approve' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full p-8 border border-gray-100 relative">
+              <button onClick={closeRenewalModal} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 transition-colors w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+
+              <div className="flex flex-col items-start gap-6">
+                <div className="flex items-center gap-4 w-full">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${renewalModal.action === 'approve' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}`}>
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {renewalModal.action === 'approve' ?
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /> :
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      }
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+                      {renewalModal.action === 'approve' ? 'Approve Contract Renewal' : 'Reject Renewal Request'}
+                    </h3>
+                    <p className="text-gray-500 font-medium">Review pending renewal requests</p>
+                  </div>
+                </div>
+
+                {renewalModal.action === 'approve' ? (
+                  <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-6">
+                      {/* Info Block */}
+                      <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Property</p>
+                            <p className="font-bold text-gray-900 text-lg">{renewalModal.occupancy?.property?.title}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Tenant</p>
+                            <p className="font-bold text-gray-900">{renewalModal.occupancy?.tenant?.first_name} {renewalModal.occupancy?.tenant?.last_name}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Payment Summary */}
+                      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                        <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                          Payment Summary (Bill to be sent)
+                        </p>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600 font-medium">Monthly Rent</span>
+                            <span className="font-bold text-gray-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600 font-medium">Advance Rent (1mo)</span>
+                            <span className="font-bold text-gray-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="h-px bg-gray-100 my-2"></div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-900 font-bold">Total Due</span>
+                            <span className="font-black text-indigo-600 text-lg">₱{Number((renewalModal.occupancy?.property?.price || 0) * 2).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      {/* Important Note */}
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+                        <p className="text-sm text-amber-900 font-bold mb-2">⚠ Approving this renewal will:</p>
+                        <ul className="space-y-2">
+                          {['Extend the contract end date', 'Send a payment bill for Rent + Advance', 'Notify tenant of signing schedule'].map((item, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-amber-800 font-medium">
+                              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"></span>
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Dates */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                            New Contract End Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-0 rounded-xl px-4 py-3.5 text-sm font-bold outline-none transition-all shadow-sm"
+                            value={renewalEndDate}
+                            onChange={(e) => setRenewalEndDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                            Contract Signing Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="w-full bg-white border border-gray-200 focus:border-black focus:ring-0 rounded-xl px-4 py-3.5 text-sm font-bold outline-none transition-all shadow-sm"
+                            value={renewalSigningDate}
+                            onChange={(e) => setRenewalSigningDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                          />
+                          <p className="text-xs text-gray-400 mt-2 font-medium">Tenant will be notified to come on this date.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full py-8 text-center">
+                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">Confirm Rejection</h4>
+                    <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
+                      Are you sure you want to reject this renewal request? The contract will typically end at its current expiry date.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-4 pt-4 border-t border-gray-100 w-full mt-2">
+                  <button
+                    onClick={() => {
+                      if (renewalModal.action === 'approve') {
+                        setRenewalModal(prev => ({ ...prev, action: 'reject' }));
+                      } else {
+                        setRenewalModal(prev => ({ ...prev, action: 'approve' }));
+                      }
+                    }}
+                    className={`flex-1 px-6 py-4 font-bold rounded-xl cursor-pointer transition-all border-2 ${renewalModal.action === 'approve'
+                      ? 'border-transparent text-red-600 bg-red-50 hover:bg-red-100'
+                      : 'border-gray-100 text-gray-700 hover:border-gray-300 bg-white'
+                      }`}
+                  >
+                    {renewalModal.action === 'approve' ? 'Switch to Reject' : 'Back to Verify'}
+                  </button>
+                  <button
+                    onClick={confirmRenewalRequest}
+                    disabled={processingRenewal}
+                    className={`flex-[2] px-6 py-4 text-white font-bold rounded-xl shadow-xl transition-all flex items-center justify-center gap-3 transform active:scale-95 ${processingRenewal ? 'cursor-not-allowed opacity-75' : 'cursor-pointer hover:-translate-y-1'} ${renewalModal.action === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
+                  >
+                    {processingRenewal ? (
+                      <>
+                        <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        Processing...
+                      </>
+                    ) : (renewalModal.action === 'approve' ? 'Approve & Create Bill' : 'Confirm Rejection')}
+                  </button>
+                </div>
               </div>
 
-              <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">
-                {renewalModal.action === 'approve' ? '⚠️ Approve Contract Renewal?' : 'Reject Renewal Request?'}
-              </h3>
-
-              {renewalModal.action === 'approve' ? (
-                <>
-                  {/* Warning Message */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-                    <p className="text-sm text-amber-800 font-medium mb-2">
-                      <strong>Important:</strong> Approving this renewal will:
-                    </p>
-                    <ul className="text-sm text-amber-700 list-disc list-inside space-y-1">
-                      <li>Extend the contract end date</li>
-                      <li>Send a <strong>payment bill</strong> for Rent + Advance</li>
-                      <li>Notify the tenant of the signing schedule</li>
-                    </ul>
-                  </div>
-
-                  {/* Tenant & Property Info */}
-                  <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-bold">Tenant:</span> {renewalModal.occupancy?.tenant?.first_name} {renewalModal.occupancy?.tenant?.last_name}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      <span className="font-bold">Property:</span> {renewalModal.occupancy?.property?.title}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      <span className="font-bold">Monthly Rent:</span> ₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}
-                    </p>
-                  </div>
-
-                  {/* Payment Summary */}
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4">
-                    <p className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2">Renewal Payment Bill</p>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-indigo-700">Rent:</span>
-                      <span className="font-bold text-indigo-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-indigo-700">Advance (1 Month):</span>
-                      <span className="font-bold text-indigo-900">₱{Number(renewalModal.occupancy?.property?.price || 0).toLocaleString()}</span>
-                    </div>
-                    <div className="border-t border-indigo-200 mt-2 pt-2 flex justify-between text-sm">
-                      <span className="font-bold text-indigo-800">Total:</span>
-                      <span className="font-black text-indigo-900">₱{Number((renewalModal.occupancy?.property?.price || 0) * 2).toLocaleString()}</span>
-                    </div>
-                  </div>
-
-                  {/* New Contract End Date */}
-                  <div className="mb-4">
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                      📅 New Contract End Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      className="w-full border-2 border-gray-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-colors"
-                      value={renewalEndDate}
-                      onChange={(e) => setRenewalEndDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]} // Min today? Or better min > current end date?
-                    />
-                  </div>
-
-                  {/* Contract Signing Date */}
-                  <div className="mb-4">
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                      📅 Contract Signing Date <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      className="w-full border-2 border-gray-200 focus:border-indigo-500 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-colors"
-                      value={renewalSigningDate}
-                      onChange={(e) => setRenewalSigningDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">The tenant will be notified to come for contract signing on this date.</p>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-500 mb-6 text-center">
-                  Are you sure you want to reject the renewal request from <strong>{renewalModal.occupancy?.tenant?.first_name} {renewalModal.occupancy?.tenant?.last_name}</strong> for <strong>{renewalModal.occupancy?.property?.title}</strong>?
-                </p>
-              )}
-
-              <div className="flex gap-3 mt-4">
-                <button
-                  onClick={closeRenewalModal}
-                  className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmRenewalRequest}
-                  className={`flex-1 px-4 py-3 text-white font-bold rounded-xl cursor-pointer shadow-lg transition-all ${renewalModal.action === 'approve' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
-                >
-                  {renewalModal.action === 'approve' ? 'Approve & Send Bill' : 'Reject Request'}
-                </button>
-              </div>
             </div>
           </div>
         )

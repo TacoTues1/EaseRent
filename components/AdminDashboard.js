@@ -40,10 +40,18 @@ export default function AdminDashboard({ session, profile }) {
     if (!confirm("Are you sure you want to log out?")) return
     try {
       await supabase.auth.signOut()
+      // Manually clear local storage to be sure
+      if (typeof window !== 'undefined') {
+        localStorage.clear()
+        sessionStorage.clear()
+      }
       showToast.success("Logged out successfully")
-      router.push('/')
+      // Force reload to ensure all states are reset
+      window.location.href = '/'
     } catch (error) {
       console.error("Logout error:", error)
+      // Force logout anyway
+      window.location.href = '/'
     }
   }
 

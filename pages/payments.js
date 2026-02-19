@@ -32,6 +32,8 @@ export default function PaymentsPage() {
   const [billReceiptPreview, setBillReceiptPreview] = useState(null)
   const [showBillReceiptModal, setShowBillReceiptModal] = useState(false)
   const [selectedBillReceipt, setSelectedBillReceipt] = useState(null)
+  const [processingId, setProcessingId] = useState(null) // For inline actions
+  const [isProcessingModal, setIsProcessingModal] = useState(false) // For modal actions
   const [paypalProcessing, setPaypalProcessing] = useState(false)
   const [activeTab, setActiveTab] = useState('water') // Default to water since rent is automatic, wifi/electric notify tenants automatically
   const [showEditModal, setShowEditModal] = useState(false)
@@ -89,18 +91,24 @@ export default function PaymentsPage() {
     setConfirmModal({ ...confirmModal, isOpen: false })
   }
 
-  function handleModalConfirm() {
+  async function handleModalConfirm() {
     if (!confirmModal.id) return
 
-    if (confirmModal.type === 'confirm_payment') {
-      executeConfirmPayment(confirmModal.id)
-    } else if (confirmModal.type === 'cancel_bill') {
-      executeCancelBill(confirmModal.id)
-    } else if (confirmModal.type === 'reject_payment') {
-      executeRejectPayment(confirmModal.id)
+    setIsProcessingModal(true)
+    try {
+      if (confirmModal.type === 'confirm_payment') {
+        await executeConfirmPayment(confirmModal.id)
+      } else if (confirmModal.type === 'cancel_bill') {
+        await executeCancelBill(confirmModal.id)
+      } else if (confirmModal.type === 'reject_payment') {
+        await executeRejectPayment(confirmModal.id)
+      }
+      closeConfirmModal()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsProcessingModal(false)
     }
-
-    closeConfirmModal()
   }
 
   // Trigger functions
@@ -1840,14 +1848,21 @@ export default function PaymentsPage() {
 
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
-  // Calculate total income including all bills
-  const totalIncome = payments.reduce((sum, p) => {
-    const rent = parseFloat(p.amount || 0)
-    const water = parseFloat(p.water_bill || 0)
-    const electrical = parseFloat(p.electrical_bill || 0)
-    const other = parseFloat(p.other_bills || 0)
-    return sum + rent + water + electrical + other
-  }, 0)
+  // Calculate total income from payment_requests (same as dashboard)
+  const totalIncome = paymentRequests
+    .filter(p => p.status === 'paid')
+    .reduce((sum, p) => {
+      const t = parseFloat(p.amount_paid || 0) || (
+        parseFloat(p.rent_amount || 0) +
+        parseFloat(p.security_deposit_amount || 0) +
+        parseFloat(p.advance_amount || 0) +
+        parseFloat(p.water_bill || 0) +
+        parseFloat(p.electrical_bill || 0) +
+        parseFloat(p.wifi_bill || 0) +
+        parseFloat(p.other_bills || 0)
+      )
+      return sum + t
+    }, 0)
 
   return (
     <div className="min-h-screen bg-[#F3F4F5] p-3 sm:p-6">
@@ -1904,7 +1919,6 @@ export default function PaymentsPage() {
               {/* Tabs for Bill Type - Rent/Wifi/Electric are automatic, only Water and Other remain */}
               <div className="flex gap-2 flex-wrap pb-2 mb-4 scrollbar-hide">
                 {[
-                  { id: 'water', label: 'Water', icon: '' },
                   { id: 'other', label: 'Other', icon: '' }
                 ].map(tab => (
                   <button
@@ -2208,7 +2222,7 @@ export default function PaymentsPage() {
                           <div className="flex gap-2 w-full mt-2">
                             <button
                               onClick={() => confirmPayment(request.id)}
-                              className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer"
+                              className="flex-1 px-3 py-2 bg-green-600 text-white text-xs font-bold rounded cursor-pointer hover:bg-green-700 transition-colors"
                             >
                               Mark Paid
                             </button>
@@ -2350,7 +2364,7 @@ export default function PaymentsPage() {
 
                           <td className="px-2 py-1.5">
                             <span className="text-xs font-bold text-gray-600 uppercase">
-                              {request.payment_method === 'paymongo' ? 'E-Wallet/Card' :
+                              {request.payment_method === 'paymongo' ? 'E-Wallet / Cards' :
                                 request.payment_method === 'stripe' ? 'Stripe' :
                                   request.payment_method === 'qr_code' ? 'QR Code' :
                                     request.payment_method === 'cash' ? 'Cash' : '-'}
@@ -2451,12 +2465,32 @@ export default function PaymentsPage() {
           )}
         </div>
 
-        {/* Payment Modal for Tenants */}
+        {/* Payment Modal for Tenants - Redesigned */}
         {showPaymentModal && selectedBill && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white border-2 border-black max-w-md w-full max-h-[90vh] overflow-y-auto p-6 rounded-2xl shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-black">Pay Bill</h3>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <div
+              className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
+              onClick={() => {
+                setShowPaymentModal(false)
+                setSelectedBill(null)
+                setPaymentMethod('cash')
+                setProofFile(null)
+                setProofPreview(null)
+                setReferenceNumber('')
+              }}
+            />
+            <div className="relative bg-white rounded-3xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ring-1 ring-black/5">
+
+              {/* Header */}
+              <div className="flex-none p-5 border-b border-gray-100 bg-white z-10 flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 tracking-tight">Pay Bill</h3>
+                  <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-500">
+                    <span className="font-medium text-gray-900">{selectedBill.properties?.title}</span>
+                    <span className="text-gray-300">•</span>
+                    <span className="truncate max-w-[180px]">{selectedBill.properties?.address}</span>
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     setShowPaymentModal(false)
@@ -2466,19 +2500,14 @@ export default function PaymentsPage() {
                     setProofPreview(null)
                     setReferenceNumber('')
                   }}
-                  className="text-gray-400 hover:text-black cursor-pointer"
+                  className="p-2 -mr-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
-              <div className="space-y-6">
-                {/* Property Info */}
-                <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl">
-                  <div className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Property</div>
-                  <div className="font-bold text-black">{selectedBill.properties?.title}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{selectedBill.properties?.address}</div>
-                </div>
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
 
                 {/* View Bill Receipt Button */}
                 {selectedBill.bill_receipt_url && (
@@ -2488,63 +2517,56 @@ export default function PaymentsPage() {
                       setSelectedBillReceipt(selectedBill.bill_receipt_url)
                       setShowBillReceiptModal(true)
                     }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white text-black border-2 border-black rounded-lg hover:bg-gray-50 font-bold cursor-pointer transition-colors"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-100 hover:border-gray-300 font-semibold text-sm transition-all cursor-pointer group"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <svg className="w-4 h-4 text-gray-500 group-hover:text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     View Original Bill Receipt
                   </button>
                 )}
 
-                {/* Bill Breakdown */}
-                <div className="border-2 border-black p-4 rounded-xl">
-                  <div className="text-sm font-bold text-black mb-3 border-b border-gray-100 pb-2">
-                    Amount Details
-                    {selectedBill.is_move_in_payment && (
-                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">Move-in Payment</span>
-                    )}
-                    {selectedBill.is_renewal_payment && (
-                      <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Renewal Payment</span>
-                    )}
+                {/* Bill Breakdown Card */}
+                <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Bill Details</span>
+                    <div className="flex gap-2">
+                      {/* {selectedBill.due_date && new Date(selectedBill.due_date) < new Date() && (
+                        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold border border-red-200">Late Payment</span>
+                      )} */}
+                      {selectedBill.is_move_in_payment && (
+                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold border border-green-200">Move-in</span>
+                      )}
+                      {selectedBill.is_renewal_payment && (
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">Renewal</span>
+                      )}
+                    </div>
                   </div>
+
                   <div className="space-y-2">
-                    {parseFloat(selectedBill.rent_amount || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">House Rent</span>
-                        <span className="font-bold">₱{parseFloat(selectedBill.rent_amount || 0).toLocaleString()}</span>
+                    {[
+                      { label: 'House Rent', value: selectedBill.rent_amount },
+                      { label: 'Security Deposit', value: selectedBill.security_deposit_amount, color: 'text-amber-600' },
+                      { label: 'Advance Payment', value: selectedBill.advance_amount, color: 'text-indigo-600' },
+                      { label: 'Water', value: selectedBill.water_bill },
+                      { label: 'Electricity', value: selectedBill.electrical_bill },
+                      { label: 'Late Payment', value: selectedBill.other_bills }
+                    ].map((item, idx) => (
+                      parseFloat(item.value || 0) > 0 && (
+                        <div key={idx} className="flex justify-between text-sm items-center">
+                          <span className="text-gray-500 font-medium">{item.label}</span>
+                          <span className={`font-bold ${item.color || 'text-gray-900'}`}>₱{parseFloat(item.value).toLocaleString()}</span>
+                        </div>
+                      )
+                    ))}
+
+                    {appliedCredit > 0 && (
+                      <div className="flex justify-between text-sm text-green-600 font-bold pt-1">
+                        <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> Credit Applied</span>
+                        <span>-₱{appliedCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )}
-                    {parseFloat(selectedBill.security_deposit_amount || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">Security Deposit</span>
-                        <span className="font-bold text-amber-600">₱{parseFloat(selectedBill.security_deposit_amount).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {parseFloat(selectedBill.advance_amount || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">Advance Payment</span>
-                        <span className="font-bold text-indigo-600">₱{parseFloat(selectedBill.advance_amount).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {parseFloat(selectedBill.water_bill || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">Water</span>
-                        <span className="font-bold">₱{parseFloat(selectedBill.water_bill).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {parseFloat(selectedBill.electrical_bill || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">Electricity</span>
-                        <span className="font-bold">₱{parseFloat(selectedBill.electrical_bill).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {parseFloat(selectedBill.other_bills || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 font-medium">Other</span>
-                        <span className="font-bold">₱{parseFloat(selectedBill.other_bills).toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-lg font-bold pt-3 border-t border-black mt-2">
-                      <span>Total</span>
+
+                    <div className="flex justify-between text-base font-black pt-3 border-t border-gray-200 mt-2 text-gray-900">
+                      <span>Total Due</span>
                       <span>
                         ₱{(
                           parseFloat(selectedBill.rent_amount || 0) +
@@ -2556,251 +2578,162 @@ export default function PaymentsPage() {
                         ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
-                    {appliedCredit > 0 && (
-                      <div className="flex justify-between text-sm text-green-600 font-bold mt-1">
-                        <span>Less Credit Balance</span>
-                        <span>-₱{appliedCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Custom Amount Input */}
-                <div className="border-2 border-black p-4 rounded-xl">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="block text-sm font-bold text-black">Amount to Pay</label>
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-gray-500">₱</span>
+                {/* Amount Input */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-gray-700">Amount to Pay</label>
+                  <div className="relative group">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-lg group-focus-within:text-black transition-colors">₱</span>
                     <input
                       type="number"
                       step="0.01"
                       min="1"
                       value={customAmount}
                       onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      className={`w-full border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500' : 'border-gray-200'} focus:border-black rounded-lg pl-8 pr-3 py-3 font-bold text-lg outline-none transition-colors`}
+                      className={`w-full bg-white border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500 bg-red-50/50' : 'border-gray-200 hover:border-gray-300 focus:border-black'} rounded-2xl pl-10 pr-4 py-4 font-bold text-2xl outline-none transition-all placeholder:text-gray-300`}
+                      placeholder="0.00"
                     />
                   </div>
 
-                  {/* Minimum Payment Warning */}
+                  {/* Validation Messages */}
                   {isBelowMinimum && (
-                    <p className="text-xs font-bold text-red-500 mt-2">
-                      Minimum payment is ₱{minimumPayment.toLocaleString()}. Partial payments are not allowed.
-                    </p>
+                    <div className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      Minimum payment is ₱{minimumPayment.toLocaleString()} (No partials).
+                    </div>
                   )}
 
-                  {/* Months Covered Display */}
                   {monthlyRent > 0 && parseFloat(customAmount) > 0 && (
-                    <div className={`mt-3 p-3 rounded-lg ${exceedsContract ? 'bg-red-50 border border-red-200' : monthsCovered > 1 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-sm font-bold ${exceedsContract ? 'text-red-700' : monthsCovered > 1 ? 'text-green-700' : 'text-gray-700'}`}>
-                          {exceedsContract ? 'Exceeds Contract Period!' : monthsCovered > 1 ? `Covers ${monthsCovered} months` : 'Covers 1 month'}
-                        </span>
+                    <div className={`p-3 rounded-lg text-sm border flex items-start gap-2 ${exceedsContract
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : monthsCovered > 1
+                        ? 'bg-blue-50 border-blue-200 text-blue-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                      }`}>
+                      <svg className={`w-5 h-5 shrink-0 ${exceedsContract ? 'text-red-500' : monthsCovered > 1 ? 'text-blue-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <div>
+                        <p className="font-bold">
+                          {exceedsContract ? 'Exceeds Contract Period' : monthsCovered > 1 ? `Covers ${monthsCovered} Months` : 'Covers 1 Month'}
+                        </p>
                         {monthsCovered > 1 && !exceedsContract && contractEndDate && (
-                          <span className="text-xs text-gray-500">
-                            Until {new Date(new Date(selectedBill.due_date).setMonth(new Date(selectedBill.due_date).getMonth() + monthsCovered - 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                          </span>
+                          <p className="text-xs opacity-80 mt-0.5">
+                            Paid until {new Date(new Date(selectedBill.due_date).setMonth(new Date(selectedBill.due_date).getMonth() + monthsCovered - 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                          </p>
+                        )}
+                        {exceedsContract && (
+                          <p className="text-xs mt-0.5">
+                            Contract ends {contractEndDate?.toLocaleDateString()}. Limit: {maxMonthsAllowed} months.
+                          </p>
                         )}
                       </div>
-                      {exceedsContract && contractEndDate && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Your contract ends on {contractEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.
-                          Payment covers {monthsCovered} month{monthsCovered > 1 ? 's' : ''} but contract only allows {maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''}.
-                        </p>
-                      )}
                     </div>
                   )}
 
                   {maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit && (
-                    <p className="text-xs font-bold text-red-500 mt-2">
-                      Amount exceeds contract limit (Max: ₱{maxPaymentLimit.toLocaleString()})
+                    <p className="text-xs font-bold text-red-500 mt-1 pl-1">
+                      Max allowed: ₱{maxPaymentLimit.toLocaleString()}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 mt-2">
-                    Enter the amount you wish to pay today. Excess amount will be stored as credit.
-                  </p>
                 </div>
 
-                {/* Check if credit actually covers the bill */}
+                {/* Payment Method Selection */}
                 {minimumPayment <= 0 && appliedCredit > 0 ? (
-                  <div className="mt-6">
-                    <div className="bg-green-50 border border-green-200 p-4 rounded-xl mb-4">
-                      <p className="text-green-800 font-bold text-center">✨ Your credit balance covers this bill!</p>
+                  <div className="bg-green-50 border border-green-200 p-5 rounded-2xl text-center space-y-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                     </div>
+                    <h4 className="font-bold text-green-800">Fully Covered by Credit!</h4>
+                    <p className="text-sm text-green-700">Your credit balance is sufficient to pay this bill.</p>
                     <button
                       onClick={handleCreditPayment}
-                      className="w-full bg-black text-white p-4 rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg"
+                      className="w-full bg-black text-white py-3.5 rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg hover:shadow-xl translate-y-0 hover:-translate-y-0.5"
                     >
                       Pay with Credit Balance
                     </button>
                   </div>
                 ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Payment Method</label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {/* 1. Cash Button */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('cash')}
-                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)
-                          ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                          : paymentMethod === 'cash'
-                            ? 'border-black bg-black text-white'
-                            : 'border-gray-200 bg-white hover:border-gray-400 text-black'
-                          }`}
-                      >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                        <span className="font-bold text-sm">Cash</span>
-                      </button>
-
-                      {/* 2. Stripe Button */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('stripe')}
-                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${paymentMethod === 'stripe'
-                          ? 'border-[#6772e5] bg-[#6772e5] text-white'
-                          : 'border-gray-200 bg-white hover:border-[#6772e5] text-black'
-                          } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-200`}
-                      >
-                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.768-1.435 1.834-1.435 1.412 0 2.615.696 3.774 1.562l-3.242-4.197C11.83.748 10.155 0 8.528 0 5.093 0 2.502 2.659 2.502 6.52c0 6.641 8.816 6.307 8.816 9.389 0 .884-.79 1.462-1.954 1.462-1.636 0-3.098-.823-4.322-1.859l3.359 4.385c1.464 1.054 3.09 1.558 4.708 1.558 3.596 0 6.138-2.585 6.138-6.425 0-6.738-8.852-6.27-8.852-9.406 0-.825.797-1.412 1.833-1.412 1.348 0 2.559.637 3.66 1.488l1.458-2.146c-1.282-1.1-2.934-1.688-4.664-1.688-2.673 0-4.523 1.36-4.523 3.329 0 2.946 4.09 4.384 4.09 6.685 0 1.583-1.42 2.457-3.031 2.457-1.487 0-2.844-.657-3.924-1.666l-1.378 2.029c1.605 1.636 3.67 2.375 5.765 2.375 2.828 0 4.795-1.418 4.795-3.484 0-3.08-4.09-4.512-4.09-6.792z" />
-                        </svg>
-                        <span className="font-bold text-sm">Stripe</span>
-                      </button>
-
-                      {/* 3. Unified PayMongo Button (GCash/Maya/Cards) */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('paymongo')}
-                        disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                        className={`p-4 border-2 rounded-xl flex flex-col items-center justify-center gap-2 transition-all cursor-pointer ${paymentMethod === 'paymongo'
-                          ? 'border-[#00BFA5] bg-[#00BFA5] text-white'
-                          : 'border-gray-200 bg-white hover:border-[#00BFA5] text-black'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                      >
-                        <div className="flex -space-x-1 justify-center items-center">
-                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-blue-600 border border-gray-200 z-10">G</div>
-                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center text-[8px] font-bold text-green-600 border border-gray-200 z-20">M</div>
-                          <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center border border-gray-200 z-30">
-                            <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                          </div>
-                        </div>
-                        <span className="font-bold text-xs text-center leading-tight">GCash / Maya<br />Cards</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* PayMongo Unified Flow Display */}
-                {(paymentMethod === 'paymongo') && (
-                  <div className="space-y-4 p-5 rounded-2xl border bg-teal-50 border-teal-200">
-                    {isBelowMinimum ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                        <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
-                        <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
-                      </div>
-                    ) : exceedsContract ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <p className="font-bold text-red-700">Payment Exceeds Contract</p>
-                      </div>
-                    ) : (
-                      <div className="text-center">
-                        <h4 className="font-bold text-lg text-gray-900 mb-2">Pay securely with PayMongo</h4>
-
-                        <div className="flex justify-center flex-wrap gap-2 mb-2">
-                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                            <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                            <span className="text-[10px] font-bold text-gray-700">GCash</span>
-                          </div>
-                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                            <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                            <span className="text-[10px] font-bold text-gray-700">Maya</span>
-                          </div>
-                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                            <div className="w-4 h-4 rounded-full bg-indigo-500"></div>
-                            <span className="text-[10px] font-bold text-gray-700">Cards</span>
-                          </div>
-                          <div className="bg-white border rounded px-2 py-1 flex items-center gap-1 shadow-sm">
-                            <div className="w-4 h-4 rounded-full bg-green-600"></div>
-                            <span className="text-[10px] font-bold text-gray-700">GrabPay</span>
-                          </div>
-                        </div>
-
-                        <p className="text-xs text-gray-500">
-                          You will be redirected to PayMongo's secure checkout page where you can choose <strong>GCash, Maya, GrabPay, or Credit/Debit Card</strong> to complete your payment.
-                        </p>
-
-                        <div className="bg-white/60 rounded-xl p-3 mb-4 inline-block px-6 border border-gray-200 shadow-sm">
-                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Amount</p>
-                          <p className="text-2xl font-black text-black">₱{parseFloat(customAmount).toLocaleString()}</p>
-                        </div>
-
+                  <div className="space-y-4">
+                    <label className="block text-sm font-bold text-gray-700">Payment Method</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { id: 'cash', label: 'Cash', icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+                        { id: 'stripe', label: 'Stripe', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.768-1.435 1.834-1.435 1.412 0 2.615.696 3.774 1.562l-3.242-4.197C11.83.748 10.155 0 8.528 0 5.093 0 2.502 2.659 2.502 6.52c0 6.641 8.816 6.307 8.816 9.389 0 .884-.79 1.462-1.954 1.462-1.636 0-3.098-.823-4.322-1.859l3.359 4.385c1.464 1.054 3.09 1.558 4.708 1.558 3.596 0 6.138-2.585 6.138-6.425 0-6.738-8.852-6.27-8.852-9.406 0-.825.797-1.412 1.833-1.412 1.348 0 2.559.637 3.66 1.488l1.458-2.146c-1.282-1.1-2.934-1.688-4.664-1.688-2.673 0-4.523 1.36-4.523 3.329 0 2.946 4.09 4.384 4.09 6.685 0 1.583-1.42 2.457-3.031 2.457-1.487 0-2.844-.657-3.924-1.666l-1.378 2.029c1.605 1.636 3.67 2.375 5.765 2.375 2.828 0 4.795-1.418 4.795-3.484 0-3.08-4.09-4.512-4.09-6.792z" /></svg> },
+                        { id: 'paymongo', label: 'E-Wallet / Cards', icon: <div className="flex -space-x-1"><div className="w-3.5 h-3.5 rounded-full bg-blue-500 border border-white"></div><div className="w-3.5 h-3.5 rounded-full bg-green-500 border border-white"></div><div className="w-3.5 h-3.5 rounded-full bg-green-600 border border-white"></div></div> }
+                      ].map(method => (
                         <button
-                          onClick={handlePayMongoPayment}
-                          disabled={uploadingProof}
-                          className="w-full px-4 py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2"
+                          key={method.id}
+                          type="button"
+                          onClick={() => setPaymentMethod(method.id)}
+                          disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                          className={`relative p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                            ${paymentMethod === method.id
+                              ? 'border-black bg-black text-white shadow-md scale-[1.02]'
+                              : 'border-gray-100 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
                         >
-                          {uploadingProof ? 'Redirecting...Please wait...' : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
+                          {method.icon}
+                          {method.id === 'paymongo' ? (
+                            <span className="text-[10px] text-center leading-tight">GCash / Maya<br />Cards / GrabPay</span>
+                          ) : (
+                            <span>{method.label}</span>
+                          )}
+                          {paymentMethod === method.id && (
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full border border-black max-sm:hidden"></div>
+                          )}
                         </button>
+                      ))}
+                    </div>
+
+                    {/* PayMongo Content */}
+                    {paymentMethod === 'paymongo' && (
+                      <div className="bg-teal-50 border border-teal-100 rounded-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {!isBelowMinimum && !exceedsContract && (
+                          <>
+                            <h4 className="font-bold text-teal-900 mb-3 text-center">Secure Payment via E-Wallets</h4>
+                            <div className="flex justify-center gap-2 mb-4">
+                              {['GCash', 'Maya', 'GrabPay', 'Cards'].map(n => (
+                                <span key={n} className="px-2 py-1 bg-white rounded border border-teal-100 text-[10px] font-bold text-teal-700 shadow-sm">{n}</span>
+                              ))}
+                            </div>
+                            <button
+                              onClick={handlePayMongoPayment}
+                              disabled={uploadingProof}
+                              className="w-full py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              {uploadingProof ? <span className="animate-pulse">Redirecting...</span> : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Stripe Content */}
+                    {paymentMethod === 'stripe' && !isBelowMinimum && !exceedsContract && (
+                      <div className="bg-[#f0f2fc] border border-[#e3e8fc] rounded-2xl p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <StripePaymentForm
+                          amount={parseFloat(customAmount || 0).toFixed(2)}
+                          description={`Payment - ${selectedBill.properties?.title}`}
+                          paymentRequestId={selectedBill.id}
+                          onSuccess={handleStripeSuccess}
+                          onCancel={() => showToast.error('Cancelled')}
+                        />
                       </div>
                     )}
                   </div>
                 )}
+              </div>
 
-                {/* PayMongo / GCash / Maya / Card Flow */}
-
-
-                <div>
-                  {/* Stripe Payment Flow */}
-                  {paymentMethod === 'stripe' && (
-                    <div className="space-y-4 bg-[#6772e5]/10 border border-[#6772e5]/30 p-4 rounded-xl">
-                      {isBelowMinimum ? (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                          <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                          <p className="font-bold text-red-700 mb-2">Payment Below Minimum</p>
-                          <p className="text-sm text-red-600">Minimum payment: ₱{minimumPayment.toLocaleString()}</p>
-                          <p className="text-xs text-red-500 mt-2">Partial payments are not allowed.</p>
-                        </div>
-                      ) : exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit) ? (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                          <svg className="w-12 h-12 mx-auto text-red-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                          <p className="font-bold text-red-700 mb-2">Payment Exceeds Contract Period</p>
-                          <p className="text-sm text-red-600">Maximum allowed: ₱{maxPaymentLimit?.toLocaleString() || 0} ({maxMonthsAllowed} month{maxMonthsAllowed > 1 ? 's' : ''})</p>
-                          <p className="text-xs text-red-500 mt-2">Please reduce the payment amount to proceed.</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="text-center mb-4">
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Pay with Stripe</p>
-                            <p className="text-xs text-gray-500">Secure payment powered by Stripe</p>
-                          </div>
-
-                          <StripePaymentForm
-                            amount={parseFloat(customAmount || 0).toFixed(2)}
-                            description={`EaseRent Payment - ${selectedBill.properties?.title}`}
-                            paymentRequestId={selectedBill.id}
-                            onSuccess={handleStripeSuccess}
-                            onCancel={() => {
-                              showToast.error('Payment cancelled', { duration: 4000, transition: "bounceIn" });
-                            }}
-                          />
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Buttons */}
-                  <div className="flex gap-3 pt-2">
-                    {paymentMethod !== 'stripe' && paymentMethod !== 'paymongo' && parseFloat(customAmount) > 0 && (
+              {/* Footer Buttons (Cash or Cancel) */}
+              {((paymentMethod === 'cash' && minimumPayment > 0 && appliedCredit < minimumPayment) || (paymentMethod === 'stripe' && (isBelowMinimum || exceedsContract)) || (paymentMethod === 'paymongo' && (isBelowMinimum || exceedsContract))) && (
+                <div className="flex-none p-5 border-t border-gray-100 bg-gray-50/50 backdrop-blur pb-6">
+                  <div className="flex gap-3">
+                    {paymentMethod === 'cash' && !isBelowMinimum && !exceedsContract && (
                       <button
                         onClick={submitPayment}
-                        disabled={uploadingProof || isBelowMinimum || (maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit)}
-                        className="flex-1 px-4 py-3 bg-black text-white hover:bg-gray-800 font-bold rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all"
+                        className="flex-1 py-3.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                       >
-                        {uploadingProof ? 'Submitting...' : 'Submit Payment'}
+                        Confirm Cash Payment
                       </button>
                     )}
                     <button
@@ -2808,15 +2741,21 @@ export default function PaymentsPage() {
                         setShowPaymentModal(false)
                         setSelectedBill(null)
                         setPaymentMethod('cash')
-                        setPaypalProcessing(false)
                       }}
-                      className={`px-4 py-3 border-2 border-gray-200 text-black font-bold rounded-xl hover:border-black cursor-pointer transition-colors ${paymentMethod === 'stripe' || paymentMethod === 'paymongo' || parseFloat(customAmount) <= 0 ? 'flex-1' : ''}`}
+                      className={`py-3.5 border-2 border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-white hover:border-gray-300 hover:text-black transition-all cursor-pointer ${(paymentMethod === 'cash' && !isBelowMinimum && !exceedsContract) ? 'px-6' : 'w-full'
+                        }`}
                     >
                       Cancel
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
+              {/* Footer for clean Stripe/PayMongo cancel only if not showing their inline forms correctly */}
+              {((paymentMethod !== 'cash' && !isBelowMinimum && !exceedsContract && minimumPayment > 0)) && (
+                <div className="flex-none p-4 text-center">
+                  <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-900 text-sm font-semibold underline cursor-pointer">Cancel Payment</button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2909,9 +2848,15 @@ export default function PaymentsPage() {
                 </button>
                 <button
                   onClick={handleModalConfirm}
-                  className={`px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm cursor-pointer transition-transform active:scale-95 ${confirmModal.confirmColor}`}
+                  disabled={isProcessingModal}
+                  className={`px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${confirmModal.confirmColor} ${isProcessingModal ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                 >
-                  {confirmModal.confirmText}
+                  {isProcessingModal ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      Processing...
+                    </>
+                  ) : confirmModal.confirmText}
                 </button>
               </div>
             </div>

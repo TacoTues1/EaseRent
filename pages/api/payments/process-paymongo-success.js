@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { sendNotificationEmail } from '@/lib/email';
+import { sendSMS } from '@/lib/sms';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -259,38 +261,35 @@ export default async function handler(req, res) {
 
             const message = `Payment of ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" received (Via PayMongo).`;
 
-            // Use absolute URL or fallback to localhost for development
-            const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
+            // 1. Send SMS
             if (tenantProfile?.phone) {
                 try {
-                    await fetch(`${baseUrl}/api/send-sms`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            phoneNumber: tenantProfile.phone,
-                            message: message
-                        })
-                    });
+                    await sendSMS(tenantProfile.phone, message);
                 } catch (smsErr) {
                     console.error('SMS send error:', smsErr);
                 }
             }
 
+            // 2. Send Email
             try {
-                await fetch(`${baseUrl}/api/send-email`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        recipientId: request.tenant,
+                const { data: userData } = await supabase.auth.admin.getUserById(request.tenant);
+                const tenantEmail = userData?.user?.email;
+
+                if (tenantEmail) {
+                    await sendNotificationEmail({
+                        to: tenantEmail,
                         subject: 'Payment Successful (Via PayMongo)',
-                        html: `<p>Dear ${tenantProfile?.first_name || 'Tenant'},</p>
+                        message: `<div style="font-family: sans-serif; color: #333;">
+                               <p>Dear ${tenantProfile?.first_name || 'Tenant'},</p>
                                <p>We confirm that your payment of <strong>₱${amountPaid.toLocaleString()}</strong> has been successfully processed via PayMongo.</p>
                                <p>Property: ${request.properties?.title}</p>
                                <p>Transaction ID: ${transactionId}</p>
-                               <p>Thank you!</p>`
-                    })
-                });
+                               <p>Thank you!</p>
+                               </div>`
+                    });
+                } else {
+                    console.error('Email send error: No email found for user', request.tenant);
+                }
             } catch (emailErr) {
                 console.error('Email send error:', emailErr);
             }

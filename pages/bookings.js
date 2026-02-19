@@ -21,6 +21,7 @@ export default function BookingsPage() {
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
+  const [processingAction, setProcessingAction] = useState(null) // tracks which booking.id + action is in progress
 
   // Assign Tenant Modal States
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -298,97 +299,106 @@ export default function BookingsPage() {
 
   // --- ACTIONS ---
   async function approveBooking(booking) {
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'approved' })
-      .eq('id', booking.id)
+    setProcessingAction(`approve-${booking.id}`)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'approved' })
+        .eq('id', booking.id)
 
-    if (!error) {
-      if (booking.time_slot_id) {
-        await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', booking.time_slot_id)
-      }
+      if (!error) {
+        if (booking.time_slot_id) {
+          await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', booking.time_slot_id)
+        }
 
-      await createNotification({
-        recipient: booking.tenant,
-        actor: session.user.id,
-        type: 'booking_approved',
-        message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString('en-US')} has been approved!`,
-        link: '/bookings'
-      })
-
-      fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'booking_status',
-          recordId: booking.id,
-          actorId: session.user.id
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'booking_approved',
+          message: `Your viewing request for ${booking.property?.title} on ${new Date(booking.booking_date).toLocaleString('en-US')} has been approved!`,
+          link: '/bookings'
         })
-      })
 
-      try {
-        fetch('/api/send-email', {
+        fetch('/api/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookingId: booking.id })
+          body: JSON.stringify({
+            type: 'booking_status',
+            recordId: booking.id,
+            actorId: session.user.id
+          })
         })
-      } catch (e) { console.error(e) }
 
-      showToast.success("Booking approved!",
-        {
-          duration: 4000,
-          position: "top-center",
-          transition: "bounceIn"
-        });
-      loadBookings()
-    } else {
-      showToast.error('Failed to approve booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
-    }
+        try {
+          fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bookingId: booking.id })
+          })
+        } catch (e) { console.error(e) }
+
+        showToast.success("Booking approved!",
+          {
+            duration: 4000,
+            position: "top-center",
+            transition: "bounceIn"
+          });
+        loadBookings()
+      } else {
+        showToast.error('Failed to approve booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
+      }
+    } finally { setProcessingAction(null) }
   }
 
   async function markViewingSuccess(booking) {
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'viewing_done' })
-      .eq('id', booking.id)
+    setProcessingAction(`viewing-${booking.id}`)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'viewing_done' })
+        .eq('id', booking.id)
 
-    if (!error) {
-      await createNotification({
-        recipient: booking.tenant,
-        actor: session.user.id,
-        type: 'viewing_success',
-        message: `Your viewing for ${booking.property?.title} was marked as successful! The landlord may assign you to a property soon.`,
-        link: '/bookings'
-      })
-      showToast.success("Viewing marked as successful!", { duration: 4000, position: "top-center", transition: "bounceIn" });
-      loadBookings()
-    } else {
-      showToast.error('Failed to update booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
-    }
+      if (!error) {
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'viewing_success',
+          message: `Your viewing for ${booking.property?.title} was marked as successful! The landlord may assign you to a property soon.`,
+          link: '/bookings'
+        })
+        showToast.success("Viewing marked as successful!", { duration: 4000, position: "top-center", transition: "bounceIn" });
+        loadBookings()
+      } else {
+        showToast.error('Failed to update booking', { duration: 4000, position: "top-center", transition: "bounceIn" });
+      }
+    } finally { setProcessingAction(null) }
   }
 
   async function cancelViewing(booking) {
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', booking.id)
+    setProcessingAction(`cancel-viewing-${booking.id}`)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', booking.id)
 
-    if (!error) {
-      if (booking.time_slot_id) {
-        await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', booking.time_slot_id)
+      if (!error) {
+        if (booking.time_slot_id) {
+          await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', booking.time_slot_id)
+        }
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'booking_cancelled',
+          message: `Your viewing for ${booking.property?.title} has been cancelled by the landlord.`,
+          link: '/bookings'
+        })
+        showToast.success('Viewing cancelled', { duration: 4000, position: "top-center", transition: "bounceIn" });
+        loadBookings()
+      } else {
+        showToast.error('Failed to cancel viewing', { duration: 4000, position: "top-center", transition: "bounceIn" });
       }
-      await createNotification({
-        recipient: booking.tenant,
-        actor: session.user.id,
-        type: 'booking_cancelled',
-        message: `Your viewing for ${booking.property?.title} has been cancelled by the landlord.`,
-        link: '/bookings'
-      })
-      showToast.success('Viewing cancelled', { duration: 4000, position: "top-center", transition: "bounceIn" });
-      loadBookings()
-    } else {
-      showToast.error('Failed to cancel viewing', { duration: 4000, position: "top-center", transition: "bounceIn" });
-    }
+    } finally { setProcessingAction(null) }
   }
 
   // --- ASSIGN TENANT FUNCTIONS ---
@@ -557,39 +567,42 @@ export default function BookingsPage() {
   }
 
   async function rejectBooking(booking) {
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'rejected' })
-      .eq('id', booking.id)
+    setProcessingAction(`reject-${booking.id}`)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'rejected' })
+        .eq('id', booking.id)
 
-    if (!error) {
-      if (booking.time_slot_id) {
-        await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', booking.time_slot_id)
-      }
+      if (!error) {
+        if (booking.time_slot_id) {
+          await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', booking.time_slot_id)
+        }
 
-      await createNotification({
-        recipient: booking.tenant,
-        actor: session.user.id,
-        type: 'booking_rejected',
-        message: `Your viewing request for ${booking.property?.title} has been rejected.`,
-        link: '/bookings'
-      })
-
-      fetch('/api/notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'booking_status',
-          recordId: booking.id,
-          actorId: session.user.id
+        await createNotification({
+          recipient: booking.tenant,
+          actor: session.user.id,
+          type: 'booking_rejected',
+          message: `Your viewing request for ${booking.property?.title} has been rejected.`,
+          link: '/bookings'
         })
-      })
 
-      showToast.success('Booking rejected', { duration: 4000, transition: "bounceIn" });
-      loadBookings()
-    } else {
-      showToast.error('Failed to reject booking', { duration: 4000, transition: "bounceIn" });
-    }
+        fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'booking_status',
+            recordId: booking.id,
+            actorId: session.user.id
+          })
+        })
+
+        showToast.success('Booking rejected', { duration: 4000, transition: "bounceIn" });
+        loadBookings()
+      } else {
+        showToast.error('Failed to reject booking', { duration: 4000, transition: "bounceIn" });
+      }
+    } finally { setProcessingAction(null) }
   }
 
   function canModifyBooking(bookingDate) {
@@ -608,25 +621,28 @@ export default function BookingsPage() {
   // 2. Execute the actual cancellation
   async function confirmCancelBooking() {
     if (!bookingToCancel) return
+    setProcessingAction(`cancel-${bookingToCancel.id}`)
+    try {
 
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', bookingToCancel.id)
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingToCancel.id)
 
-    if (!error) {
-      if (bookingToCancel.time_slot_id) {
-        await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', bookingToCancel.time_slot_id)
+      if (!error) {
+        if (bookingToCancel.time_slot_id) {
+          await supabase.from('available_time_slots').update({ is_booked: false }).eq('id', bookingToCancel.time_slot_id)
+        }
+        showToast.success('Booking cancelled', { duration: 4000, transition: "bounceIn" });
+        loadBookings();
+      } else {
+        showToast.error('Failed to cancel booking', { duration: 4000, transition: "bounceIn" });
       }
-      showToast.success('Booking cancelled', { duration: 4000, transition: "bounceIn" });
-      loadBookings();
-    } else {
-      showToast.error('Failed to cancel booking', { duration: 4000, transition: "bounceIn" });
-    }
 
-    // Cleanup
-    setShowCancelModal(false)
-    setBookingToCancel(null)
+      // Cleanup
+      setShowCancelModal(false)
+      setBookingToCancel(null)
+    } finally { setProcessingAction(null) }
   }
 
   // --- MODAL FUNCTIONS ---
@@ -959,15 +975,17 @@ export default function BookingsPage() {
                           <div className="flex gap-2 w-full md:w-auto">
                             <button
                               onClick={() => approveBooking(booking)}
-                              className="flex-1 md:flex-none px-4 py-2.5 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-green-700 transition-colors shadow-sm"
+                              disabled={processingAction === `approve-${booking.id}`}
+                              className={`flex-1 md:flex-none px-4 py-2.5 text-white text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 ${processingAction === `approve-${booking.id}` ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 cursor-pointer hover:bg-green-700'}`}
                             >
-                              Accept
+                              {processingAction === `approve-${booking.id}` ? (<><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Processing...</>) : 'Accept'}
                             </button>
                             <button
                               onClick={() => rejectBooking(booking)}
-                              className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-50 transition-colors shadow-sm"
+                              disabled={processingAction === `reject-${booking.id}`}
+                              className={`flex-1 md:flex-none px-4 py-2.5 border text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 ${processingAction === `reject-${booking.id}` ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-white border-gray-200 text-gray-700 cursor-pointer hover:bg-gray-50'}`}
                             >
-                              Decline
+                              {processingAction === `reject-${booking.id}` ? (<><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Processing...</>) : 'Decline'}
                             </button>
                           </div>
                         )}
@@ -978,15 +996,17 @@ export default function BookingsPage() {
                           <div className="flex gap-2 w-full md:w-auto">
                             <button
                               onClick={() => markViewingSuccess(booking)}
-                              className="flex-1 md:flex-none px-4 py-2.5 bg-green-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-sm"
+                              disabled={processingAction === `viewing-${booking.id}`}
+                              className={`flex-1 md:flex-none px-4 py-2.5 text-white text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 ${processingAction === `viewing-${booking.id}` ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 cursor-pointer hover:bg-green-700'}`}
                             >
-                              Viewing Success
+                              {processingAction === `viewing-${booking.id}` ? (<><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Processing...</>) : 'Viewing Success'}
                             </button>
                             <button
                               onClick={() => cancelViewing(booking)}
-                              className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg cursor-pointer hover:bg-red-50 transition-colors shadow-sm"
+                              disabled={processingAction === `cancel-viewing-${booking.id}`}
+                              className={`flex-1 md:flex-none px-4 py-2.5 border text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 ${processingAction === `cancel-viewing-${booking.id}` ? 'bg-red-50 text-red-300 border-red-100 cursor-not-allowed' : 'bg-white border-red-200 text-red-600 cursor-pointer hover:bg-red-50'}`}
                             >
-                              Cancel Viewing
+                              {processingAction === `cancel-viewing-${booking.id}` ? (<><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Cancelling...</>) : 'Cancel Viewing'}
                             </button>
                           </div>
                         )}
@@ -1096,9 +1116,10 @@ export default function BookingsPage() {
               </button>
               <button
                 onClick={confirmCancelBooking}
-                className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors shadow-lg shadow-red-100 cursor-pointer"
+                disabled={!!processingAction}
+                className={`flex-1 py-2.5 text-white font-bold rounded-xl transition-colors shadow-lg shadow-red-100 flex items-center justify-center gap-2 ${processingAction ? 'bg-red-400 cursor-not-allowed' : 'bg-red-600 cursor-pointer hover:bg-red-700'}`}
               >
-                Yes, Cancel
+                {processingAction ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Cancelling...</>) : 'Yes, Cancel'}
               </button>
             </div>
           </div>

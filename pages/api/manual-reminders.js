@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendContractNearingEndEmail, sendNotificationEmail } from '../../lib/email';
-import { sendBookingReminder, sendContractNearingEnd, sendSMS, sendUnreadMessageNotification } from '../../lib/sms';
+import { sendContractNearingEndEmail, sendNotificationEmail, sendNewPaymentBillEmail } from '../../lib/email';
+import { sendBookingReminder, sendContractNearingEnd, sendSMS, sendUnreadMessageNotification, sendBillNotification } from '../../lib/sms';
 
 // Initialize Admin Client
 const supabaseAdmin = createClient(
@@ -63,21 +63,25 @@ export default async function handler(req, res) {
 
     console.log(`[Reminder Check] PH Time: ${phTime.toLocaleString()}, Hour: ${currentHour}, Is Reminder Time: ${isReminderTime}, Already Ran Today: ${alreadyRanToday}`);
 
-    // Skip bill reminders if not in time window OR already ran today
-    const shouldSendBillReminders = isReminderTime && !alreadyRanToday;
+    // Skip bill reminders if not in time window OR already ran today (Unless 'force' param is present)
+    const forceRun = req.query.force === 'true';
+    const shouldSendBillReminders = forceRun || (isReminderTime && !alreadyRanToday);
 
     if (!shouldSendBillReminders) {
-      console.log(`[Reminder Check] Skipping bill reminders - Time: ${currentHour}:00, Already ran: ${alreadyRanToday}`);
+      console.log(`[Reminder Check] Skipping bill reminders - Time: ${currentHour}:00, Already ran: ${alreadyRanToday}, Force: ${forceRun}`);
       results.skipped = `Bill reminders skipped. Current hour: ${currentHour}, Already ran today: ${alreadyRanToday}`;
     } else {
-      // Mark that we ran today (create a system notification)
-      await supabaseAdmin.from('notifications').insert({
-        recipient: '00000000-0000-0000-0000-000000000000', // System placeholder
-        actor: '00000000-0000-0000-0000-000000000000',
-        type: 'daily_reminder_check',
-        message: `Daily reminder check ran at ${phTime.toLocaleString()}`,
-        is_read: true
-      });
+      console.log(`[Reminder Check] Running bill reminders (Force: ${forceRun})`);
+      if (!forceRun) {
+        // Mark that we ran today (create a system notification)
+        await supabaseAdmin.from('notifications').insert({
+          recipient: '00000000-0000-0000-0000-000000000000', // System placeholder
+          actor: '00000000-0000-0000-0000-000000000000',
+          type: 'daily_reminder_check',
+          message: `Daily reminder check ran at ${phTime.toLocaleString()}`,
+          is_read: true
+        });
+      }
     }
 
     // ====================================================
@@ -314,6 +318,14 @@ export default async function handler(req, res) {
             dueDate.setHours(23, 59, 59, 999);
             const dueDateStr = dueDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
             const monthName = dueDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            let billCreated = false;
+
+            // Fetch Email for notifications
+            let tenantEmail = occ.tenant?.email;
+            if (!tenantEmail) {
+              const { data: u } = await supabaseAdmin.auth.admin.getUserById(occ.tenant_id);
+              tenantEmail = u?.user?.email;
+            }
 
             // --- CREATE PAYMENT REQUEST (Rent Bill) - Only on day 3 (first day) ---
             if (daysUntilDue === 3) {
@@ -348,6 +360,7 @@ export default async function handler(req, res) {
                     console.error(`[Rent Reminder] Failed to create payment request:`, billError);
                   } else {
                     console.log(`[Rent Reminder] ✅ Payment request created for ${occ.tenant?.first_name}`);
+                    billCreated = true;
                   }
                 } catch (err) {
                   console.error(`[Rent Reminder] Payment request exception:`, err);
@@ -360,15 +373,54 @@ export default async function handler(req, res) {
             const daysText = daysUntilDue === 3 ? '3 days' : daysUntilDue === 2 ? '2 days' : '1 day';
             const rentMessage = `Rent Bill Reminder (${daysText} before due): Your monthly rent of ₱${Number(rentAmount).toLocaleString()} for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}.${occ.late_payment_fee > 0 ? ` Late payment fee: ₱${Number(occ.late_payment_fee).toLocaleString()}` : ''} Please check your Payments page.`;
 
-            console.log(`[Rent Reminder] Sending notification (${daysText} before): ${rentMessage}`);
+            // IF BILL WAS JUST CREATED (Day 3), send SPECIFIC Bill Notification
+            if (billCreated) {
+              console.log(`[Rent Reminder] Sending NEW BILL notification to ${occ.tenant?.first_name}`);
 
-            occ.tenant.profile_id = occ.tenant.id;
-            await sendUtilityReminder(supabaseAdmin, occ.tenant, 'rent_bill_reminder',
-              rentMessage,
-              `🏠 Rent Bill Reminder (${daysText} before due)`
-            );
+              // 1. Send Email
+              if (tenantEmail) {
+                await sendNewPaymentBillEmail({
+                  to: tenantEmail,
+                  tenantName: occ.tenant?.first_name || 'Tenant',
+                  propertyTitle: occ.property?.title,
+                  billType: 'rent',
+                  amount: rentAmount,
+                  dueDate: dueDate,
+                  description: `Monthly Rent for ${monthName}`
+                });
+              } else {
+                console.log(`[Rent Reminder] ❌ No email found for tenant ${occ.tenant_id}`);
+              }
+
+              // 2. Send SMS
+              const phone = formatPhoneNumber(occ.tenant?.phone);
+              if (phone) {
+                await sendBillNotification(phone, {
+                  propertyName: occ.property?.title,
+                  amount: rentAmount.toLocaleString(),
+                  dueDate: dueDateStr
+                });
+              }
+
+              // 3. Mark in DB (using sendUtilityReminder just to record the notification log)
+              occ.tenant.profile_id = occ.tenant.id;
+              await sendUtilityReminder(supabaseAdmin, occ.tenant, 'rent_bill_reminder',
+                rentMessage,
+                `🏠 Rent Bill Reminder (New Bill Created)`
+              );
+            } else {
+              // STANDARD REMINDER (Day 1 & 2)
+              console.log(`[Rent Reminder] Sending notification (${daysText} before): ${rentMessage}`);
+
+              occ.tenant.profile_id = occ.tenant.id;
+              await sendUtilityReminder(supabaseAdmin, occ.tenant, 'rent_bill_reminder',
+                rentMessage,
+                `🏠 Rent Bill Reminder (${daysText} before due)`
+              );
+            }
+
             results.rent_reminders_sent++;
-            console.log(`[Rent Reminder] ✅ Notification sent to ${occ.tenant?.first_name}`);
+            console.log(`[Rent Reminder] ✅ Notification processed for ${occ.tenant?.first_name}`);
           } else {
             console.log(`[Rent Reminder] ⏭️ Skipped ${occ.tenant?.first_name} - already sent today`);
           }
