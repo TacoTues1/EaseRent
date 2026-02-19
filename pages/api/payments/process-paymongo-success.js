@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendNotificationEmail } from '@/lib/email';
-import { sendSMS } from '@/lib/sms';
+import { sendNotificationEmail, sendOnlinePaymentReceivedEmail } from '@/lib/email';
+import { sendSMS, sendPaymentReceivedNotification } from '@/lib/sms';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -240,7 +240,8 @@ export default async function handler(req, res) {
                     paid_at: new Date().toISOString(),
                     payment_method: 'paymongo',
                     is_advance_payment: true,
-                    payment_id: paymentRecord?.id
+                    payment_id: paymentRecord?.id,
+                    tenant_reference_number: transactionId // Include reference number
                 });
             }
 
@@ -297,14 +298,54 @@ export default async function handler(req, res) {
             // Notify Landlord too
             await supabase.from('notifications').insert({
                 recipient: request.landlord,
-                actor: request.tenant, // Assuming actor logic works or we use hardcoded
-                // Actually, in the other file it used session.user.id. Here we don't have session.
-                // We can use request.tenant as actor.
-                type: 'payment_confirmation_needed', // reuse this type or 'payment_received'
-                message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${request.properties?.title} via PayMongo (Transaction: ${transactionId}).`,
+                actor: request.tenant,
+                type: 'payment_received',
+                message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${request.properties?.title} via PayMongo.`,
                 link: '/payments',
                 data: { payment_request_id: request.id }
-            })
+            });
+
+            // Send Email to Landlord
+            try {
+                const { data: landlordEmail } = await supabase.rpc('get_user_email', { user_id: request.landlord });
+
+                // Fetch landlord profile for name/phone
+                const { data: landlordProfile } = await supabase
+                    .from('profiles')
+                    .select('first_name, last_name, phone')
+                    .eq('id', request.landlord)
+                    .single();
+
+                const landlordName = landlordProfile ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Landlord';
+                const tenantName = tenantProfile ? `${tenantProfile.first_name} ${tenantProfile.last_name}` : 'Tenant';
+
+                if (landlordEmail) {
+                    await sendOnlinePaymentReceivedEmail({
+                        to: landlordEmail,
+                        landlordName,
+                        tenantName,
+                        propertyTitle: request.properties?.title || 'Property',
+                        amount: amountPaid,
+                        paymentMethod: 'paymongo',
+                        transactionId: transactionId
+                    });
+                    console.log(`✅ PayMongo Lanlord Email sent to ${landlordEmail}`);
+                }
+
+                // Send SMS to Landlord
+                if (landlordProfile?.phone) {
+                    await sendPaymentReceivedNotification(landlordProfile.phone, {
+                        method: 'paymongo',
+                        tenantName,
+                        amount: amountPaid.toLocaleString(),
+                        propertyTitle: request.properties?.title || 'Property'
+                    });
+                    console.log(`✅ PayMongo Lanlord SMS sent to ${landlordProfile.phone}`);
+                }
+
+            } catch (llErr) {
+                console.error('Landlord Notification Error:', llErr);
+            }
 
         } catch (notifyErr) {
             console.error('Notification Error:', notifyErr);

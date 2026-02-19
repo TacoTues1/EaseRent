@@ -2,8 +2,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { sendNotificationEmail } from '@/lib/email';
-import { sendSMS } from '@/lib/sms';
+import { sendNotificationEmail, sendOnlinePaymentReceivedEmail } from '@/lib/email';
+import { sendSMS, sendPaymentReceivedNotification } from '@/lib/sms';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -236,7 +236,8 @@ export default async function handler(req, res) {
                     paid_at: new Date().toISOString(),
                     payment_method: 'stripe',
                     is_advance_payment: true,
-                    payment_id: paymentRecord?.id
+                    payment_id: paymentRecord?.id,
+                    tenant_reference_number: paymentIntentId // Include reference number
                 });
             }
 
@@ -293,8 +294,61 @@ export default async function handler(req, res) {
             }
 
         } catch (notifyErr) {
-            console.error('Notification Error:', notifyErr);
-            // Don't fail the request just because notification failed
+            console.error('Notification Error (Tenant):', notifyErr);
+        }
+
+        // --- NEW: LANDLORD NOTIFICATIONS ---
+        try {
+            // Fetch landlord profile
+            const { data: landlordProfile } = await supabase
+                .from('profiles')
+                .select('first_name, last_name, phone')
+                .eq('id', request.landlord)
+                .single();
+
+            const landlordName = landlordProfile ? `${landlordProfile.first_name} ${landlordProfile.last_name}` : 'Landlord';
+            const { data: tenantProfileData } = await supabase.from('profiles').select('first_name, last_name').eq('id', request.tenant).single();
+            const tenantName = tenantProfileData ? `${tenantProfileData.first_name} ${tenantProfileData.last_name}` : 'Tenant';
+
+            // DB Notification
+            await supabase.from('notifications').insert({
+                recipient: request.landlord,
+                actor: request.tenant,
+                type: 'payment_received',
+                message: `Tenant paid ₱${amountPaid.toLocaleString()} for ${request.properties?.title} via Stripe.`,
+                link: '/payments',
+                data: { payment_request_id: request.id }
+            });
+
+            // Email
+            const { data: landlordEmail } = await supabase.rpc('get_user_email', { user_id: request.landlord });
+            if (landlordEmail) {
+                await sendOnlinePaymentReceivedEmail({
+                    to: landlordEmail,
+                    landlordName,
+                    tenantName,
+                    propertyTitle: request.properties?.title || 'Property',
+                    amount: amountPaid,
+                    paymentMethod: 'stripe',
+                    transactionId: paymentIntentId
+                });
+                console.log(`✅ Stripe Landlord Email sent to ${landlordEmail}`);
+            }
+
+            // SMS
+            if (landlordProfile?.phone) {
+                await sendPaymentReceivedNotification(landlordProfile.phone, {
+                    method: 'stripe',
+                    tenantName,
+                    amount: amountPaid.toLocaleString(),
+                    propertyTitle: request.properties?.title || 'Property'
+                });
+                console.log(`✅ Stripe Landlord SMS sent to ${landlordProfile.phone}`);
+            }
+
+        } catch (llNotifyErr) {
+            console.error('Notification Error (Landlord):', llNotifyErr);
+            // Don't fail the request
         }
 
         // Return info

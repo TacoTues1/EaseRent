@@ -16,6 +16,7 @@ export default function PaymentsPage() {
   const [approvedApplications, setApprovedApplications] = useState([])
   const [loading, setLoading] = useState(true)
   const [showFormModal, setShowFormModal] = useState(false)
+  const [showCashConfirmModal, setShowCashConfirmModal] = useState(false) // NEW: for cash confirmation
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedBill, setSelectedBill] = useState(null)
   const [userRole, setUserRole] = useState(null)
@@ -732,103 +733,70 @@ export default function PaymentsPage() {
   async function submitPayment() {
     if (!selectedBill) return
 
-    // Add confirmation for manual payments
-    if (paymentMethod === 'cash') {
-      if (!window.confirm("Are you sure you want to mark this bill as paid via CASH? This will notify the landlord to confirm your payment.")) {
-        return;
-      }
-    }
-
+    // Pre-validation
     const paymentAmount = parseFloat(customAmount) || 0;
-
-    // Calculate total bill amount
     const totalBillAmount = (
       parseFloat(selectedBill.rent_amount || 0) +
       parseFloat(selectedBill.security_deposit_amount || 0) +
-      parseFloat(selectedBill.advance_amount || 0) + // Include Advance in Total
+      parseFloat(selectedBill.advance_amount || 0) +
       parseFloat(selectedBill.water_bill || 0) +
       parseFloat(selectedBill.electrical_bill || 0) +
       parseFloat(selectedBill.wifi_bill || 0) +
       parseFloat(selectedBill.other_bills || 0)
     ) - appliedCredit;
 
-    // Block if payment amount is zero or negative
     if (paymentAmount <= 0) {
-      showToast.error('Please enter a valid payment amount greater than ₱0.', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-      return
+      showToast.error('Please enter a valid payment amount greater than ₱0.', { duration: 4000 });
+      return;
     }
 
-    // Block if payment is less than total bill (no partial payments)
     if (paymentAmount < totalBillAmount) {
-      showToast.error(`Payment must be at least ₱${totalBillAmount.toLocaleString()}. Partial payments are not allowed.`, {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-      return
+      showToast.error(`Payment must be at least ₱${totalBillAmount.toLocaleString()}. Partial payments are not allowed.`, { duration: 4000 });
+      return;
     }
 
-    // Block if payment exceeds contract limit (double check)
     if (exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && paymentAmount > maxPaymentLimit)) {
-      showToast.error(`Payment exceeds contract period. Maximum allowed is ${maxMonthsAllowed} month${maxMonthsAllowed > 1 ? 's' : ''} (₱${maxPaymentLimit?.toLocaleString() || 0}).`, {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
-      return
+      showToast.error(`Payment exceeds contract period. Maximum allowed is ${maxMonthsAllowed} month${maxMonthsAllowed > 1 ? 's' : ''} (₱${maxPaymentLimit?.toLocaleString() || 0}).`, { duration: 4000 });
+      return;
     }
 
-    // Validate QR payment requirements
     if (paymentMethod === 'qr_code') {
       if (!referenceNumber.trim() && !proofFile) {
-        showToast.error('Please enter reference number or upload payment proof', {
-          duration: 4000,
-          progress: true,
-          position: "top-center",
-          transition: "bounceIn",
-          icon: '',
-          sound: true,
-        })
-        return
+        showToast.error('Please enter reference number or upload payment proof', { duration: 4000 });
+        return;
       }
     }
 
-    setUploadingProof(true)
+    // Decision: Modal for Cash, Direct for other methods (QR is manual but usually considered direct submission + proof)
+    if (paymentMethod === 'cash') {
+      setShowCashConfirmModal(true); // Open modal
+    } else {
+      executePaymentSubmission(); // Proceed immediately
+    }
+  }
+
+  // Extracted helper for actual submission
+  async function executePaymentSubmission() {
+    setShowCashConfirmModal(false); // Close if open
+    setUploadingProof(true);
 
     try {
-      let proofUrl = null
+      let proofUrl = null;
 
-      // Upload proof if provided (for QR payments)
       if (proofFile) {
-        const proofFileName = `proof_${Date.now()}_${proofFile.name}`
+        const proofFileName = `proof_${Date.now()}_${proofFile.name}`;
         const { data: proofUpload, error: proofError } = await supabase.storage
           .from('payment-files')
-          .upload(proofFileName, proofFile)
+          .upload(proofFileName, proofFile);
 
-        if (proofError) throw proofError
+        if (proofError) throw proofError;
 
         const { data: proofPublic } = supabase.storage
           .from('payment-files')
-          .getPublicUrl(proofFileName)
-        proofUrl = proofPublic.publicUrl
+          .getPublicUrl(proofFileName);
+        proofUrl = proofPublic.publicUrl;
       }
 
-      // Calculate advance payment amount (rent paid beyond first month)
-      // Security deposit and utilities are one-time, not counted as "advance rent"
-      // For move-in payments, advance_amount is also a one-time deposit charge
       const isMoveIn = selectedBill.is_move_in_payment;
       const oneTimeCharges = (
         parseFloat(selectedBill.security_deposit_amount || 0) +
@@ -839,17 +807,9 @@ export default function PaymentsPage() {
       );
       const firstMonthRent = parseFloat(selectedBill.rent_amount || 0);
       const amountPaid = parseFloat(customAmount) + appliedCredit;
-
-      // Rent portion = total paid minus one-time charges
       const rentPortion = Math.max(0, amountPaid - oneTimeCharges);
-
-      // For move-in: keep original advance_amount (it's a deposit, not advance rent months)
-      // For regular payments: advance = rent paid beyond first month
       const advancePaymentAmount = isMoveIn ? parseFloat(selectedBill.advance_amount || 0) : Math.max(0, rentPortion - firstMonthRent);
 
-      console.log('Advance calculation:', { isMoveIn, amountPaid, oneTimeCharges, rentPortion, firstMonthRent, advancePaymentAmount });
-
-      // Update payment request status to pending_confirmation
       const { error } = await supabase
         .from('payment_requests')
         .update({
@@ -858,14 +818,14 @@ export default function PaymentsPage() {
           payment_method: paymentMethod,
           tenant_proof_url: proofUrl,
           tenant_reference_number: referenceNumber.trim() || null,
-          advance_amount: advancePaymentAmount, // Store the advance amount
-          amount_paid: amountPaid // Store total amount paid
+          advance_amount: advancePaymentAmount,
+          amount_paid: amountPaid
         })
-        .eq('id', selectedBill.id)
+        .eq('id', selectedBill.id);
 
-      if (error) throw error
+      if (error) throw error;
 
-      // Notify landlord to confirm payment
+      // Notify Landlord
       const totalPaid = parseFloat(customAmount);
       const monthsText = monthsCovered > 1 ? ` (${monthsCovered} months advance)` : '';
 
@@ -876,94 +836,47 @@ export default function PaymentsPage() {
         message: `Tenant paid ₱${totalPaid.toLocaleString()} for ${selectedBill.properties?.title || 'property'} via ${paymentMethod === 'qr_code' ? 'QR Code' : 'Cash'}${monthsText}. Please confirm payment receipt.`,
         link: '/payments',
         data: { payment_request_id: selectedBill.id }
-      })
+      });
 
-      // --- NEW: Send SMS and Email notifications to landlord for cash/QR payments ---
+      // API Notification
       try {
-        // Fetch landlord profile for phone and name
-        const { data: landlordProfile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name, phone')
-          .eq('id', selectedBill.landlord)
-          .single();
-
-        // Fetch tenant profile for name
-        const { data: tenantProfile } = await supabase
-          .from('profiles')
-          .select('first_name, last_name')
-          .eq('id', session.user.id)
-          .single();
-
-        const landlordName = landlordProfile?.first_name || 'Landlord';
-        const tenantName = `${tenantProfile?.first_name || ''} ${tenantProfile?.last_name || ''}`.trim() || 'Tenant';
-        const propertyTitle = selectedBill.properties?.title || 'property';
-
-        // Send SMS to landlord
-        if (landlordProfile?.phone) {
-          const smsMessage = `💰 ${paymentMethod === 'qr_code' ? 'QR' : 'Cash'} Payment: ${tenantName} paid ₱${totalPaid.toLocaleString()} for ${propertyTitle}${monthsText}. Please confirm in your dashboard.`;
-
-          fetch('/api/send-sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phoneNumber: landlordProfile.phone,
-              message: smsMessage
-            })
-          }).catch(err => console.error('SMS to landlord failed:', err));
-        }
-
-        // Send Email to landlord
+        const { data: landlordProfile } = await supabase.from('profiles').select('first_name, last_name, phone').eq('id', selectedBill.landlord).single();
+        const { data: tenantProfile } = await supabase.from('profiles').select('first_name, last_name').eq('id', session.user.id).single();
         const { data: landlordEmail } = await supabase.rpc('get_user_email', { user_id: selectedBill.landlord });
 
-        if (landlordEmail) {
+        if (landlordEmail || landlordProfile?.phone) {
           fetch('/api/notify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               type: 'cash_payment',
               landlordEmail,
-              landlordName,
-              tenantName,
-              propertyTitle,
+              landlordPhone: landlordProfile?.phone,
+              landlordName: landlordProfile?.first_name || 'Landlord',
+              tenantName: `${tenantProfile?.first_name || ''} ${tenantProfile?.last_name || ''}`.trim() || 'Tenant',
+              propertyTitle: selectedBill.properties?.title || 'property',
               amount: totalPaid,
               monthsCovered,
               paymentMethod
             })
-          }).catch(err => console.error('Email to landlord failed:', err));
+          }).catch(err => console.error('Notification failed:', err));
         }
-      } catch (notifyErr) {
-        console.error('Landlord notification error:', notifyErr);
-        // Don't block the payment flow for notification errors
-      }
+      } catch (notifyErr) { console.error('Notify Error:', notifyErr); }
 
-      // Reset states
-      setShowPaymentModal(false)
-      setSelectedBill(null)
-      setPaymentMethod('cash')
-      setProofFile(null)
-      setProofPreview(null)
-      setReferenceNumber('')
-      loadPaymentRequests()
-      showToast.success('Payment submitted! Waiting for landlord confirmation.', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
+      setShowPaymentModal(false);
+      setSelectedBill(null);
+      setPaymentMethod('cash');
+      setProofFile(null);
+      setProofPreview(null);
+      setReferenceNumber('');
+      loadPaymentRequests();
+      showToast.success('Payment submitted! Waiting for landlord confirmation.', { duration: 4000, progress: true, position: "top-center", transition: "bounceIn", icon: '', sound: true });
+
     } catch (error) {
-      console.error('Payment error:', error)
-      showToast.error('Payment failed. Please try again.', {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceIn",
-        icon: '',
-        sound: true,
-      })
+      console.error('Payment error:', error);
+      showToast.error('Payment failed. Please try again.', { duration: 4000 });
     } finally {
-      setUploadingProof(false)
+      setUploadingProof(false);
     }
   }
 
@@ -1534,7 +1447,8 @@ export default function PaymentsPage() {
               paid_at: new Date().toISOString(),
               payment_method: request.payment_method || 'cash',
               is_advance_payment: true, // Mark as advance payment
-              payment_id: payment.id // Link to the same payment record
+              payment_id: payment.id, // Link to the same payment record
+              tenant_reference_number: request.tenant_reference_number // Pass down reference number
             })
             .select()
             .single();
@@ -1671,6 +1585,20 @@ export default function PaymentsPage() {
         message: notificationMessage,
         link: '/payments'
       })
+
+      // Send SMS/Email to Tenant
+      try {
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'payment_confirmed',
+            recordId: request.id // This will fetch details in the API
+          })
+        });
+      } catch (err) {
+        console.error('Failed to notify tenant of confirmation:', err);
+      }
 
       loadPaymentRequests()
       loadPayments()
@@ -2169,7 +2097,7 @@ export default function PaymentsPage() {
             <>
               {/* Mobile Card View */}
               <div className="sm:hidden divide-y divide-gray-100">
-                {paymentRequests.map(request => {
+                {paymentRequests.filter(req => !req.is_advance_payment).map(request => {
                   const rent = parseFloat(request.rent_amount) || 0
                   const securityDeposit = parseFloat(request.security_deposit_amount) || 0
                   const advance = parseFloat(request.advance_amount) || 0
@@ -2287,7 +2215,7 @@ export default function PaymentsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {paymentRequests.map(request => {
+                    {paymentRequests.filter(req => !req.is_advance_payment).map(request => {
                       const rent = parseFloat(request.rent_amount) || 0
                       const water = parseFloat(request.water_bill) || 0
                       const electric = parseFloat(request.electrical_bill) || 0
@@ -2774,6 +2702,41 @@ export default function PaymentsPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
               <img src={selectedBillReceipt} alt="Bill Receipt" className="w-full rounded-lg" />
+            </div>
+          </div>
+        )}
+
+        {/* CASH CONFIRMATION MODAL */}
+        {showCashConfirmModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowCashConfirmModal(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Confirm Cash Payment?</h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  Are you sure you want to mark this bill as paid via CASH?
+                  <br /><br />
+                  This will notify the landlord to confirm your payment receipt.
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowCashConfirmModal(false)}
+                    className="flex-1 py-3 border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executePaymentSubmission}
+                    className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all"
+                  >
+                    Yes, Confirm
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -2,8 +2,8 @@
 // Centralized API for sending SMS and Email notifications
 
 import { createClient } from '@supabase/supabase-js'
-import { sendBillNotification, sendNewBookingNotification, sendMoveInNotification, sendRenewalStatus, sendRenewalRequest, sendEndContractNotification } from '../../lib/sms'
-import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail, sendMoveInEmail, sendRenewalStatusEmail, sendRenewalRequestEmail, sendEndContractEmail } from '../../lib/email'
+import { sendBillNotification, sendNewBookingNotification, sendMoveInNotification, sendRenewalStatus, sendRenewalRequest, sendEndContractNotification, sendPaymentReceivedNotification, sendPaymentConfirmedNotification } from '../../lib/sms'
+import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail, sendMoveInEmail, sendRenewalStatusEmail, sendRenewalRequestEmail, sendEndContractEmail, sendOnlinePaymentReceivedEmail, sendPaymentConfirmedEmail } from '../../lib/email'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -245,31 +245,192 @@ export default async function handler(req, res) {
         // NOTIFICATION TYPE: CASH PAYMENT (For Landlord)
         // ============================================
         if (type === 'cash_payment') {
-            const { landlordEmail, landlordName, tenantName, propertyTitle, amount, monthsCovered, paymentMethod } = req.body
+            const { landlordEmail, landlordName, tenantName, propertyTitle, amount, monthsCovered, paymentMethod, landlordPhone } = req.body
 
-            if (!landlordEmail) {
-                return res.status(400).json({ error: 'Missing landlordEmail' })
+            if (!landlordEmail && !landlordPhone) {
+                return res.status(400).json({ error: 'Missing landlordEmail or landlordPhone' })
             }
 
-            const results = { email: false }
+            const results = { email: false, sms: false }
 
-            try {
-                await sendCashPaymentNotificationEmail({
-                    to: landlordEmail,
-                    landlordName: landlordName || 'Landlord',
-                    tenantName: tenantName || 'Tenant',
-                    propertyTitle: propertyTitle || 'Property',
-                    amount: amount || 0,
-                    monthsCovered: monthsCovered || 1,
-                    paymentMethod: paymentMethod || 'cash'
-                })
-                results.email = true
-                console.log(`✅ Cash payment email sent to landlord ${landlordEmail}`)
-            } catch (err) {
-                console.error(`Cash payment email failed for ${landlordEmail}:`, err.message)
+            // Send Email
+            if (landlordEmail) {
+                try {
+                    await sendCashPaymentNotificationEmail({
+                        to: landlordEmail,
+                        landlordName: landlordName || 'Landlord',
+                        tenantName: tenantName || 'Tenant',
+                        propertyTitle: propertyTitle || 'Property',
+                        amount: amount || 0,
+                        monthsCovered: monthsCovered || 1,
+                        paymentMethod: paymentMethod || 'cash'
+                    })
+                    results.email = true
+                    console.log(`✅ Cash payment email sent to landlord ${landlordEmail}`)
+                } catch (err) {
+                    console.error(`Cash payment email failed for ${landlordEmail}:`, err.message)
+                }
+            }
+
+            // Send SMS (if phone provided)
+            if (landlordPhone) {
+                try {
+                    await sendPaymentReceivedNotification(formatPhoneNumber(landlordPhone), {
+                        method: paymentMethod || 'cash',
+                        tenantName: tenantName || 'Tenant',
+                        amount: (amount || 0).toLocaleString(),
+                        propertyTitle: propertyTitle || 'Property'
+                    })
+                    results.sms = true
+                    console.log(`✅ Cash payment SMS sent to landlord ${landlordPhone}`)
+                } catch (err) {
+                    console.error(`Cash payment SMS failed for ${landlordPhone}:`, err.message)
+                }
             }
 
             return res.status(200).json({ success: true, type: 'cash_payment', results })
+        }
+
+        // ============================================
+        // NOTIFICATION TYPE: ONLINE PAYMENT RECEIVED (For Landlord)
+        // ============================================
+        if (type === 'online_payment_received') {
+            const { landlordId, tenantName, propertyTitle, amount, paymentMethod, transactionId } = req.body
+
+            const results = { email: false, sms: false }
+
+            // Fetch landlord details
+            let landlordEmail = null
+            let landlordPhone = null
+            let landlordName = 'Landlord'
+
+            if (landlordId) {
+                try {
+                    // Get phone and name
+                    const { data: profile } = await supabaseAdmin
+                        .from('profiles')
+                        .select('first_name, last_name, phone')
+                        .eq('id', landlordId)
+                        .single()
+
+                    if (profile) {
+                        landlordPhone = formatPhoneNumber(profile.phone)
+                        landlordName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+                    }
+
+                    // Get email
+                    const { data: emailData } = await supabaseAdmin.auth.admin.getUserById(landlordId)
+                    landlordEmail = emailData?.user?.email
+                } catch (e) {
+                    console.error('Failed to fetch landlord details for payment:', e)
+                }
+            }
+
+            // Send Email
+            if (landlordEmail) {
+                try {
+                    await sendOnlinePaymentReceivedEmail({
+                        to: landlordEmail,
+                        landlordName,
+                        tenantName: tenantName || 'Tenant',
+                        propertyTitle: propertyTitle || 'Property',
+                        amount: amount || 0,
+                        paymentMethod: paymentMethod || 'stripe',
+                        transactionId: transactionId || 'N/A'
+                    })
+                    results.email = true
+                    console.log(`✅ Online payment email sent to ${landlordEmail}`)
+                } catch (err) {
+                    console.error(`Online payment email failed for ${landlordEmail}:`, err.message)
+                }
+            }
+
+            // Send SMS
+            if (landlordPhone) {
+                try {
+                    await sendPaymentReceivedNotification(landlordPhone, {
+                        method: paymentMethod || 'stripe',
+                        tenantName: tenantName || 'Tenant',
+                        amount: (amount || 0).toLocaleString(),
+                        propertyTitle: propertyTitle || 'Property'
+                    })
+                    results.sms = true
+                    console.log(`✅ Online payment SMS sent to ${landlordPhone}`)
+                } catch (err) {
+                    console.error(`Online payment SMS failed for ${landlordPhone}:`, err.message)
+                }
+            }
+
+            return res.status(200).json({ success: true, type: 'online_payment_received', results })
+        }
+
+        // ============================================
+        // NOTIFICATION TYPE: PAYMENT CONFIRMED (For Tenant)
+        // ============================================
+        if (type === 'payment_confirmed') {
+            // Fetch payment request details
+            const { data: request, error } = await supabaseAdmin
+                .from('payment_requests')
+                .select(`
+                    *,
+                    properties(title),
+                    tenant_profile:profiles!payment_requests_tenant_fkey(first_name, last_name, phone)
+                `)
+                .eq('id', recordId)
+                .single();
+
+            if (error || !request) {
+                return res.status(404).json({ error: 'Payment request not found for confirmation' });
+            }
+
+            const results = { email: false, sms: false };
+            const propertyTitle = request.properties?.title || 'Property';
+            const amount = request.amount_paid || 0; // The total paid
+            const method = request.payment_method || 'cash';
+
+            // Get tenant details
+            let tenantPhone = request.tenant_profile?.phone;
+            let tenantName = `${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`.trim();
+            let tenantEmail = null;
+
+            if (request.tenant) {
+                try {
+                    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(request.tenant);
+                    tenantEmail = userData?.user?.email;
+                } catch (e) { console.error('Error fetching tenant email:', e); }
+            }
+
+            // Send Email
+            if (tenantEmail) {
+                try {
+                    await sendPaymentConfirmedEmail({
+                        to: tenantEmail,
+                        tenantName: tenantName || 'Tenant',
+                        propertyTitle,
+                        amount,
+                        paymentMethod: method,
+                        date: new Date().toLocaleDateString()
+                    });
+                    results.email = true;
+                    console.log(`✅ Payment confirmed email sent to ${tenantEmail}`);
+                } catch (e) { console.error('Payment confirmed email error:', e); }
+            }
+
+            // Send SMS
+            const phone = formatPhoneNumber(tenantPhone);
+            if (phone) {
+                try {
+                    await sendPaymentConfirmedNotification(phone, {
+                        propertyTitle,
+                        amount: amount.toLocaleString(),
+                        method
+                    });
+                    results.sms = true;
+                    console.log(`✅ Payment confirmed SMS sent to ${phone}`);
+                } catch (e) { console.error('Payment confirmed SMS error:', e); }
+            }
+
+            return res.status(200).json({ success: true, type: 'payment_confirmed', results });
         }
 
         // ============================================
