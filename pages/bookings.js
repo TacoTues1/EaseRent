@@ -1293,7 +1293,7 @@ export default function BookingsPage() {
                 {/* Start Date */}
                 <div className="mb-3">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Start Date <span className="text-red-500">*</span></label>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" />
+                  <input type="date" value={startDate} min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]} onChange={e => setStartDate(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" />
                 </div>
 
                 {/* Contract Duration */}

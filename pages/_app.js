@@ -11,7 +11,7 @@ import { useRouter } from 'next/router'
 function MyApp({ Component, pageProps }) {
   const router = useRouter()
 
-  const hideNavbarPaths = ['/login', '/register', '/forgotPassword', '/updatePassword', '/getDirections']
+  const hideNavbarPaths = ['/login', '/register', '/register-landlord', '/forgotPassword', '/updatePassword', '/getDirections']
   return (
     <>
       <Meta />

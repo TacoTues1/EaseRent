@@ -6,7 +6,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: `Method ${req.method} Not Allowed` })
     }
 
-    const { amount, description, remarks, paymentRequestId } = req.body;
+    const { amount, description, remarks, paymentRequestId, allowedMethods, landlordId } = req.body;
 
     if (!process.env.PAYMONGO_SECRET_KEY) {
         return res.status(500).json({ error: 'PayMongo Secret Key is missing' });
@@ -22,6 +22,11 @@ export default async function handler(req, res) {
 
     const successUrl = `${baseUrl}/payments?paymongo_success=true&payment_request_id=${paymentRequestId}`;
     const cancelUrl = `${baseUrl}/payments?paymongo_cancelled=true`;
+
+    // Use allowed methods from request, fallback to defaults
+    const paymentMethodTypes = allowedMethods && allowedMethods.length > 0
+        ? allowedMethods
+        : ['gcash', 'paymaya', 'card', 'qrph', 'grab_pay'];
 
     try {
         // === PRIMARY: Use Checkout Sessions API (supports QR PH + all methods) ===
@@ -47,19 +52,12 @@ export default async function handler(req, res) {
                                 quantity: 1
                             }
                         ],
-                        payment_method_types: [
-                            'gcash',
-                            'grab_pay',
-                            'card',
-                            'paymaya',
-                            'dob',
-                            'billease',
-                            'qrph'
-                        ],
+                        payment_method_types: paymentMethodTypes,
                         success_url: successUrl,
                         cancel_url: cancelUrl,
                         metadata: {
                             payment_request_id: paymentRequestId,
+                            landlord_id: landlordId || '',
                             remarks: remarks || ''
                         }
                     }

@@ -3,7 +3,7 @@ import Head from 'next/head'
 export default function Meta() {
   return (
     <Head>
-      <title>TessyNTed - A House Rental Management Platform</title>
+      <title>Abalay - A House Rental Management Platform</title>
       <meta name="description" content="Modern rental management platform for landlords and tenants" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" type="image/png" href="/home.png" />

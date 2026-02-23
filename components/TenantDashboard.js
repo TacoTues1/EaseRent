@@ -1501,66 +1501,7 @@ export default function TenantDashboard({ session, profile }) {
                     </p>
                   )}
                 </div>
-
-                {/* Utility Reminders (Moved to Left Panel) */}
-                <div className="bg-white rounded-3xl p-5 border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    </div>
-                    Utility Reminders
-                  </h3>
-
-                  <div className="space-y-3">
-                    {/* Electricity */}
-                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="p-1.5 bg-yellow-100 text-yellow-600 rounded-lg shrink-0">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                        </div>
-                        <p className="text-sm font-bold text-gray-800">Electricity Bill</p>
-                      </div>
-                      <p className="text-xs text-gray-500 leading-snug pl-1">
-                        Friendly reminder: The receipt usually arrives during the <strong>1st week of the month</strong>.
-                      </p>
-                    </div>
-
-                    {/* Water */}
-                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg shrink-0">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                        </div>
-                        <p className="text-sm font-bold text-gray-800">Water Bill</p>
-                      </div>
-                      <p className="text-xs text-gray-500 leading-snug pl-1">
-                        Friendly reminder: The receipt usually arrives during the <strong>1st week of the month</strong>.
-                      </p>
-                    </div>
-
-                    {/* Wifi */}
-                    {tenantOccupancy?.wifi_due_day && (
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg shrink-0">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg>
-                          </div>
-                          <p className="text-sm font-bold text-gray-800">Internet Bill</p>
-                        </div>
-                        <p className="text-xs text-gray-500 leading-snug pl-1">
-                          Typically due on the <strong>{tenantOccupancy.wifi_due_day}{[11, 12, 13].includes(tenantOccupancy.wifi_due_day) ? 'th' : ['st', 'nd', 'rd'][tenantOccupancy.wifi_due_day % 10 - 1] || 'th'}</strong> of the month.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* <div className="bg-black rounded-3xl p-6 text-white relative overflow-hidden shadow-lg">
-                  <h3 className="text-lg font-bold mb-1">Help & Support</h3>
-                  <p className="text-white/70 text-sm mb-4">Need assistance? Contact your landlord via our build-in message.</p>
-                  <button onClick={() => router.push('/messages')} className="w-full bg-white text-black px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors cursor-pointer">Message Landlord</button>
-                </div> */}
-              </div>
+           </div>
 
               {/* Right Column: Financials & Pending Payments */}
               <div className="lg:col-span-8 space-y-6">
@@ -1791,74 +1732,70 @@ export default function TenantDashboard({ session, profile }) {
                     </div>
 
                     {/* 3. Rent Payment History (Visual Tracker) */}
-                    <div className="bg-gray-50 rounded-2xl p-5 border border-slate-100">
-                      <div className="flex justify-between items-center mb-4">
+                    {/* <div className="bg-gray-50 rounded-2xl p-5 border border-slate-100"> */}
+                      {/* <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                           <div className="p-1.5 bg-white text-slate-600 rounded-lg shadow-sm">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                           </div>
                           <h3 className="font-bold text-slate-900 text-sm">Rent Payment History ({new Date().getFullYear()})</h3>
                         </div>
-                      </div>
+                      </div> */}
 
                       {/* Redesigned Month Tracker */}
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-2">
+                      {/* <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-2"> */}
                         {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
-                          const currentYear = new Date().getFullYear();
-                          const isPaid = paymentHistory.some(p => {
-                            if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
+                          // const currentYear = new Date().getFullYear();
+                          // const isPaid = paymentHistory.some(p => {
+                          //   if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
 
-                            const d = new Date(p.due_date);
-                            const pMonth = d.getMonth();
-                            const pYear = d.getFullYear();
+                          //   const d = new Date(p.due_date);
+                          //   const pMonth = d.getMonth();
+                          //   const pYear = d.getFullYear();
 
-                            // Use advance_amount to determine if this bill covers future months
-                            const advance = parseFloat(p.advance_amount || 0);
-                            const rent = parseFloat(p.rent_amount || 0);
-                            let monthsCovered = 1; // Default covers the due_date month
+                          //   // Use advance_amount to determine if this bill covers future months
+                          //   const advance = parseFloat(p.advance_amount || 0);
+                          //   const rent = parseFloat(p.rent_amount || 0);
+                          //   let monthsCovered = 1; // Default covers the due_date month
 
-                            if (advance > 0 && rent > 0) {
-                              monthsCovered += Math.floor(advance / rent);
-                            }
+                          //   if (advance > 0 && rent > 0) {
+                          //     monthsCovered += Math.floor(advance / rent);
+                          //   }
 
-                            // Calculate start and end month indices relative to the payment start
-                            const targetAbsoluteMonth = currentYear * 12 + index;
-                            const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
-                            const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
+                          //   // Calculate start and end month indices relative to the payment start
+                          //   const targetAbsoluteMonth = currentYear * 12 + index;
+                          //   const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
+                          //   const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
 
-                            return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
-                          });
+                          //   return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
+                          // });
 
-                          const isActiveMonth = new Date().getMonth() === index;
+                          // const isActiveMonth = new Date().getMonth() === index;
 
-                          return (
-                            <div key={month} className="flex flex-col items-center justify-center p-2">
-                              <span className={`text-[10px] font-bold uppercase mb-1.5 ${isPaid ? 'text-black' : 'text-gray-400'}`}>
-                                {month}
-                              </span>
+                          // return (
+                          //   <div key={month} className="flex flex-col items-center justify-center p-2">
+                          //     <span className={`text-[10px] font-bold uppercase mb-1.5 ${isPaid ? 'text-black' : 'text-gray-400'}`}>
+                          //       {month}
+                          //     </span>
 
-                              {/* Minimal Indicator */}
-                              {isPaid ? (
-                                <div className="w-5 h-5 rounded-full bg-green-300 text-black flex items-center justify-center shadow-sm">
-                                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : isActiveMonth ? (
-                                <div className="w-5 h-5 rounded-full border-2 border-black flex items-center justify-center">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
-                                </div>
-                              ) : (
-                                <div className="w-5 h-5 rounded-full border border-gray-200"></div>
-                              )}
-                            </div>
-                          )
+                          //     {isPaid ? (
+                          //       <div className="w-5 h-5 rounded-full bg-green-300 text-black flex items-center justify-center shadow-sm">
+                          //         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          //           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          //         </svg>
+                          //       </div>
+                          //     ) : isActiveMonth ? (
+                          //       <div className="w-5 h-5 rounded-full border-2 border-black flex items-center justify-center">
+                          //         <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
+                          //       </div>
+                          //     ) : (
+                          //       <div className="w-5 h-5 rounded-full border border-gray-200"></div>
+                          //     )}
+                          //   </div>
+                          // )
                         })}
-                      </div>
-
-
-
-                    </div>
+                      {/* </div> */}
+                    {/* </div> */}
                   </div>
                 </div>
               </div>

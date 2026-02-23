@@ -1,7 +1,6 @@
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useState } from 'react'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { createNotification } from '../lib/notifications'
 import { supabase } from '../lib/supabaseClient'
 import Footer from './Footer'
@@ -1414,273 +1413,194 @@ export default function LandlordDashboard({ session, profile }) {
     <div className="min-h-screen bg-[#F3F4F5] flex flex-col scroll-smooth">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 flex-1 w-full">
 
-        {/* HERO HEADER WITH STATS */}
-        <div className="mb-5">
-          <div className="bg-gradient-to-r from-black via-gray-900 to-gray-800 rounded-[2rem] p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl shadow-black/20">
-            {/* Decorative elements */}
-            <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2"></div>
+        {/* HEADER */}
+        <div className="mb-6">
+          <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-black rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-black/10">
+            {/* Decorative background shapes */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+            <div className="absolute bottom-0 left-10 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-xl"></div>
 
-            <div className="relative z-10">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div>
-                  <p className="text-white/60 text-sm font-medium mb-1">Welcome</p>
-                  <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{profile?.first_name} {profile?.last_name}</h1>
-                  <p className="text-white/70 mt-2 text-sm sm:text-base">Manage your properties, tenants, and finances from one place.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={openEmailModal}
-                    className="flex items-center gap-2 px-5 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white rounded-xl text-sm font-bold cursor-pointer transition-all"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                    Message Tenants
-                  </button>
-                  <button
-                    onClick={() => router.push('/properties/new')}
-                    className="flex items-center gap-2 px-5 py-3 bg-white text-black rounded-xl text-sm font-bold cursor-pointer hover:bg-gray-100 transition-all shadow-lg"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    Add Property
-                  </button>
-                </div>
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              <div>
+                <p className="text-white/70 text-sm font-medium mb-1">Welcome back,</p>
+                <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{profile?.first_name} {profile?.last_name}</h1>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={openEmailModal} className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 text-white backdrop-blur-md rounded-xl text-sm font-bold cursor-pointer transition-all">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                  Message
+                </button>
+                <button onClick={() => router.push('/properties/new')} className="flex items-center gap-2 px-5 py-2.5 bg-white text-black hover:bg-gray-100 rounded-xl text-sm font-bold cursor-pointer transition-all shadow-lg">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Add Rent
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* MAIN CONTENT GRID */}
-        {/* NEW DASHBOARD LAYOUT - CLEAN & MODERN */}
         <div className="space-y-8 pb-24">
 
-          {/* 1. KEY METRICS ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Properties */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-900">
+          {/* KEY METRICS */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                 </div>
-                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Total</span>
               </div>
-              <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                  <CountUpAnimation target={statsLoaded ? properties.length : 0} />
-                </h3>
-                <p className="text-sm font-medium text-gray-500">Properties Managed</p>
-              </div>
+              <h3 className="text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? properties.length : 0} /></h3>
+              <p className="text-sm font-medium text-gray-500 mt-1">Properties Managed</p>
             </div>
 
-            {/* Tenants */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
-              <div className="flex justify-between items-start mb-4">
+            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                 </div>
-                <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-2 py-1 rounded-lg">
                   {properties.length > 0 ? Math.round((occupancies.length / properties.length) * 100) : 0}% Occ
                 </span>
               </div>
-              <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                  <CountUpAnimation target={statsLoaded ? occupancies.length : 0} />
-                </h3>
-                <p className="text-sm font-medium text-gray-500">Active Tenants</p>
-              </div>
+              <h3 className="text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? occupancies.length : 0} /></h3>
+              <p className="text-sm font-medium text-gray-500 mt-1">Active Tenants</p>
             </div>
 
-            {/* Income */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
-                <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Total</span>
               </div>
-              <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                  <CountUpAnimation target={statsLoaded ? totalIncome : 0} decimals={2} prefix="₱" />
-                </h3>
-                <p className="text-sm font-medium text-gray-500">Total Income</p>
-              </div>
+              <h3 className="text-3xl font-black text-gray-900 tracking-tight truncate"><CountUpAnimation target={statsLoaded ? totalIncome : 0} decimals={2} prefix="₱" /></h3>
+              <p className="text-sm font-medium text-gray-500 mt-1">Total Income</p>
             </div>
 
-            {/* Attention */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-transform duration-300">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600">
+            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                 </div>
-                <span className="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Action</span>
               </div>
-              <div>
-                <h3 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                  <CountUpAnimation target={statsLoaded ? (pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) : 0} />
-                </h3>
-                <p className="text-sm font-medium text-gray-500">Pending Tasks</p>
-              </div>
+              <h3 className="text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? (pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) : 0} /></h3>
+              <p className="text-sm font-medium text-gray-500 mt-1">Pending Tasks</p>
             </div>
           </div>
 
-          {/* 2. MAIN GRID */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-
-            {/* LEFT CONTENT (FINANCIALS & BILLING) */}
-            <div className="xl:col-span-8 space-y-8">
-
-              {/* Financial Overview */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Financial Overview Graph</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">Income Analysis for {selectedStatementYear}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-gray-100 rounded-xl p-1">
-                      {[
-                        { key: 'all', label: 'All' },
-
-                        { key: 'other', label: 'Other Bill' },
-                      ].map(tab => (
-                        <button
-                          key={tab.key}
-                          onClick={() => setChartFilter(tab.key)}
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${chartFilter === tab.key
-                            ? 'bg-black text-white shadow-sm'
-                            : 'text-gray-500 hover:text-black'
-                            }`}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                    <select
-                      value={selectedStatementYear}
-                      onChange={(e) => setSelectedStatementYear(parseInt(e.target.value))}
-                      className="bg-gray-50 border-none text-sm font-bold rounded-xl px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors focus:ring-0"
-                    >
-                      {[2024, 2025, 2026, 2027, 2028].map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="h-[350px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={monthlyChartData}>
-                      <defs>
-                        <linearGradient id="colorAll" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#1aff00" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#1aff00" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorWater" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorOther" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                      <XAxis
-                        dataKey="name"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#9ca3af', fontSize: 12 }}
-                        dy={10}
-                      />
-                      <YAxis
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#9ca3af', fontSize: 12 }}
-                        tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
-                        itemStyle={{ color: '#fff' }}
-                        formatter={(value) => [
-                          `₱${value.toLocaleString()}`,
-                          chartFilter === 'all' ? 'Total Income' : chartFilter === 'water' ? 'Water Bill' : 'Other Bill'
-                        ]}
-                        cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey={chartFilter === 'all' ? 'income' : chartFilter === 'water' ? 'water' : 'other'}
-                        stroke={chartFilter === 'all' ? '#55ed44' : chartFilter === 'water' ? '#3b82f6' : '#f59e0b'}
-                        strokeWidth={3}
-                        fillOpacity={1}
-                        fill={`url(#${chartFilter === 'all' ? 'colorAll' : chartFilter === 'water' ? 'colorWater' : 'colorOther'})`}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+          {/* ACTION CENTER */}
+          {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
+            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+                    Action Center
+                    <span className="flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                  </h3>
+                  <p className="text-sm font-medium text-gray-500">Tasks requiring your attention</p>
                 </div>
               </div>
 
-              {/* Billing Schedule */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-                <div className="flex items-center justify-between mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {pendingEndRequests.map(req => (
+                  <div key={req.id} className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 hover:bg-orange-50 transition-colors cursor-pointer group" onClick={() => openEndConfirmation('approve', req.id)}>
+                    <span className="inline-block px-2 py-1 bg-orange-100 text-orange-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Move-Out</span>
+                    <h4 className="font-bold text-sm text-gray-900 group-hover:text-orange-700 transition-colors truncate">{req.property?.title}</h4>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{req.tenant?.first_name} {req.tenant?.last_name}</p>
+                  </div>
+                ))}
+
+                {pendingRenewalRequests.map(req => (
+                  <div key={req.id} className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 hover:bg-blue-50 transition-colors cursor-pointer group" onClick={() => openRenewalModal(req, 'approve')}>
+                    <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Renewal</span>
+                    <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{req.tenant?.first_name} {req.tenant?.last_name}</p>
+                  </div>
+                ))}
+
+                {dashboardTasks.maintenance.length > 0 && (
+                  <button onClick={() => router.push('/maintenance')} className="text-left p-4 bg-rose-50/50 rounded-2xl border border-rose-100 hover:bg-rose-50 transition-colors cursor-pointer group flex flex-col w-full h-full justify-between">
+                    <div>
+                      <span className="inline-block px-2 py-1 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Maintenance</span>
+                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-rose-700 transition-colors">{dashboardTasks.maintenance.length} Active Issues</h4>
+                    </div>
+                    <p className="text-xs font-bold text-rose-600 mt-3 group-hover:translate-x-1 transition-transform inline-block">Review Issues →</p>
+                  </button>
+                )}
+
+                {dashboardTasks.payments.length > 0 && (
+                  <button onClick={() => router.push('/payments')} className="text-left p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 hover:bg-emerald-50 transition-colors cursor-pointer group flex flex-col w-full h-full justify-between">
+                    <div>
+                      <span className="inline-block px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Payments</span>
+                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors">{dashboardTasks.payments.length} Pending Bills</h4>
+                    </div>
+                    <p className="text-xs font-bold text-emerald-600 mt-3 group-hover:translate-x-1 transition-transform inline-block">Review Payments →</p>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MAIN GRID */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Col: Billing Schedule */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] h-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Billing Schedule</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">Upcoming automated payments & notifications</p>
+                    <h3 className="text-lg font-black text-gray-900 tracking-tight">Billing Schedule</h3>
+                    <p className="text-sm font-medium text-gray-500">Upcoming automated payments & reminders</p>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   {billingSchedule.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="text-center py-12 px-4 rounded-2xl bg-gray-50/50 border border-dashed border-gray-200">
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-gray-400">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       </div>
-                      <p className="text-gray-900 font-bold">No upcoming bills</p>
-                      <p className="text-sm text-gray-500">Everything is up to date.</p>
+                      <p className="text-gray-900 font-bold text-sm">No upcoming bills</p>
+                      <p className="text-gray-500 text-sm mt-1">Everything is up to date.</p>
                     </div>
                   ) : (
                     <table className="w-full text-left">
-                      <thead className="text-xs text-gray-400 uppercase tracking-wider font-bold border-b border-gray-100">
+                      <thead className="text-[11px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
                         <tr>
-                          <th className="pb-4 pl-4">Tenant</th>
-                          <th className="pb-4">Auto-Send</th>
-                          <th className="pb-4">Due Date</th>
-                          <th className="pb-4">Status</th>
-                          <th className="pb-4 text-right pr-4">Action</th>
+                          <th className="py-4 pl-2">Tenant & Property</th>
+                          <th className="py-4">Auto-Send</th>
+                          <th className="py-4">Due Date</th>
+                          <th className="py-4">Status</th>
+                          <th className="py-4 text-right pr-2">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="text-sm font-medium divide-y divide-gray-50">
-                        {billingSchedule.slice(0, 10).map(item => {
-                          // Calculate Auto-Send Date (3 days before due date)
+                      <tbody className="text-sm divide-y divide-gray-50">
+                        {billingSchedule.slice(0, 8).map(item => {
                           const autoSendDate = new Date(item.nextDueDate);
                           autoSendDate.setDate(autoSendDate.getDate() - 3);
-
                           return (
-                            <tr key={item.id} className="group hover:bg-gray-50/50 transition-colors">
-                              <td className="py-4 pl-4">
-                                <p className="text-gray-900 font-bold">{item.tenantName}</p>
-                                <p className="text-xs text-gray-500">{item.propertyTitle}</p>
+                            <tr key={item.id} className="hover:bg-gray-50/50 transition-colors group">
+                              <td className="py-4 pl-2">
+                                <p className="font-bold text-gray-900 group-hover:text-black transition-colors">{item.tenantName}</p>
+                                <p className="text-xs font-medium text-gray-500 mt-0.5">{item.propertyTitle}</p>
                               </td>
-                              <td className="py-4 text-gray-500 font-mono text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                              <td className="py-4 text-gray-500 font-medium text-xs">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
                                   {autoSendDate.toLocaleDateString()}
-                                </div>
+                                </span>
                               </td>
-                              <td className="py-4 text-gray-900 font-mono text-xs font-bold">
-                                {item.nextDueDate.toLocaleDateString()}
-                              </td>
+                              <td className="py-4 text-gray-900 text-xs font-bold">{item.nextDueDate.toLocaleDateString()}</td>
                               <td className="py-4">
-                                <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' :
-                                  item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                  }`}>
+                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' : item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
                                   {item.status}
                                 </span>
                               </td>
-                              <td className="py-4 text-right pr-4">
+                              <td className="py-4 text-right pr-2">
                                 {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
-                                  <button
-                                    onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)}
-                                    disabled={sendingBillId === item.tenantId}
-                                    className="text-xs bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors font-bold disabled:opacity-50 shadow-sm cursor-pointer"
-                                  >
+                                  <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)} disabled={sendingBillId === item.tenantId}
+                                    className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
                                     Send Now
                                   </button>
                                 )}
@@ -1693,175 +1613,73 @@ export default function LandlordDashboard({ session, profile }) {
                   )}
                 </div>
               </div>
-
             </div>
 
-            {/* RIGHT CONTENT (ACTION CENTER & PROPERTIES) */}
-            <div className="xl:col-span-4 space-y-8">
-
-              {/* Action Center */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] h-fit">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Action Center</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">Pending tasks & requests</p>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 text-sm font-bold">
-                    {pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Empty State */}
-                  {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) === 0 && (
-                    <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
-                      <p className="text-gray-400 text-sm font-medium">No pending tasks</p>
+            {/* Right Col: Occupied Properties & Scheduled Today */}
+            <div className="lg:col-span-1 space-y-8">
+              {/* Scheduled Today (Conditionally Rendered) */}
+              {(() => {
+                const todayStr = new Date().toISOString().split('T')[0]
+                const scheduledToday = occupancies.filter(o => {
+                  if (!o.start_date) return false
+                  return new Date(o.start_date).toISOString().split('T')[0] === todayStr
+                })
+                if (scheduledToday.length === 0) return null
+                return (
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/20">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-black text-lg">Scheduled Today</h3>
+                        <p className="text-blue-100 text-sm mt-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                      </div>
+                      <button onClick={() => router.push('/bookings')} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors backdrop-blur-sm cursor-pointer">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </button>
                     </div>
-                  )}
-
-                  {/* Tasks List */}
-                  {pendingEndRequests.map(req => (
-                    <div key={req.id} className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 hover:shadow-md transition-shadow cursor-pointer ">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">Move-Out</span>
-                        <button onClick={() => openEndConfirmation('approve', req.id)} className="text-xs font-bold text-gray-900 underline decoration-gray-300 hover:decoration-black">Review</button>
-                      </div>
-                      <h4 className="font-bold text-gray-900 text-sm">{req.property?.title}</h4>
-                      <p className="text-xs text-gray-500 mt-1">Tenant: {req.tenant?.first_name} {req.tenant?.last_name}</p>
-                    </div>
-                  ))}
-
-                  {pendingRenewalRequests.map(req => (
-                    <div key={req.id} className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 hover:shadow-md transition-shadow cursor-pointer">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">Renewal</span>
-                        <button onClick={() => openRenewalModal(req, 'approve')} className="text-xs font-bold text-gray-900 underline decoration-gray-300 hover:decoration-black">Review</button>
-                      </div>
-                      <h4 className="font-bold text-gray-900 text-sm">{req.property?.title}</h4>
-                      <p className="text-xs text-gray-500 mt-1">Tenant: {req.tenant?.first_name} {req.tenant?.last_name}</p>
-                    </div>
-                  ))}
-
-                  {dashboardTasks.maintenance.length > 0 && (
-                    <button onClick={() => router.push('/maintenance')} className="w-full p-4 bg-rose-50/50 rounded-2xl border border-rose-100 hover:shadow-md transition-shadow text-left group cursor-pointer">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full">Maintenance</span>
-                          <h4 className="font-bold text-gray-900 text-sm mt-2">{dashboardTasks.maintenance.length} Active Issues</h4>
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-400 group-hover:text-rose-600 transition-colors">→</div>
-                      </div>
-                    </button>
-                  )}
-
-                  {dashboardTasks.payments.length > 0 && (
-                    <button onClick={() => router.push('/payments')} className="w-full p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 hover:shadow-md transition-shadow text-left group cursor-pointer">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Payments</span>
-                          <h4 className="font-bold text-gray-900 text-sm mt-2">{dashboardTasks.payments.length} Pending Verifications</h4>
-                        </div>
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-400 group-hover:text-emerald-600 transition-colors">→</div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Scheduled Tenants Today */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Scheduled Tenants Today</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">Viewings for {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
-                  </div>
-                  <button onClick={() => router.push('/bookings')} className="text-sm font-bold text-gray-500 hover:text-black transition-colors cursor-pointer">View All Bookings</button>
-                </div>
-
-                <div className="space-y-3">
-                  {(() => {
-                    const today = new Date()
-                    const todayStr = today.toISOString().split('T')[0]
-                    // Filter occupancies/bookings — we'll use a placeholder approach since bookings aren't loaded here
-                    // Instead, show tenants with active occupancies scheduled today
-                    const scheduledToday = occupancies.filter(o => {
-                      if (!o.start_date) return false
-                      const startStr = new Date(o.start_date).toISOString().split('T')[0]
-                      return startStr === todayStr
-                    })
-
-                    if (scheduledToday.length === 0) {
-                      return (
-                        <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
-                          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-300">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <div className="space-y-3">
+                      {scheduledToday.map(occ => (
+                        <div key={occ.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
+                          <div className="w-10 h-10 rounded-full bg-white text-blue-700 font-bold flex items-center justify-center text-sm shadow-sm">
+                            {occ.tenant?.first_name?.charAt(0)}{occ.tenant?.last_name?.charAt(0)}
                           </div>
-                          <p className="text-gray-400 text-sm font-medium">No scheduled tenants for today</p>
+                          <div>
+                            <p className="font-bold text-sm truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                            <p className="text-xs text-blue-100 mt-0.5 truncate">{occ.property?.title}</p>
+                          </div>
                         </div>
-                      )
-                    }
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
 
-                    return scheduledToday.map(occ => (
-                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl bg-blue-50/50 border border-blue-100">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">
-                          {occ.tenant?.first_name?.charAt(0)}{occ.tenant?.last_name?.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-gray-900 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
-                          <p className="text-xs text-gray-500 font-medium truncate">{occ.property?.title}</p>
-                        </div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-100 px-2.5 py-1 rounded-full">Today</span>
-                      </div>
-                    ))
-                  })()}
-                </div>
-              </div>
-
-              {/* Occupied Properties */}
-              <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+              <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Occupied Properties</h3>
-                    <p className="text-sm text-gray-500 font-medium mt-1">Properties with active tenants</p>
+                    <h3 className="text-lg font-black text-gray-900 tracking-tight">Active Properties</h3>
+                    <p className="text-sm font-medium text-gray-500 mt-0.5">{occupancies.filter(o => o.status === 'active').length} occupied units</p>
                   </div>
-                  <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{occupancies.filter(o => o.status === 'active').length} Active</span>
                 </div>
 
-                <div className="space-y-3 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 -mr-2 my-scrollbar">
                   {occupancies.filter(o => o.status === 'active').length === 0 ? (
-                    <div className="py-8 text-center border-2 border-dashed border-gray-100 rounded-2xl">
-                      <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-300">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                      </div>
+                    <div className="py-8 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
                       <p className="text-gray-400 text-sm font-medium">No occupied properties</p>
                     </div>
                   ) : (
                     occupancies.filter(o => o.status === 'active').map(occ => (
-                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-gray-50 transition-colors group">
-                        <div className="w-12 h-12 rounded-xl bg-gray-200 overflow-hidden relative">
+                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
+                        <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 shadow-inner">
                           <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
-                          <div className="absolute inset-0 bg-black/10"></div>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-gray-900 truncate">{occ.property?.title}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <div className="w-4 h-4 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-[8px] font-bold">
-                              {occ.tenant?.first_name?.charAt(0)}
-                            </div>
-                            <p className="text-xs text-gray-500 font-medium">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
-                          </div>
+                          <p className="font-bold text-sm text-gray-900 truncate group-hover:text-black transition-colors">{occ.property?.title}</p>
+                          <p className="text-xs font-medium text-gray-500 mt-0.5 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openEndContractModal(occ)
-                            }}
-                            className="text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-lg transition-colors shadow-sm cursor-pointer"
-                          >
-                            End Contract
-                          </button>
-                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
+                          className="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-600 hover:text-white px-3 py-1.5 rounded-lg transition-all cursor-pointer opacity-0 group-hover:opacity-100 shrink-0">
+                          End
+                        </button>
                       </div>
                     ))
                   )}
@@ -1869,9 +1687,7 @@ export default function LandlordDashboard({ session, profile }) {
               </div>
 
             </div>
-
           </div>
-
         </div>
 
         {/* Confirmation Modal */}
@@ -1977,7 +1793,7 @@ export default function LandlordDashboard({ session, profile }) {
                 {/* Contract dates section */}
                 <div className="mb-3">
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Start Date <span className="text-red-500">*</span></label>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  <input type="date" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black" value={startDate} min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]} onChange={(e) => setStartDate(e.target.value)} />
                 </div>
 
                 {/* Contract Duration */}

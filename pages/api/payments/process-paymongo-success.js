@@ -30,13 +30,21 @@ export default async function handler(req, res) {
         // Or if ID starts with 'cs_'
         let amountPaid = 0;
         let transactionId = '';
+        let tenantPaymentMethod = 'unknown'; // Track what method tenant actually used (gcash, paymaya, card, grab_pay, qrph)
 
         if (sessionId.startsWith('link_') || !sessionId.startsWith('cs_')) {
             // Assume Link
             const response = await fetch(`https://api.paymongo.com/v1/links/${sessionId}`, options);
             const linkData = await response.json();
 
-            if (linkData.errors) throw new Error(linkData.errors[0]?.detail || 'PayMongo Verification Failed');
+            if (linkData.errors) {
+                const errDetail = linkData.errors[0]?.detail || 'PayMongo Verification Failed';
+                // If the link is not found (expired/deleted), return a clean 400 instead of a 500
+                if (errDetail.includes('No such link') || errDetail.includes('not found')) {
+                    return res.status(400).json({ error: 'Session expired or invalid. Please try again.', expired: true });
+                }
+                throw new Error(errDetail);
+            }
 
             if (linkData.data?.attributes?.status !== 'paid') {
                 return res.status(400).json({ error: 'Payment not paid yet.' });
@@ -55,13 +63,14 @@ export default async function handler(req, res) {
             if (successPay) {
                 amountPaid = successPay.data.attributes.amount / 100;
 
-                // Use the ACTUAL reference number the user sees, with fallback chain:
-                // 1. Payment's external_reference_number (GCash/Maya ref from the provider)
-                // 2. Link's reference_number (PayMongo checkout reference displayed on screen)
-                // 3. Payment's internal ID (last resort)
+                // Detect what payment method tenant actually used
+                tenantPaymentMethod = successPay.data?.attributes?.source?.type
+                    || successPay.data?.attributes?.payment_method_type
+                    || 'unknown';
+                console.log('Tenant payment method detected (link):', tenantPaymentMethod);
+
                 const externalRef = successPay.data?.attributes?.external_reference_number || '';
                 console.log('PayMongo payment external_reference_number:', externalRef);
-                console.log('PayMongo payment attributes:', JSON.stringify(successPay.data?.attributes, null, 2));
 
                 transactionId = externalRef || linkReferenceNumber || successPay.data.id;
             } else {
@@ -87,6 +96,13 @@ export default async function handler(req, res) {
             }
 
             amountPaid = successfulPayment.attributes.amount / 100;
+
+            // Detect what payment method tenant actually used
+            tenantPaymentMethod = successfulPayment.attributes?.source?.type
+                || successfulPayment.attributes?.payment_method_type
+                || 'unknown';
+            console.log('Tenant payment method detected (checkout):', tenantPaymentMethod);
+
             // Use external ref or checkout session reference, fallback to payment ID
             const externalRef = successfulPayment.attributes?.external_reference_number || '';
             const sessionRef = sessionData.data?.attributes?.reference_number || '';
@@ -349,6 +365,148 @@ export default async function handler(req, res) {
 
         } catch (notifyErr) {
             console.error('Notification Error:', notifyErr);
+        }
+
+        // 8. AUTO-PAYOUT: Deduct 1% platform fee, simulate payout to landlord
+        // In test mode, we simulate the payout (auto-complete). In production, use PayMongo Payout API.
+        try {
+            const platformFee = Math.round(amountPaid * 0.01 * 100) / 100; // 1% fee
+            const payoutAmount = Math.round((amountPaid - platformFee) * 100) / 100; // 99% to landlord
+
+            // Fetch landlord's accepted_payments to get destination wallet
+            const { data: landlordPayments } = await supabase
+                .from('profiles')
+                .select('accepted_payments')
+                .eq('id', request.landlord)
+                .single();
+
+            const accepted = landlordPayments?.accepted_payments || {};
+
+            // Determine payout method based on what tenant actually used
+            const methodMap = {
+                'gcash': 'gcash',
+                'grab_pay': 'gcash',
+                'paymaya': 'maya',
+                'maya': 'maya',
+                'card': 'gcash',
+                'qrph': 'gcash',
+            };
+
+            let payoutMethod = methodMap[tenantPaymentMethod] || 'gcash';
+            let payoutDestination = '';
+
+            if (payoutMethod === 'gcash' && accepted.gcash?.number) {
+                payoutDestination = accepted.gcash.number;
+            } else if (payoutMethod === 'maya' && accepted.maya?.number) {
+                payoutDestination = accepted.maya.number;
+            } else if (accepted.gcash?.number) {
+                payoutMethod = 'gcash';
+                payoutDestination = accepted.gcash.number;
+            } else if (accepted.maya?.number) {
+                payoutMethod = 'maya';
+                payoutDestination = accepted.maya.number;
+            }
+
+            console.log(`Tenant paid via: ${tenantPaymentMethod} → Payout to landlord via: ${payoutMethod} (${payoutDestination})`);
+
+            // Generate a simulated payout reference number (test mode)
+            const payoutRefNumber = `PO-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+            // Create payout record as COMPLETED (simulated in test mode)
+            const { data: payoutRecord, error: payoutError } = await supabase
+                .from('payouts')
+                .insert({
+                    payment_request_id: paymentRequestId,
+                    payment_id: paymentRecord?.id,
+                    landlord_id: request.landlord,
+                    tenant_id: request.tenant,
+                    total_amount: amountPaid,
+                    platform_fee: platformFee,
+                    payout_amount: payoutAmount,
+                    payout_method: payoutMethod,
+                    payout_destination: payoutDestination,
+                    status: 'completed', // Auto-completed in test mode
+                    paymongo_payout_id: payoutRefNumber,
+                    completed_at: new Date().toISOString()
+                })
+                .select()
+                .single();
+
+            if (payoutError) {
+                console.error('Payout record creation failed:', payoutError);
+            } else {
+                const methodLabel = payoutMethod === 'maya' ? 'Maya' : 'GCash';
+                console.log(`✅ Payout completed: ₱${payoutAmount} to ${methodLabel} (${payoutDestination}), Platform fee: ₱${platformFee}, Ref: ${payoutRefNumber}`);
+
+                // Notify landlord about payout received
+                const { data: tenantProfile2 } = await supabase
+                    .from('profiles')
+                    .select('first_name, last_name')
+                    .eq('id', request.tenant)
+                    .single();
+
+                const { data: landlordProfile2 } = await supabase
+                    .from('profiles')
+                    .select('first_name, last_name, phone')
+                    .eq('id', request.landlord)
+                    .single();
+
+                const tenantFullName = tenantProfile2 ? `${tenantProfile2.first_name} ${tenantProfile2.last_name}` : 'Tenant';
+                const landlordFullName = landlordProfile2 ? `${landlordProfile2.first_name} ${landlordProfile2.last_name}` : 'Landlord';
+
+                // In-app notification
+                await supabase.from('notifications').insert({
+                    recipient: request.landlord,
+                    actor: request.tenant,
+                    type: 'payout_received',
+                    message: `₱${payoutAmount.toLocaleString()} has been sent to your ${methodLabel} (${payoutDestination}) from ${tenantFullName}'s payment. Platform fee: ₱${platformFee.toLocaleString()}. Ref: ${payoutRefNumber}`,
+                    link: '/payments',
+                    data: { payout_id: payoutRecord?.id, reference_number: payoutRefNumber }
+                });
+
+                // Email notification to landlord about payout
+                try {
+                    const { data: landlordEmail2 } = await supabase.rpc('get_user_email', { user_id: request.landlord });
+                    if (landlordEmail2) {
+                        await sendNotificationEmail({
+                            to: landlordEmail2,
+                            subject: `₱${payoutAmount.toLocaleString()} Sent to Your ${methodLabel}`,
+                            message: `<div style="font-family: sans-serif; color: #333;">
+                                <p>Dear ${landlordFullName},</p>
+                                <p>We have sent <strong>₱${payoutAmount.toLocaleString()}</strong> to your ${methodLabel} account <strong>(${payoutDestination})</strong>.</p>
+                                <table style="width:100%;border-collapse:collapse;margin:15px 0;">
+                                    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#666;">Tenant Payment</td><td style="padding:8px 0;font-weight:bold;text-align:right;">₱${amountPaid.toLocaleString()}</td></tr>
+                                    <tr style="border-bottom:1px solid #eee;"><td style="padding:8px 0;color:#666;">Platform Fee (1%)</td><td style="padding:8px 0;font-weight:bold;text-align:right;">-₱${platformFee.toLocaleString()}</td></tr>
+                                    <tr><td style="padding:8px 0;color:#333;font-weight:bold;">Amount Sent to You</td><td style="padding:8px 0;font-weight:bold;text-align:right;color:#00BFA5;">₱${payoutAmount.toLocaleString()}</td></tr>
+                                </table>
+                                <p>Property: ${request.properties?.title || 'Property'}</p>
+                                <p>Tenant: ${tenantFullName}</p>
+                                <p>Reference Number: <strong>${payoutRefNumber}</strong></p>
+                                <p>Transaction ID: <strong>${transactionId}</strong></p>
+                                <p>Thank you for using EaseRent!</p>
+                            </div>`
+                        });
+                        console.log(`✅ Payout notification email sent to ${landlordEmail2}`);
+                    }
+                } catch (emailErr) {
+                    console.error('Payout email error:', emailErr);
+                }
+
+                // SMS notification to landlord about payout
+                if (landlordProfile2?.phone) {
+                    try {
+                        await sendSMS(
+                            landlordProfile2.phone,
+                            `EaseRent: ₱${payoutAmount.toLocaleString()} sent to your ${methodLabel} (${payoutDestination}) from ${tenantFullName}'s payment for "${request.properties?.title}". Fee: ₱${platformFee}. Ref: ${payoutRefNumber}`
+                        );
+                        console.log(`✅ Payout SMS sent to ${landlordProfile2.phone}`);
+                    } catch (smsErr) {
+                        console.error('Payout SMS error:', smsErr);
+                    }
+                }
+            }
+        } catch (payoutErr) {
+            console.error('Payout processing error:', payoutErr);
         }
 
         res.status(200).json({ success: true, excessAmount: availableExcess > 0 ? availableExcess : 0 });

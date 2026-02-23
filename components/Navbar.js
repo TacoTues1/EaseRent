@@ -515,7 +515,7 @@ export default function Navbar() {
 
               <div className="hidden sm:flex flex-col leading-tight">
                 <span className="text-1xl sm:text-2xl font-bold">
-                  TessyNTed
+                  Abalay
                 </span>
 
                 <span className="text-xs sm:text-sm text-gray-600">
@@ -527,6 +527,7 @@ export default function Navbar() {
 
           {/*Login and Register*/}
           <div className="absolute right-6 top-0 h-12 hidden sm:flex items-center gap-3 pointer-events-auto z-50">
+            <button onClick={() => router.push('/register-landlord')} className="px-4 py-2 text-md font-semibold text-gray-600 hover:text-black transition-all cursor-pointer">Become a Landlord</button>
             <button onClick={() => router.push('/login')} className="px-4 py-2 text-md font-semibold bg-gray-100 hover:text-black hover:bg-black/50 rounded-lg transition-all cursor-pointer">Login</button>
             <button onClick={() => router.push('/register')} className="px-6 py-4 text-md font-semibold bg-black text-white hover:bg-gray-800 rounded-xl shadow-md hover:shadow-lg transition-all transform cursor-pointer sm:px-5 sm:py-2">Register</button>
           </div>
@@ -563,6 +564,7 @@ export default function Navbar() {
           {showPublicMobileMenu && (
             <div className="sm:hidden mt-3 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto">
               <div className="p-4 grid grid-cols-1 gap-2">
+                <button onClick={() => router.push('/register-landlord')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Become a Landlord</button>
                 <button onClick={() => router.push('/login')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Login</button>
                 <button onClick={() => router.push('/register')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium bg-black text-white shadow-md hover:bg-gray-900 transition-all">Register</button>
               </div>
@@ -586,7 +588,7 @@ export default function Navbar() {
               <div className="flex items-center gap-6 lg:gap-10">
                 <Link href="/dashboard" className="flex items-center gap-2 font-bold text-black hover:opacity-80 transition-opacity">
                   <img src="/home.png" alt="EaseRent" className="w-8 h-8 object-contain" />
-                  <span className="hidden md:inline text-xl">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</span>
+                  <span className="hidden md:inline text-xl">Abalay</span>
                 </Link>
 
                 <div className="hidden md:flex relative gap-1">

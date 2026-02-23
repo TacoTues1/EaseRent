@@ -10,6 +10,8 @@ export default function PaymentHistoryPage() {
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [userRole, setUserRole] = useState(null)
+  const [chartYear, setChartYear] = useState(new Date().getFullYear())
+  const [chartFilter, setChartFilter] = useState('all')
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -83,42 +85,8 @@ export default function PaymentHistoryPage() {
     return sum + rent + water + electrical + other
   }, 0)
 
-  // Calculate chart data (Last 6 months)
-  const getChartData = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    const currentMonth = new Date().getMonth()
-    const data = []
+  // Ensure no unneeded old getChartData remains
 
-    for (let i = 5; i >= 0; i--) {
-      const monthIndex = (currentMonth - i + 12) % 12
-      data.push({
-        label: months[monthIndex],
-        value: 0
-      })
-    }
-
-    payments.forEach(payment => {
-      const date = new Date(payment.paid_at)
-      const monthIndex = date.getMonth()
-      const monthLabel = months[monthIndex]
-      const dataPoint = data.find(d => d.label === monthLabel)
-
-      if (dataPoint) {
-        const total = (
-          (parseFloat(payment.amount) || 0) +
-          (parseFloat(payment.water_bill) || 0) +
-          (parseFloat(payment.electrical_bill) || 0) +
-          (parseFloat(payment.other_bills) || 0)
-        )
-        dataPoint.value += total
-      }
-    })
-
-    return data
-  }
-
-  const chartData = getChartData()
-  const maxChartValue = Math.max(...chartData.map(d => d.value), 1000)
 
   if (!session) {
     return (
@@ -148,79 +116,102 @@ export default function PaymentHistoryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Summary Cards */}
           <div className="space-y-4 lg:col-span-1">
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-              <div className="text-sm font-medium text-gray-500 mb-2">
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center h-full">
+              <div className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">
                 {userRole === 'landlord' ? 'Total Collected' : 'Total Paid'}
               </div>
               <div className="text-3xl font-black text-gray-900 truncate">
                 ₱{totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </div>
+          </div>
 
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-              <div className="text-sm font-medium text-gray-500 mb-2">Transactions</div>
+          <div className="space-y-4 lg:col-span-1">
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center h-full">
+              <div className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Transactions</div>
               <div className="text-3xl font-black text-gray-900">{payments.length}</div>
             </div>
+          </div>
 
-            <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-              <div className="text-sm font-medium text-gray-500 mb-2">Average</div>
+          <div className="space-y-4 lg:col-span-1">
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center h-full">
+              <div className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Average</div>
               <div className="text-3xl font-black text-gray-900 truncate">
                 ₱{payments.length > 0 ? (totalIncome / payments.length).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Payment Trends Graph */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex flex-col">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h3 className="text-xl font-black text-gray-900 tracking-tight">Payment Volume</h3>
-                <p className="text-sm text-gray-500 font-medium mt-1">Last 6 months overview</p>
+        {/* Payment Trends Graph (Landlord Only) */}
+        {userRole === 'landlord' && (() => {
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          const chartDataYear = monthNames.map((name, month) => {
+            const mStart = new Date(chartYear, month, 1)
+            const mEnd = new Date(chartYear, month + 1, 0, 23, 59, 59)
+            const monthPaid = payments.filter(p => {
+              if (!p.paid_at) return false
+              const d = new Date(p.paid_at)
+              return d >= mStart && d <= mEnd
+            })
+            const income = monthPaid.reduce((s, p) => s + ((parseFloat(p.amount) || 0) + (parseFloat(p.water_bill) || 0) + (parseFloat(p.electrical_bill) || 0) + (parseFloat(p.wifi_bill) || 0) + (parseFloat(p.other_bills) || 0)), 0)
+            const other = monthPaid.reduce((s, p) => s + (parseFloat(p.other_bills) || 0), 0)
+            return { name, income, other }
+          })
+
+          return (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8 flex flex-col">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 tracking-tight">Financial Overview</h3>
+                  <p className="text-sm text-gray-500 font-medium mt-0.5">Income analysis for {chartYear}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center bg-gray-100 rounded-xl p-1">
+                    {[{ key: 'all', label: 'All' }, { key: 'other', label: 'Other Bill' }].map(tab => (
+                      <button key={tab.key} onClick={() => setChartFilter(tab.key)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all ${chartFilter === tab.key ? 'bg-black text-white shadow-sm' : 'text-gray-500 hover:text-black'}`}
+                      >{tab.label}</button>
+                    ))}
+                  </div>
+                  <select value={chartYear} onChange={e => setChartYear(parseInt(e.target.value))}
+                    className="bg-gray-50 border-none text-sm font-bold rounded-xl px-4 py-2 cursor-pointer hover:bg-gray-100 transition-colors focus:ring-0">
+                    {[2024, 2025, 2026, 2027, 2028].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartDataYear}>
+                    <defs>
+                      <linearGradient id="colorAll" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#1aff00" stopOpacity={0.1} />
+                        <stop offset="95%" stopColor="#1aff00" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorOther" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 12 }} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
+                      itemStyle={{ color: '#fff' }}
+                      formatter={v => [`₱${v.toLocaleString()}`, chartFilter === 'all' ? 'Total Income' : 'Other Bill']}
+                      cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
+                    />
+                    <Area type="monotone" dataKey={chartFilter === 'all' ? 'income' : 'other'}
+                      stroke={chartFilter === 'all' ? '#55ed44' : '#f59e0b'} strokeWidth={3} fillOpacity={1}
+                      fill={`url(#${chartFilter === 'all' ? 'colorAll' : 'colorOther'})`} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
-
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorPayment" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1aff00ff" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="#1aff00ff" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis
-                    dataKey="label"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                    dy={10}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: '#9ca3af', fontSize: 12 }}
-                    tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '12px', padding: '12px' }}
-                    itemStyle={{ color: '#fff' }}
-                    formatter={(value) => [`₱${value.toLocaleString()}`, 'Total Payments']}
-                    cursor={{ stroke: '#000', strokeWidth: 1, strokeDasharray: '4 4' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#55ed44ff"
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorPayment)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
+          )
+        })()}
 
         {/* Payment History Table */}
         <div className="bg-white border-2 border-black overflow-hidden rounded-xl shadow-md">

@@ -177,13 +177,27 @@ export default function MaintenancePage() {
           request.title,
           newStatus
         )
-        await createNotification({
-          recipient: request.tenant,
-          actor: session.user.id,
-          type: template.type,
-          message: template.message,
-          link: '/maintenance'
-        })
+        // If landlord is marking it as something, notify tenant
+        if (profile?.role === 'landlord') {
+          await createNotification({
+            recipient: request.tenant,
+            actor: session.user.id,
+            type: template.type,
+            message: template.message,
+            link: '/maintenance'
+          })
+        }
+
+        // If tenant is marking it as completed, notify landlord
+        if (profile?.role === 'tenant' && newStatus === 'completed' && request.properties?.landlord) {
+          await createNotification({
+            recipient: request.properties.landlord,
+            actor: session.user.id,
+            type: 'maintenance_status',
+            message: `${profile.first_name} marked maintenance "${request.title}" as Done!`,
+            link: '/maintenance'
+          })
+        }
       }
     } else {
       showToast.error("Failed to update status");
@@ -505,14 +519,14 @@ export default function MaintenancePage() {
     const { error } = await supabase
       .from('maintenance_requests')
       .update({
-        status: 'in_progress',
+        status: 'scheduled',
         scheduled_date: new Date(scheduleDate).toISOString(),
         repairman_name: repairmanName.trim() || null
       })
       .eq('id', requestToSchedule.id)
 
     if (!error) {
-      showToast.success("Work started & date set!");
+      showToast.success("Work Scheduled!");
 
       const formattedDate = new Date(scheduleDate).toLocaleString();
       const repairmanInfo = repairmanName.trim() ? ` Assigned repairman: ${repairmanName.trim()}.` : '';
@@ -688,16 +702,24 @@ export default function MaintenancePage() {
                       )}
 
                       {/* Tenant Actions */}
-                      {profile?.role === 'tenant' && !['completed', 'closed', 'cancelled'].includes(req.status) && !req.scheduled_date && (
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
-                          <button onClick={() => promptCancel(req)} className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors cursor-pointer">
-                            Cancel Request
-                          </button>
+                      {profile?.role === 'tenant' && !['completed', 'closed', 'cancelled'].includes(req.status) && (
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end gap-2">
+                          {req.status === 'in_progress' && (
+                            <button onClick={() => updateRequestStatus(req.id, 'completed')} className="px-4 py-2 bg-green-50 border border-green-200 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 transition-colors cursor-pointer flex items-center gap-1.5">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              Mark as Done
+                            </button>
+                          )}
+                          {!req.scheduled_date && (
+                            <button onClick={() => promptCancel(req)} className="px-4 py-2 bg-white border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors cursor-pointer">
+                              Cancel Request
+                            </button>
+                          )}
                         </div>
                       )}
 
-                      {/* FEEDBACK BUTTON (Tenant Only, when Closed) */}
-                      {profile?.role === 'tenant' && req.status === 'closed' && !req.feedback && (
+                      {/* FEEDBACK BUTTON (Tenant Only, when Completed or Closed) */}
+                      {profile?.role === 'tenant' && ['completed', 'closed'].includes(req.status) && !req.feedback && (
                         <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
                           <button onClick={() => openFeedbackModal(req)} className="px-6 py-2 bg-yellow-400 text-black text-xs font-bold rounded-lg hover:bg-yellow-500 transition-colors shadow-sm cursor-pointer flex items-center gap-2">
                             Leave Feedback
@@ -711,13 +733,13 @@ export default function MaintenancePage() {
                           {req.status !== 'closed' && (
                             <>
                               {req.status === 'pending' && (
-                                <button onClick={() => updateRequestStatus(req.id, 'scheduled')} className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-100 cursor-pointer">Mark Scheduled</button>
+                                <button onClick={() => openStartWorkModal(req)} className="px-4 py-2 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-100 cursor-pointer">Mark Scheduled</button>
                               )}
                               {req.status === 'scheduled' && (
-                                <button onClick={() => openStartWorkModal(req)} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100 cursor-pointer">Start Working</button>
+                                <button onClick={() => updateRequestStatus(req.id, 'in_progress')} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100 cursor-pointer">Start Working</button>
                               )}
-                              {req.status === 'in_progress' && (
-                                <button onClick={() => openCostModal(req)} className="px-4 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 cursor-pointer">Mark Completed</button>
+                              {(req.status === 'in_progress' || req.status === 'completed') && (
+                                <button onClick={() => openCostModal(req)} className="px-4 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 cursor-pointer">Log Maintenance Cost</button>
                               )}
                               {(req.status === 'completed' || req.status === 'resolved') && (
                                 <button onClick={() => updateRequestStatus(req.id, 'closed')} className="px-4 py-2 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 cursor-pointer">Archive/Close</button>
@@ -991,7 +1013,7 @@ export default function MaintenancePage() {
             <div className="space-y-4 mb-6">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Start Date & Time</label>
-                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} />
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2" value={scheduleDate} min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} onChange={e => setScheduleDate(e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Repairman Name (Optional)</label>

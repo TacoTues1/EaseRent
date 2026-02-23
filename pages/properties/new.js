@@ -34,9 +34,15 @@ export default function NewProperty() {
     area_sqft: '',
     available: true,
     status: 'available',
-    terms_conditions: '', // Will store URL or empty string
+    property_type: 'House Apartment',
+    bed_type: 'Single Bed',
+    max_occupancy: 1,
+    terms_conditions: '',
     amenities: []
   })
+
+  const propertyTypes = ['House Apartment', 'Studio Type', 'Solo Room', 'Boarding House']
+  const bedTypes = ['Single Bed', 'Double Bed', 'Triple Bed']
 
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
@@ -326,7 +332,7 @@ export default function NewProperty() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Add Property</h1>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Add Rent</h1>
             <p className="text-gray-500 text-sm mt-1">Create a new listing for your portfolio.</p>
           </div>
           {message && (
@@ -344,18 +350,57 @@ export default function NewProperty() {
         <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
 
-            {/* Title Section */}
+            {/* Title & Property Type Section */}
             <div className="pb-6 border-b border-gray-50">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Property Title *</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Rent Title *</label>
               <input
                 type="text"
                 name="title"
                 required
                 className="w-full bg-gray-50 border-2 border-transparent focus:bg-white focus:border-black rounded-xl px-4 py-4 text-xl font-medium transition-all outline-none placeholder-gray-400"
-                placeholder="Property Title"
+                placeholder="Rent Title"
                 value={formData.title}
                 onChange={handleChange}
               />
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Type of Rent *</label>
+              <div className="flex flex-wrap gap-2">
+                {propertyTypes.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, property_type: type }))}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.property_type === type
+                      ? 'border-black bg-black text-white shadow-md'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Bed Type</label>
+              <div className="flex flex-wrap gap-2">
+                {bedTypes.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, bed_type: type }))}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.bed_type === type
+                      ? 'border-black bg-black text-white shadow-md'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Max People per Room</label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.max(1, (prev.max_occupancy || 1) - 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">−</button>
+                <span className="text-lg font-bold text-gray-900 w-8 text-center">{formData.max_occupancy || 1}</span>
+                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.min(20, (prev.max_occupancy || 1) + 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">+</button>
+                <span className="text-sm text-gray-400 ml-1">person(s)</span>
+              </div>
             </div>
 
             {/* Location Section (Same as edit) */}
@@ -720,7 +765,7 @@ export default function NewProperty() {
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </div >
+    </div >
   )
 }

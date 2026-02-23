@@ -799,6 +799,12 @@ export default function Register() {
                   Sign in
                 </Link>
               </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Register as a landlord?{' '}
+                <Link href="/register-landlord" className="font-bold text-gray-600 hover:text-gray-900 hover:underline transition-all duration-300">
+                  Click here
+                </Link>
+              </p>
             </div>
           </div>
         </div>

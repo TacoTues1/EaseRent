@@ -2,7 +2,7 @@
 // Centralized API for sending SMS and Email notifications
 
 import { createClient } from '@supabase/supabase-js'
-import { sendBillNotification, sendNewBookingNotification, sendMoveInNotification, sendRenewalStatus, sendRenewalRequest, sendEndContractNotification, sendPaymentReceivedNotification, sendPaymentConfirmedNotification } from '../../lib/sms'
+import { sendBillNotification, sendNewBookingNotification, sendMoveInNotification, sendRenewalStatus, sendRenewalRequest, sendEndContractNotification, sendPaymentReceivedNotification, sendPaymentConfirmedNotification, sendMaintenanceDoneNotification } from '../../lib/sms'
 import { sendNewPaymentBillEmail, sendNewBookingNotificationEmail, sendCashPaymentNotificationEmail, sendMoveInEmail, sendRenewalStatusEmail, sendRenewalRequestEmail, sendEndContractEmail, sendOnlinePaymentReceivedEmail, sendPaymentConfirmedEmail } from '../../lib/email'
 
 const supabaseAdmin = createClient(
@@ -750,6 +750,59 @@ export default async function handler(req, res) {
             }
 
             return res.status(200).json({ success: true, type: 'end_contract', results })
+        }
+
+        // ============================================
+        // NOTIFICATION TYPE: MAINTENANCE STATUS
+        // ============================================
+        if (type === 'maintenance_status') {
+            const { recordId, actorId } = req.body;
+
+            if (recordId && actorId) {
+                // Fetch request and actor role
+                const { data: request } = await supabaseAdmin
+                    .from('maintenance_requests')
+                    .select(`
+                        title,
+                        status,
+                        properties(landlord),
+                        tenant_profile:profiles!maintenance_requests_tenant_fkey(first_name, last_name)
+                     `)
+                    .eq('id', recordId)
+                    .single();
+
+                const { data: actorProfile } = await supabaseAdmin
+                    .from('profiles')
+                    .select('role')
+                    .eq('id', actorId)
+                    .single();
+
+                if (request && actorProfile) {
+                    // If tenant marked it as completed
+                    if (actorProfile.role === 'tenant' && request.status === 'completed' && request.properties?.landlord) {
+                        const tenantName = `${request.tenant_profile?.first_name || ''} ${request.tenant_profile?.last_name || ''}`.trim();
+                        const { data: landlordProfile } = await supabaseAdmin
+                            .from('profiles')
+                            .select('phone')
+                            .eq('id', request.properties.landlord)
+                            .single();
+
+                        const landlordPhone = formatPhoneNumber(landlordProfile?.phone);
+                        if (landlordPhone) {
+                            try {
+                                await sendMaintenanceDoneNotification(landlordPhone, {
+                                    tenantName,
+                                    title: request.title
+                                });
+                                console.log(`✅ Maintenance Done SMS sent to landlord ${landlordPhone}`);
+                            } catch (e) {
+                                console.error(`Maintenance Done SMS failed:`, e.message);
+                            }
+                        }
+                    }
+                }
+            }
+            return res.status(200).json({ success: true, type: 'maintenance_status' });
         }
 
         return res.status(400).json({ error: `Unknown notification type: ${type}` })

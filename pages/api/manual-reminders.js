@@ -895,6 +895,59 @@ export default async function handler(req, res) {
     }
     console.log(`[Late Fee Check] ========================================`);
 
+    // ====================================================
+    // I. AUTO-START SCHEDULED MAINTENANCE
+    // Moves 'scheduled' maintenance requests to 'in_progress' when the date has passed
+    // ====================================================
+    console.log(`[Maintenance Check] ========================================`);
+    try {
+      const nowISO = new Date().toISOString();
+
+      const { data: readyMaintenance, error: maintError } = await supabaseAdmin
+        .from('maintenance_requests')
+        .select('id, title, tenant')
+        .eq('status', 'scheduled')
+        .lte('scheduled_date', nowISO)
+        .limit(50);
+
+      if (maintError) {
+        console.error('[Maintenance Check] Error fetching scheduled requests:', maintError);
+      } else if (readyMaintenance && readyMaintenance.length > 0) {
+        console.log(`[Maintenance Check] Found ${readyMaintenance.length} tasks ready to start.`);
+
+        const readyIds = readyMaintenance.map(r => r.id);
+
+        const { error: updateErr } = await supabaseAdmin
+          .from('maintenance_requests')
+          .update({ status: 'in_progress' })
+          .in('id', readyIds);
+
+        if (!updateErr) {
+          console.log(`[Maintenance Check] ✅ Set ${readyIds.length} tasks to in_progress.`);
+
+          // Notify tenants
+          for (const req of readyMaintenance) {
+            if (req.tenant) {
+              await supabaseAdmin.from('notifications').insert({
+                recipient: req.tenant,
+                actor: '00000000-0000-0000-0000-000000000000',
+                type: 'maintenance_status',
+                message: `The scheduled repair for "${req.title}" has now started!`,
+                link: '/maintenance'
+              });
+            }
+          }
+        } else {
+          console.error('[Maintenance Check] Update error:', updateErr);
+        }
+      } else {
+        console.log(`[Maintenance Check] No scheduled tasks ready to start.`);
+      }
+    } catch (e) {
+      console.error('[Maintenance Check] Exception:', e);
+    }
+    console.log(`[Maintenance Check] ========================================`);
+
     res.status(200).json({ success: true, report: results })
 
   } catch (error) {

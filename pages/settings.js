@@ -31,6 +31,27 @@ export default function Settings() {
   const fileInputRef = useRef(null)
   const backupPhone = useRef('')
 
+  // Payment Methods State (Landlord only)
+  const [gcashNumber, setGcashNumber] = useState('')
+  const [gcashVerified, setGcashVerified] = useState(false)
+  const [gcashOtpSent, setGcashOtpSent] = useState(false)
+  const [gcashOtp, setGcashOtp] = useState('')
+  const [gcashOtpLoading, setGcashOtpLoading] = useState(false)
+  const [gcashEditing, setGcashEditing] = useState(false)
+  const [gcashQrUrl, setGcashQrUrl] = useState('')
+  const [gcashQrUploading, setGcashQrUploading] = useState(false)
+  const gcashQrRef = useRef(null)
+  const [mayaNumber, setMayaNumber] = useState('')
+  const [mayaVerified, setMayaVerified] = useState(false)
+  const [mayaOtpSent, setMayaOtpSent] = useState(false)
+  const [mayaOtp, setMayaOtp] = useState('')
+  const [mayaOtpLoading, setMayaOtpLoading] = useState(false)
+  const [mayaEditing, setMayaEditing] = useState(false)
+  const [mayaQrUrl, setMayaQrUrl] = useState('')
+  const [mayaQrUploading, setMayaQrUploading] = useState(false)
+  const mayaQrRef = useRef(null)
+  const [savingPaymentMethods, setSavingPaymentMethods] = useState(false)
+
   // Password Change State
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -112,6 +133,21 @@ export default function Settings() {
           sms: data.notification_preferences.sms ?? true,
           push: data.notification_preferences.push ?? true
         })
+      }
+
+      // Load payment methods
+      if (data.accepted_payments) {
+        const ap = data.accepted_payments
+        if (ap.gcash) {
+          setGcashNumber(ap.gcash.number || '')
+          setGcashVerified(!!ap.gcash.verified)
+          setGcashQrUrl(ap.gcash.qr_url || '')
+        }
+        if (ap.maya) {
+          setMayaNumber(ap.maya.number || '')
+          setMayaVerified(!!ap.maya.verified)
+          setMayaQrUrl(ap.maya.qr_url || '')
+        }
       }
     }
     setLoading(false)
@@ -338,6 +374,110 @@ export default function Settings() {
     }
   }
 
+  // ── Payment Methods (Landlord) ──
+  async function handlePaymentOtpSend(type) {
+    const phone = type === 'gcash' ? gcashNumber : mayaNumber
+    const setOtpLoading = type === 'gcash' ? setGcashOtpLoading : setMayaOtpLoading
+    const setOtpSent = type === 'gcash' ? setGcashOtpSent : setMayaOtpSent
+    if (!phone || phone.replace(/\D/g, '').length < 10) {
+      showToast.error(`Enter a valid ${type === 'gcash' ? 'GCash' : 'Maya'} number`)
+      return
+    }
+    setOtpLoading(true)
+    try {
+      const res = await fetch('/api/verify-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', phone })
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast.error(data.error || 'Failed to send code'); return }
+      setOtpSent(true)
+      showToast.success(`Code sent to your ${type === 'gcash' ? 'GCash' : 'Maya'} number!`)
+    } catch { showToast.error('Failed to send code') }
+    finally { setOtpLoading(false) }
+  }
+
+  async function handlePaymentOtpVerify(type) {
+    const phone = type === 'gcash' ? gcashNumber : mayaNumber
+    const code = type === 'gcash' ? gcashOtp : mayaOtp
+    const setOtpLoading = type === 'gcash' ? setGcashOtpLoading : setMayaOtpLoading
+    const setVerified = type === 'gcash' ? setGcashVerified : setMayaVerified
+    const setOtpSent = type === 'gcash' ? setGcashOtpSent : setMayaOtpSent
+    const setOtp = type === 'gcash' ? setGcashOtp : setMayaOtp
+    const setEditing = type === 'gcash' ? setGcashEditing : setMayaEditing
+    if (!code || code.length < 6) { showToast.error('Enter the 6-digit code'); return }
+    setOtpLoading(true)
+    try {
+      const res = await fetch('/api/verify-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', phone, code })
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast.error(data.error || 'Verification failed'); setOtp(''); return }
+      setVerified(true)
+      setOtpSent(false)
+      setOtp('')
+      setEditing(false)
+      showToast.success(`${type === 'gcash' ? 'GCash' : 'Maya'} number verified!`)
+      // Auto-save
+      await savePaymentMethods(type === 'gcash' ? { number: phone, verified: true } : undefined, type === 'maya' ? { number: phone, verified: true } : undefined)
+    } catch { showToast.error('Verification failed') }
+    finally { setOtpLoading(false) }
+  }
+
+  async function handleQrUpload(type, event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { showToast.error('Please select an image'); return }
+    if (file.size > 3 * 1024 * 1024) { showToast.error('Image must be under 3MB'); return }
+    const setUploading = type === 'gcash' ? setGcashQrUploading : setMayaQrUploading
+    const setQrUrl = type === 'gcash' ? setGcashQrUrl : setMayaQrUrl
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const fileName = `${session.user.id}/${type}-qr-${Date.now()}.${ext}`
+      const { error: uploadErr } = await supabase.storage.from('payment-files').upload(fileName, file, { upsert: true })
+      if (uploadErr) throw uploadErr
+      const { data: { publicUrl } } = supabase.storage.from('payment-files').getPublicUrl(fileName)
+      setQrUrl(publicUrl)
+      showToast.success(`${type === 'gcash' ? 'GCash' : 'Maya'} QR code uploaded!`)
+      // Auto-save QR URL
+      await savePaymentMethods(
+        type === 'gcash' ? { number: gcashNumber, verified: gcashVerified, qr_url: publicUrl } : undefined,
+        type === 'maya' ? { number: mayaNumber, verified: mayaVerified, qr_url: publicUrl } : undefined
+      )
+    } catch (err) {
+      console.error('QR upload error:', err)
+      showToast.error('Failed to upload QR code')
+    } finally { setUploading(false) }
+  }
+
+  async function savePaymentMethods(gcashOverride, mayaOverride) {
+    setSavingPaymentMethods(true)
+    const currentPayments = profile?.accepted_payments || { cash: true }
+    const updated = { ...currentPayments, cash: true }
+    if (gcashOverride) {
+      updated.gcash = { ...(currentPayments.gcash || {}), ...gcashOverride }
+    } else if (gcashVerified) {
+      updated.gcash = { number: gcashNumber, verified: true, qr_url: gcashQrUrl || currentPayments.gcash?.qr_url || '' }
+    }
+    if (mayaOverride) {
+      updated.maya = { ...(currentPayments.maya || {}), ...mayaOverride }
+    } else if (mayaVerified) {
+      updated.maya = { number: mayaNumber, verified: true, qr_url: mayaQrUrl || currentPayments.maya?.qr_url || '' }
+    }
+    const { error } = await supabase.from('profiles').update({ accepted_payments: updated }).eq('id', session.user.id)
+    if (error) {
+      showToast.error('Failed to save payment methods')
+      console.error(error)
+    } else {
+      setProfile(prev => ({ ...prev, accepted_payments: updated }))
+    }
+    setSavingPaymentMethods(false)
+  }
+
   async function handleSignOut() {
     try {
       await supabase.auth.signOut({ scope: 'global' })
@@ -358,6 +498,11 @@ export default function Settings() {
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
       )
     },
+    ...(profile?.role === 'landlord' ? [{
+      id: 'payments', label: 'Payment Methods', icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+      )
+    }] : []),
     {
       id: 'security', label: 'Security', icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -559,6 +704,158 @@ export default function Settings() {
                     </button>
                   </div>
                 </form>
+              </div>
+            )}
+
+            {/* PAYMENT METHODS TAB (Landlord Only) */}
+            {activeTab === 'payments' && profile?.role === 'landlord' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h2 className="text-xl font-bold mb-2">Payment Methods</h2>
+                <p className="text-sm text-gray-500 mb-6">Manage your GCash and Maya numbers. Tenants will see these as payment options.</p>
+
+                <div className="space-y-6">
+                  {/* GCash Section */}
+                  <div className={`p-5 rounded-2xl border-2 transition-all ${gcashVerified && !gcashEditing ? 'border-blue-200 bg-blue-50/30' : 'border-gray-100'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 text-white rounded-xl flex items-center justify-center font-bold text-lg">G</div>
+                        <div>
+                          <h3 className="font-bold">GCash</h3>
+                          <p className="text-xs text-gray-500">Mobile wallet</p>
+                        </div>
+                      </div>
+                      {gcashVerified && !gcashEditing && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Verified ✓</span>
+                          <button type="button" onClick={() => { setGcashEditing(true); setGcashOtpSent(false); setGcashOtp('') }} className="text-xs font-bold text-gray-500 hover:text-black px-3 py-1 rounded-lg border border-gray-200 hover:border-gray-300 transition-all cursor-pointer">Change</button>
+                        </div>
+                      )}
+                    </div>
+
+                    {gcashVerified && !gcashEditing ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-blue-100">
+                          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                          <span className="font-bold text-gray-800 tracking-wide">{gcashNumber}</span>
+                        </div>
+                        {/* QR Code Display/Upload */}
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">QR Code (Optional)</label>
+                          {gcashQrUrl ? (
+                            <div className="relative group">
+                              <img src={gcashQrUrl} alt="GCash QR" className="w-32 h-32 object-cover rounded-xl border-2 border-blue-100 shadow-sm" />
+                              <button type="button" onClick={() => gcashQrRef.current?.click()} className="absolute inset-0 w-32 h-32 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold cursor-pointer">Replace</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => gcashQrRef.current?.click()} disabled={gcashQrUploading} className="w-32 h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-all cursor-pointer disabled:opacity-50">
+                              {gcashQrUploading ? <span className="text-xs animate-pulse">Uploading...</span> : <><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span className="text-[10px] font-bold">Upload QR</span></>}
+                            </button>
+                          )}
+                          <input ref={gcashQrRef} type="file" accept="image/*" onChange={e => handleQrUpload('gcash', e)} className="hidden" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">GCash Number</label>
+                          <input type="tel" value={gcashNumber} onChange={e => setGcashNumber(e.target.value)} placeholder="+63 9XX XXX XXXX" className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-blue-500 focus:ring-0 transition-all font-medium" />
+                        </div>
+                        {!gcashOtpSent ? (
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => handlePaymentOtpSend('gcash')} disabled={gcashOtpLoading} className="flex-1 py-2.5 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 transition-colors cursor-pointer disabled:opacity-50">{gcashOtpLoading ? 'Sending...' : 'Send Verification Code'}</button>
+                            {gcashEditing && <button type="button" onClick={() => setGcashEditing(false)} className="px-4 py-2.5 border border-gray-200 font-bold rounded-xl hover:bg-gray-50 cursor-pointer">Cancel</button>}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-500">Enter the 6-digit code sent to {gcashNumber}</p>
+                            <input type="text" value={gcashOtp} onChange={e => setGcashOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} className="w-full text-center tracking-widest text-xl font-bold py-2.5 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none" placeholder="000000" />
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => handlePaymentOtpVerify('gcash')} disabled={gcashOtpLoading} className="flex-1 py-2.5 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 cursor-pointer disabled:opacity-50">{gcashOtpLoading ? 'Verifying...' : 'Confirm'}</button>
+                              <button type="button" onClick={() => handlePaymentOtpSend('gcash')} disabled={gcashOtpLoading} className="px-3 py-2.5 text-sm text-gray-500 hover:underline cursor-pointer">Resend</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Maya Section */}
+                  <div className={`p-5 rounded-2xl border-2 transition-all ${mayaVerified && !mayaEditing ? 'border-green-200 bg-green-50/30' : 'border-gray-100'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-600 text-white rounded-xl flex items-center justify-center font-bold text-lg">M</div>
+                        <div>
+                          <h3 className="font-bold">Maya</h3>
+                          <p className="text-xs text-gray-500">Digital payment</p>
+                        </div>
+                      </div>
+                      {mayaVerified && !mayaEditing && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Verified ✓</span>
+                          <button type="button" onClick={() => { setMayaEditing(true); setMayaOtpSent(false); setMayaOtp('') }} className="text-xs font-bold text-gray-500 hover:text-black px-3 py-1 rounded-lg border border-gray-200 hover:border-gray-300 transition-all cursor-pointer">Change</button>
+                        </div>
+                      )}
+                    </div>
+
+                    {mayaVerified && !mayaEditing ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-green-100">
+                          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                          <span className="font-bold text-gray-800 tracking-wide">{mayaNumber}</span>
+                        </div>
+                        {/* QR Code Display/Upload */}
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">QR Code (Optional)</label>
+                          {mayaQrUrl ? (
+                            <div className="relative group">
+                              <img src={mayaQrUrl} alt="Maya QR" className="w-32 h-32 object-cover rounded-xl border-2 border-green-100 shadow-sm" />
+                              <button type="button" onClick={() => mayaQrRef.current?.click()} className="absolute inset-0 w-32 h-32 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold cursor-pointer">Replace</button>
+                            </div>
+                          ) : (
+                            <button type="button" onClick={() => mayaQrRef.current?.click()} disabled={mayaQrUploading} className="w-32 h-32 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-green-300 hover:text-green-500 transition-all cursor-pointer disabled:opacity-50">
+                              {mayaQrUploading ? <span className="text-xs animate-pulse">Uploading...</span> : <><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span className="text-[10px] font-bold">Upload QR</span></>}
+                            </button>
+                          )}
+                          <input ref={mayaQrRef} type="file" accept="image/*" onChange={e => handleQrUpload('maya', e)} className="hidden" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Maya Number</label>
+                          <input type="tel" value={mayaNumber} onChange={e => setMayaNumber(e.target.value)} placeholder="+63 9XX XXX XXXX" className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-0 transition-all font-medium" />
+                        </div>
+                        {!mayaOtpSent ? (
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => handlePaymentOtpSend('maya')} disabled={mayaOtpLoading} className="flex-1 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors cursor-pointer disabled:opacity-50">{mayaOtpLoading ? 'Sending...' : 'Send Verification Code'}</button>
+                            {mayaEditing && <button type="button" onClick={() => setMayaEditing(false)} className="px-4 py-2.5 border border-gray-200 font-bold rounded-xl hover:bg-gray-50 cursor-pointer">Cancel</button>}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-500">Enter the 6-digit code sent to {mayaNumber}</p>
+                            <input type="text" value={mayaOtp} onChange={e => setMayaOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} className="w-full text-center tracking-widest text-xl font-bold py-2.5 border-2 border-gray-200 rounded-xl focus:border-green-500 outline-none" placeholder="000000" />
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => handlePaymentOtpVerify('maya')} disabled={mayaOtpLoading} className="flex-1 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 cursor-pointer disabled:opacity-50">{mayaOtpLoading ? 'Verifying...' : 'Confirm'}</button>
+                              <button type="button" onClick={() => handlePaymentOtpSend('maya')} disabled={mayaOtpLoading} className="px-3 py-2.5 text-sm text-gray-500 hover:underline cursor-pointer">Resend</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cash - always enabled */}
+                  <div className="p-4 rounded-2xl border-2 border-gray-100 bg-gray-50/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-900 text-white rounded-xl flex items-center justify-center font-bold text-lg">₱</div>
+                      <div>
+                        <h3 className="font-bold">Cash</h3>
+                        <p className="text-xs text-gray-500">Always accepted — cannot be disabled</p>
+                      </div>
+                      <span className="ml-auto text-xs font-bold text-gray-600 bg-gray-200 px-3 py-1 rounded-full">Default</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 

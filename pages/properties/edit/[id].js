@@ -35,9 +35,16 @@ export default function EditProperty() {
     area_sqft: '',
     available: true,
     status: 'available',
+    property_type: 'House Apartment',
+    bed_type: 'Single Bed',
+    max_occupancy: 1,
     terms_conditions: '',
     amenities: []
   })
+
+  const propertyTypes = ['House Apartment', 'Studio Type', 'Solo Room', 'Boarding House']
+  const bedTypes = ['Single Bed', 'Double Bed', 'Triple Bed']
+
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
@@ -130,6 +137,9 @@ export default function EditProperty() {
       area_sqft: data.area_sqft || '',
       available: data.available ?? true,
       status: data.status || 'available',
+      property_type: data.property_type || 'House Apartment',
+      bed_type: data.bed_type || 'Single Bed',
+      max_occupancy: data.max_occupancy || 1,
       terms_conditions: data.terms_conditions || '',
       amenities: data.amenities || []
     })
@@ -421,7 +431,7 @@ export default function EditProperty() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Edit Property</h1>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Edit Rent</h1>
             <p className="text-gray-500 text-sm mt-1">Update details for this listing.</p>
           </div>
           {message && (
@@ -439,9 +449,9 @@ export default function EditProperty() {
         <form onSubmit={handleSubmit} className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1 bg-white p-6 mFd:p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-8">
 
-            {/* Title Section */}
+            {/* Title & Property Type Section */}
             <div className="pb-6 border-b border-gray-50">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Property Title *</label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Rent Title *</label>
               <input
                 type="text"
                 name="title"
@@ -451,6 +461,45 @@ export default function EditProperty() {
                 value={formData.title}
                 onChange={handleChange}
               />
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Type of Rent *</label>
+              <div className="flex flex-wrap gap-2">
+                {propertyTypes.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, property_type: type }))}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.property_type === type
+                      ? 'border-black bg-black text-white shadow-md'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Bed Type</label>
+              <div className="flex flex-wrap gap-2">
+                {bedTypes.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, bed_type: type }))}
+                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.bed_type === type
+                      ? 'border-black bg-black text-white shadow-md'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Max People per Room</label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.max(1, (prev.max_occupancy || 1) - 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">−</button>
+                <span className="text-lg font-bold text-gray-900 w-8 text-center">{formData.max_occupancy || 1}</span>
+                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.min(20, (prev.max_occupancy || 1) + 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">+</button>
+                <span className="text-sm text-gray-400 ml-1">person(s)</span>
+              </div>
             </div>
 
             {/* Location Section */}
@@ -642,7 +691,7 @@ export default function EditProperty() {
                   name="description"
                   rows="5"
                   className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black outline-none resize-none"
-                  placeholder="Describe the property..."
+                  placeholder="Describe the Rent..."
                   value={formData.description}
                   onChange={handleChange}
                 />
@@ -818,7 +867,7 @@ export default function EditProperty() {
 
               {showDeleteConfirm ? (
                 <div className="p-4 bg-red-50 rounded-xl border border-red-100 flex flex-col gap-3 animate-in fade-in zoom-in duration-200">
-                  <p className="text-xs font-bold text-red-800 text-center">Are you sure you want to delete this property?</p>
+                  <p className="text-xs font-bold text-red-800 text-center">Are you sure you want to delete this Rent?</p>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -844,13 +893,13 @@ export default function EditProperty() {
                   disabled={loading}
                   className="w-full px-4 py-3 text-red-600 border border-transparent hover:bg-red-50 text-sm font-semibold cursor-pointer rounded-xl transition-colors"
                 >
-                  Delete Property
+                  Delete Rent
                 </button>
               )}
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </div >
+    </div >
   )
 }

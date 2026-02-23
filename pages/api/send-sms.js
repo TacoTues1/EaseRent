@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   // 2. Validate input
   if (!phoneNumber || !message) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: 'Missing required fields',
       required: ['phoneNumber', 'message']
     });
@@ -35,7 +35,8 @@ export default async function handler(req, res) {
         text: message
       },
       phoneNumbers: [phoneNumber], // API expects an array
-      deviceId: DEVICE_ID
+      deviceId: DEVICE_ID,
+      ttl: 1200 // Auto-fail after 20 minutes if still pending
     };
 
     // 5. Create Basic Auth Header
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
       console.error('Gateway Error Response:', result);
       throw new Error(result.message || 'SMS Gateway rejected the request');
     }
-    
+
     return res.status(200).json({
       success: true,
       message: 'SMS sent successfully',
