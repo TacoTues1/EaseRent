@@ -98,7 +98,8 @@ export default function LandlordDashboard({ session, profile }) {
     isOpen: false,
     tenantId: null,
     tenantName: '',
-    propertyTitle: ''
+    propertyTitle: '',
+    propertyPrice: 0
   })
 
   // Monthly Income Statements State
@@ -454,12 +455,13 @@ export default function LandlordDashboard({ session, profile }) {
   }, [occupancies])
 
   // Open confirmation modal for sending advance bill
-  function openAdvanceBillModal(tenantId, tenantName, propertyTitle) {
+  function openAdvanceBillModal(tenantId, tenantName, propertyTitle, propertyPrice) {
     setAdvanceBillModal({
       isOpen: true,
       tenantId,
       tenantName,
-      propertyTitle
+      propertyTitle,
+      propertyPrice: propertyPrice || 0
     })
   }
 
@@ -587,6 +589,7 @@ export default function LandlordDashboard({ session, profile }) {
         tenantId: occ.tenant_id,
         tenantName: `${occ.tenant?.first_name} ${occ.tenant?.last_name}`,
         propertyTitle: occ.property?.title,
+        propertyPrice: occ.property?.price || 0,
         nextDueDate: nextDueDate,
         sendDate: sendDate,
         status: status,
@@ -850,7 +853,7 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   async function loadOccupancies() {
-    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title, images)`).eq('landlord_id', session.user.id).eq('status', 'active')
+    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title, images, price)`).eq('landlord_id', session.user.id).eq('status', 'active')
     setOccupancies(data || [])
   }
 
@@ -1297,6 +1300,17 @@ export default function LandlordDashboard({ session, profile }) {
       })
     }).catch(err => console.error("Email Error:", err));
 
+    // Clean up family members — end their occupancies + delete records
+    try {
+      await fetch('/api/family-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cleanup', occupancy_id: occupancy.id })
+      })
+    } catch (err) {
+      console.error('Family cleanup error:', err)
+    }
+
     showToast.success('Contract ended successfully', { duration: 4000, transition: "bounceIn" });
     loadProperties(); loadOccupancies()
   }
@@ -1378,6 +1392,17 @@ export default function LandlordDashboard({ session, profile }) {
       console.error('End contract notification error:', err)
     }
 
+    // Clean up family members — end their occupancies + delete records
+    try {
+      await fetch('/api/family-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cleanup', occupancy_id: occupancyId })
+      })
+    } catch (err) {
+      console.error('Family cleanup error:', err)
+    }
+
     showToast.success('Approved successfully', { duration: 4000, transition: "bounceIn" });
     loadPendingEndRequests(); loadOccupancies(); loadProperties()
   }
@@ -1410,12 +1435,12 @@ export default function LandlordDashboard({ session, profile }) {
 
 
   return (
-    <div className="min-h-screen bg-[#F3F4F5] flex flex-col scroll-smooth">
+    <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 flex-1 w-full">
 
         {/* HEADER */}
         <div className="mb-6">
-          <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-black rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-black/10">
+          <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg shadow-black/5 border border-gray-800">
             {/* Decorative background shapes */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
             <div className="absolute bottom-0 left-10 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-xl"></div>
@@ -1443,7 +1468,7 @@ export default function LandlordDashboard({ session, profile }) {
 
           {/* KEY METRICS */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+            <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
@@ -1453,7 +1478,7 @@ export default function LandlordDashboard({ session, profile }) {
               <p className="text-sm font-medium text-gray-500 mt-1">Properties Managed</p>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+            <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -1466,7 +1491,7 @@ export default function LandlordDashboard({ session, profile }) {
               <p className="text-sm font-medium text-gray-500 mt-1">Active Tenants</p>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+            <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -1476,7 +1501,7 @@ export default function LandlordDashboard({ session, profile }) {
               <p className="text-sm font-medium text-gray-500 mt-1">Total Income</p>
             </div>
 
-            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 transition-transform duration-300">
+            <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
               <div className="flex items-center justify-between mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -1487,67 +1512,11 @@ export default function LandlordDashboard({ session, profile }) {
             </div>
           </div>
 
-          {/* ACTION CENTER */}
-          {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
-            <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
-                    Action Center
-                    <span className="flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                    </span>
-                  </h3>
-                  <p className="text-sm font-medium text-gray-500">Tasks requiring your attention</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {pendingEndRequests.map(req => (
-                  <div key={req.id} className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 hover:bg-orange-50 transition-colors cursor-pointer group" onClick={() => openEndConfirmation('approve', req.id)}>
-                    <span className="inline-block px-2 py-1 bg-orange-100 text-orange-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Move-Out</span>
-                    <h4 className="font-bold text-sm text-gray-900 group-hover:text-orange-700 transition-colors truncate">{req.property?.title}</h4>
-                    <p className="text-xs text-gray-500 mt-1 truncate">{req.tenant?.first_name} {req.tenant?.last_name}</p>
-                  </div>
-                ))}
-
-                {pendingRenewalRequests.map(req => (
-                  <div key={req.id} className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 hover:bg-blue-50 transition-colors cursor-pointer group" onClick={() => openRenewalModal(req, 'approve')}>
-                    <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Renewal</span>
-                    <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
-                    <p className="text-xs text-gray-500 mt-1 truncate">{req.tenant?.first_name} {req.tenant?.last_name}</p>
-                  </div>
-                ))}
-
-                {dashboardTasks.maintenance.length > 0 && (
-                  <button onClick={() => router.push('/maintenance')} className="text-left p-4 bg-rose-50/50 rounded-2xl border border-rose-100 hover:bg-rose-50 transition-colors cursor-pointer group flex flex-col w-full h-full justify-between">
-                    <div>
-                      <span className="inline-block px-2 py-1 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Maintenance</span>
-                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-rose-700 transition-colors">{dashboardTasks.maintenance.length} Active Issues</h4>
-                    </div>
-                    <p className="text-xs font-bold text-rose-600 mt-3 group-hover:translate-x-1 transition-transform inline-block">Review Issues →</p>
-                  </button>
-                )}
-
-                {dashboardTasks.payments.length > 0 && (
-                  <button onClick={() => router.push('/payments')} className="text-left p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 hover:bg-emerald-50 transition-colors cursor-pointer group flex flex-col w-full h-full justify-between">
-                    <div>
-                      <span className="inline-block px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-lg mb-2">Payments</span>
-                      <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors">{dashboardTasks.payments.length} Pending Bills</h4>
-                    </div>
-                    <p className="text-xs font-bold text-emerald-600 mt-3 group-hover:translate-x-1 transition-transform inline-block">Review Payments →</p>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* MAIN GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-8">
             {/* Left Col: Billing Schedule */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] h-full">
+            <div className="lg:col-span-8 xl:col-span-9 space-y-4">
+              <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm h-full">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
                     <h3 className="text-lg font-black text-gray-900 tracking-tight">Billing Schedule</h3>
@@ -1599,7 +1568,7 @@ export default function LandlordDashboard({ session, profile }) {
                               </td>
                               <td className="py-4 text-right pr-2">
                                 {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
-                                  <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle)} disabled={sendingBillId === item.tenantId}
+                                  <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice)} disabled={sendingBillId === item.tenantId}
                                     className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
                                     Send Now
                                   </button>
@@ -1615,8 +1584,73 @@ export default function LandlordDashboard({ session, profile }) {
               </div>
             </div>
 
-            {/* Right Col: Occupied Properties & Scheduled Today */}
-            <div className="lg:col-span-1 space-y-8">
+            {/* Right Col: Action Center, Occupied Properties & Scheduled Today */}
+            <div className="lg:col-span-4 xl:col-span-3 space-y-6">
+
+              {/* ACTION CENTER */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm">
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+                      Action Center
+                      {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
+                        <span className="flex h-2.5 w-2.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+                </div>
+
+                {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                    {pendingEndRequests.map(req => (
+                      <div key={req.id} className="p-3 bg-white rounded-xl border border-gray-200 hover:border-orange-300 hover:shadow-sm transition-all cursor-pointer group flex items-center justify-between" onClick={() => openEndConfirmation('approve', req.id)}>
+                        <div className="overflow-hidden pr-2">
+                          <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold uppercase tracking-wider rounded-md mb-1">Move-Out</span>
+                          <h4 className="font-bold text-sm text-gray-900 group-hover:text-orange-700 transition-colors truncate">{req.property?.title}</h4>
+                        </div>
+                        <svg className="w-4 h-4 text-orange-400 group-hover:text-orange-600 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </div>
+                    ))}
+
+                    {pendingRenewalRequests.map(req => (
+                      <div key={req.id} className="p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer group flex items-center justify-between" onClick={() => openRenewalModal(req, 'approve')}>
+                        <div className="overflow-hidden pr-2">
+                          <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-md mb-1">Renewal</span>
+                          <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
+                        </div>
+                        <svg className="w-4 h-4 text-blue-400 group-hover:text-blue-600 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </div>
+                    ))}
+
+                    {dashboardTasks.maintenance.length > 0 && (
+                      <button onClick={() => router.push('/maintenance')} className="w-full text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-rose-300 hover:shadow-sm transition-all cursor-pointer group flex items-center justify-between">
+                        <div>
+                          <span className="inline-block px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase tracking-wider rounded-md mb-1">Maintenance</span>
+                          <h4 className="font-bold text-sm text-gray-900 group-hover:text-rose-700 transition-colors">{dashboardTasks.maintenance.length} Pending</h4>
+                        </div>
+                        <svg className="w-4 h-4 text-rose-400 group-hover:text-rose-600 group-hover:translate-x-1 transition-all shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                      </button>
+                    )}
+
+                    {dashboardTasks.payments.length > 0 && (
+                      <button onClick={() => router.push('/payments')} className="w-full text-left p-3 bg-white rounded-xl border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all cursor-pointer group flex items-center justify-between">
+                        <div>
+                          <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-md mb-1">Payments</span>
+                          <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors">{dashboardTasks.payments.length} Pending Bills</h4>
+                        </div>
+                        <svg className="w-4 h-4 text-emerald-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-gray-400 text-sm font-medium">All caught up! No pending tasks.</p>
+                  </div>
+                )}
+              </div>
               {/* Scheduled Today (Conditionally Rendered) */}
               {(() => {
                 const todayStr = new Date().toISOString().split('T')[0]
@@ -1624,9 +1658,8 @@ export default function LandlordDashboard({ session, profile }) {
                   if (!o.start_date) return false
                   return new Date(o.start_date).toISOString().split('T')[0] === todayStr
                 })
-                if (scheduledToday.length === 0) return null
                 return (
-                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 text-white shadow-lg shadow-blue-900/20">
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-md shadow-blue-900/10">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h3 className="font-black text-lg">Scheduled Today</h3>
@@ -1636,24 +1669,31 @@ export default function LandlordDashboard({ session, profile }) {
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                       </button>
                     </div>
-                    <div className="space-y-3">
-                      {scheduledToday.map(occ => (
-                        <div key={occ.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
-                          <div className="w-10 h-10 rounded-full bg-white text-blue-700 font-bold flex items-center justify-center text-sm shadow-sm">
-                            {occ.tenant?.first_name?.charAt(0)}{occ.tenant?.last_name?.charAt(0)}
+
+                    {scheduledToday.length === 0 ? (
+                      <div className="py-6 text-center bg-white/5 rounded-xl border border-white/10 backdrop-blur-sm">
+                        <p className="text-blue-100 text-sm font-medium">No move-ins scheduled today.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {scheduledToday.map(occ => (
+                          <div key={occ.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm">
+                            <div className="w-10 h-10 rounded-full bg-white text-blue-700 font-bold flex items-center justify-center text-sm shadow-sm">
+                              {occ.tenant?.first_name?.charAt(0)}{occ.tenant?.last_name?.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                              <p className="text-xs text-blue-100 mt-0.5 truncate">{occ.property?.title}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-sm truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
-                            <p className="text-xs text-blue-100 mt-0.5 truncate">{occ.property?.title}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })()}
 
-              <div className="bg-white rounded-3xl p-6 border border-gray-50 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="text-lg font-black text-gray-900 tracking-tight">Active Properties</h3>
@@ -1668,7 +1708,7 @@ export default function LandlordDashboard({ session, profile }) {
                     </div>
                   ) : (
                     occupancies.filter(o => o.status === 'active').map(occ => (
-                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
+                      <div key={occ.id} className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
                         <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 shadow-inner">
                           <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
                         </div>
@@ -2323,6 +2363,15 @@ export default function LandlordDashboard({ session, profile }) {
                 <p className="text-gray-700 mb-4">
                   Are you sure you want to send an advance bill to <span className="font-bold">{advanceBillModal.tenantName}</span> for property <span className="font-bold">{advanceBillModal.propertyTitle}</span>?
                 </p>
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-emerald-700 font-semibold">Rent Amount</p>
+                    <p className="text-lg font-bold text-emerald-800">₱{Number(advanceBillModal.propertyPrice || 0).toLocaleString()}</p>
+                  </div>
+                </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 mb-4">
                   <div className="flex items-start gap-2">
                     <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

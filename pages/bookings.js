@@ -33,7 +33,16 @@ export default function BookingsPage() {
   const [contractMonths, setContractMonths] = useState(12)
   const [endDate, setEndDate] = useState('')
   const [wifiDueDay, setWifiDueDay] = useState('')
+  const [wifiPayment, setWifiPayment] = useState('')
+  const [waterDueDay, setWaterDueDay] = useState('')
+  const [waterPayment, setWaterPayment] = useState('')
+  const [electricityDueDay, setElectricityDueDay] = useState('')
+  const [electricityPayment, setElectricityPayment] = useState('')
+
   const [showWifiDayPicker, setShowWifiDayPicker] = useState(false)
+  const [showWaterDayPicker, setShowWaterDayPicker] = useState(false)
+  const [showElectricityDayPicker, setShowElectricityDayPicker] = useState(false)
+
   const [contractFile, setContractFile] = useState(null)
   const [uploadingContract, setUploadingContract] = useState(false)
   const [showAssignWarning, setShowAssignWarning] = useState(false)
@@ -408,15 +417,22 @@ export default function BookingsPage() {
     setStartDate(new Date().toISOString().split('T')[0])
     setContractMonths(12)
     setWifiDueDay('')
+    setWifiPayment('')
+    setWaterDueDay('')
+    setWaterPayment('')
+    setElectricityDueDay('')
+    setElectricityPayment('')
     setContractFile(null)
     setSelectedPropertyId('')
     setShowAssignWarning(false)
     setShowWifiDayPicker(false)
+    setShowWaterDayPicker(false)
+    setShowElectricityDayPicker(false)
 
     // Load available properties for this landlord
     const { data: props } = await supabase
       .from('properties')
-      .select('id, title, price, status')
+      .select('id, title, price, status, amenities')
       .eq('landlord', session.user.id)
       .eq('status', 'available')
       .eq('is_deleted', false)
@@ -450,9 +466,34 @@ export default function BookingsPage() {
     if (!contractMonths || parseInt(contractMonths) < 3) {
       showToast.error('Minimum contract duration is 3 months', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
     }
-    if (!wifiDueDay || parseInt(wifiDueDay) <= 0 || parseInt(wifiDueDay) > 31) {
+
+    const selectedProp = availableProperties.find(p => p.id === selectedPropertyId)
+    if (!selectedProp) return
+
+    const selectedAmenities = selectedProp.amenities || []
+    const isWaterFree = selectedAmenities.includes('Free Water')
+    const isElecFree = selectedAmenities.includes('Free Electricity')
+    const isWifiFree = selectedAmenities.includes('Free WiFi')
+
+    if (!isWifiFree && (!wifiDueDay || parseInt(wifiDueDay) <= 0 || parseInt(wifiDueDay) > 31)) {
       showToast.error('Please enter a valid Wifi Due Day (1-31)', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
     }
+    if (!isWifiFree && (!wifiPayment || parseFloat(wifiPayment) < 0)) {
+      showToast.error('Please enter a valid monthly payment for Wifi', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!isWaterFree && (!waterDueDay || parseInt(waterDueDay) <= 0 || parseInt(waterDueDay) > 31)) {
+      showToast.error('Please enter a valid Water Due Day (1-31)', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!isWaterFree && (!waterPayment || parseFloat(waterPayment) < 0)) {
+      showToast.error('Please enter a valid monthly payment for Water', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!isElecFree && (!electricityDueDay || parseInt(electricityDueDay) <= 0 || parseInt(electricityDueDay) > 31)) {
+      showToast.error('Please enter a valid Electricity Due Day (1-31)', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+    if (!isElecFree && (!electricityPayment || parseFloat(electricityPayment) < 0)) {
+      showToast.error('Please enter a valid monthly payment for Electricity', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
+    }
+
     if (!penaltyDetails || parseFloat(penaltyDetails) <= 0) {
       showToast.error('Please enter a Late Payment Fee', { duration: 4000, position: "top-center", transition: "bounceIn" }); return
     }
@@ -464,9 +505,6 @@ export default function BookingsPage() {
       setShowAssignWarning(true)
       return
     }
-
-    const selectedProp = availableProperties.find(p => p.id === selectedPropertyId)
-    if (!selectedProp) return
 
     const securityDepositAmount = selectedProp.price || 0
 
@@ -499,6 +537,13 @@ export default function BookingsPage() {
       security_deposit: securityDepositAmount,
       security_deposit_used: 0,
       wifi_due_day: wifiDueDay ? parseInt(wifiDueDay) : null,
+      electricity_due_day: electricityDueDay ? parseInt(electricityDueDay) : null,
+      // IMPORTANT: To save the other utility values (water_due_day, water_monthly_payment, electricity_monthly_payment, wifi_monthly_payment) 
+      // you must first add those columns to your "tenant_occupancies" table via Supabase Dashboard. 
+      // water_due_day: waterDueDay ? parseInt(waterDueDay) : null,
+      // water_monthly_payment: waterPayment ? parseFloat(waterPayment) : 0,
+      // electricity_monthly_payment: electricityPayment ? parseFloat(electricityPayment) : 0,
+      // wifi_monthly_payment: wifiPayment ? parseFloat(wifiPayment) : 0,
       late_payment_fee: penaltyDetails ? parseFloat(penaltyDetails) : 0,
       contract_url: contractUrl
     }).select('id').single()
@@ -1015,7 +1060,7 @@ export default function BookingsPage() {
                       {roleLower === 'landlord' && statusLower === 'viewing_done' && (
                         <div className="flex gap-2 w-full md:w-auto">
                           <button
-                            onClick={() => openAssignTenantModal(booking)}
+                            onClick={() => router.push(`/assign-tenant?bookingId=${booking.id}`)}
                             className="flex-1 md:flex-none px-4 py-2.5 bg-black text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-gray-800 transition-colors shadow-sm flex items-center gap-2 justify-center"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
@@ -1361,61 +1406,81 @@ export default function BookingsPage() {
                   <input type="number" min="0" step="any" value={penaltyDetails} onChange={e => setPenaltyDetails(e.target.value)} placeholder="e.g. 500" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:border-black outline-none" />
                 </div>
 
-                {/* Utility Reminders (Wifi Due Day) */}
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 mb-4">
-                  <p className="text-xs text-gray-600 font-medium mb-3">
-                    <span className="font-bold">Utility Reminders:</span> Tenants will receive automated SMS & email reminders 3 days before due dates.
-                  </p>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Wifi Due Day (Day of Month) <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setShowWifiDayPicker(!showWifiDayPicker)}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-left flex justify-between items-center focus:border-black outline-none bg-white hover:border-gray-300 transition-colors"
-                      >
-                        <span className={wifiDueDay ? 'text-gray-900 font-medium' : 'text-gray-400'}>
-                          {wifiDueDay ? `Day ${wifiDueDay} of month` : 'Select day (1-31)'}
-                        </span>
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </button>
+                {/* Utility Reminders */}
+                {selectedPropertyId && (
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 mb-4">
+                    <p className="text-xs text-gray-600 font-medium mb-3">
+                      <span className="font-bold">Utility Details:</span> Configure utility dues and payments for this tenant.
+                      <small className="block text-gray-400 mt-1">* Note: To save water, electricity and wifi payments to the database, ensure their columns are added in Supabase first.</small>
+                    </p>
+                    {(() => {
+                      const sp = availableProperties.find(p => p.id === selectedPropertyId);
+                      if (!sp) return null;
+                      const amenities = sp.amenities || [];
+                      const isWaterFree = amenities.includes('Free Water');
+                      const isElecFree = amenities.includes('Free Electricity');
+                      const isWifiFree = amenities.includes('Free WiFi');
 
-                      {showWifiDayPicker && (
-                        <div className="absolute z-10 bottom-full mb-2 w-full bg-white border border-gray-200 rounded-xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-200">
-                          <div className="flex justify-between items-center mb-2 px-1">
-                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select Day</span>
-                            <button onClick={() => setShowWifiDayPicker(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-                          </div>
-                          <div className="grid grid-cols-7 gap-1">
-                            {[...Array(31)].map((_, i) => {
-                              const day = i + 1;
-                              const isSelected = parseInt(wifiDueDay) === day;
-                              return (
-                                <button
-                                  key={day}
-                                  type="button"
-                                  onClick={() => { setWifiDueDay(day); setShowWifiDayPicker(false); }}
-                                  className={`aspect-square flex items-center justify-center text-xs font-bold rounded-lg transition-all ${isSelected
-                                    ? 'bg-black text-white shadow-md transform scale-105'
-                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:scale-110'
-                                    }`}
-                                >
-                                  {day}
-                                </button>
-                              );
-                            })}
-                          </div>
+                      return (
+                        <div className="space-y-4">
+                          {/* Water */}
+                          {!isWaterFree ? (
+                            <div className="grid grid-cols-2 gap-3 pb-3 border-b border-gray-200">
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">Water Due Day (1-31) <span className="text-red-500">*</span></label>
+                                <input type="number" min="1" max="31" value={waterDueDay} onChange={e => setWaterDueDay(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="1-31" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">Monthly Payment (₱) <span className="text-red-500">*</span></label>
+                                <input type="number" min="0" value={waterPayment} onChange={e => setWaterPayment(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="₱0.00" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="pb-3 border-b border-gray-200">
+                              <span className="text-sm font-bold text-green-700 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Free Water</span>
+                            </div>
+                          )}
+
+                          {/* Electricity */}
+                          {!isElecFree ? (
+                            <div className="grid grid-cols-2 gap-3 pb-3 border-b border-gray-200">
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">Electricity Due Day <span className="text-red-500">*</span></label>
+                                <input type="number" min="1" max="31" value={electricityDueDay} onChange={e => setElectricityDueDay(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="1-31" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">Monthly Payment (₱) <span className="text-red-500">*</span></label>
+                                <input type="number" min="0" value={electricityPayment} onChange={e => setElectricityPayment(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="₱0.00" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="pb-3 border-b border-gray-200">
+                              <span className="text-sm font-bold text-green-700 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Free Electricity</span>
+                            </div>
+                          )}
+
+                          {/* WiFi */}
+                          {!isWifiFree ? (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">WiFi Due Day <span className="text-red-500">*</span></label>
+                                <input type="number" min="1" max="31" value={wifiDueDay} onChange={e => setWifiDueDay(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="1-31" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-gray-700 uppercase mb-1">Monthly Payment (₱) <span className="text-red-500">*</span></label>
+                                <input type="number" min="0" value={wifiPayment} onChange={e => setWifiPayment(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" placeholder="₱0.00" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-sm font-bold text-green-700 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Free WiFi</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      )
+                    })()}
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Electricity and Water reminders are sent automatically.
-                  </p>
-                </div>
+                )}
 
                 <button
                   onClick={confirmAssignTenant}

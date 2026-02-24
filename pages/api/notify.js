@@ -20,6 +20,122 @@ function formatPhoneNumber(phone) {
     return '+' + clean;
 }
 
+// Helper: Get family members for a tenant's occupancy on a property
+// Returns array of { id, phone, email, name } for each family member
+async function getFamilyMembersForNotification(tenantId, propertyId) {
+    if (!tenantId || !propertyId) return []
+    try {
+        // Find the primary occupancy for this tenant on this property
+        const { data: primaryOcc } = await supabaseAdmin
+            .from('tenant_occupancies')
+            .select('id, is_family_member, parent_occupancy_id')
+            .eq('tenant_id', tenantId)
+            .eq('property_id', propertyId)
+            .in('status', ['active', 'pending_end'])
+            .limit(1)
+            .maybeSingle()
+
+        if (!primaryOcc) return []
+
+        // Determine the parent occupancy ID
+        const parentOccId = primaryOcc.is_family_member ? primaryOcc.parent_occupancy_id : primaryOcc.id
+        if (!parentOccId) return []
+
+        // Get all family members linked to this parent occupancy
+        const { data: familyMembers } = await supabaseAdmin
+            .from('family_members')
+            .select('member_id, member_profile:profiles!family_members_member_id_fkey(first_name, last_name, phone)')
+            .eq('parent_occupancy_id', parentOccId)
+
+        if (!familyMembers || familyMembers.length === 0) return []
+
+        // Also get the primary tenant if the current tenant is a family member
+        let allRecipients = []
+
+        // If the notified tenant is the mother, send to family members
+        // If the notified tenant is a family member, send to the mother + other family members
+        if (primaryOcc.is_family_member) {
+            // Current tenant is a family member - get the mother too
+            const { data: motherOcc } = await supabaseAdmin
+                .from('tenant_occupancies')
+                .select('tenant_id')
+                .eq('id', parentOccId)
+                .single()
+            if (motherOcc && motherOcc.tenant_id !== tenantId) {
+                const { data: motherProfile } = await supabaseAdmin
+                    .from('profiles')
+                    .select('first_name, last_name, phone')
+                    .eq('id', motherOcc.tenant_id)
+                    .single()
+                if (motherProfile) {
+                    let motherEmail = null
+                    try {
+                        const { data: userData } = await supabaseAdmin.auth.admin.getUserById(motherOcc.tenant_id)
+                        motherEmail = userData?.user?.email
+                    } catch (e) { }
+                    allRecipients.push({
+                        id: motherOcc.tenant_id,
+                        phone: motherProfile.phone,
+                        email: motherEmail,
+                        name: `${motherProfile.first_name || ''} ${motherProfile.last_name || ''}`.trim()
+                    })
+                }
+            }
+        }
+
+        // Add all family members (excluding the current tenant)
+        for (const fm of familyMembers) {
+            if (fm.member_id === tenantId) continue // Skip the tenant who already got notified
+            let memberEmail = null
+            try {
+                const { data: userData } = await supabaseAdmin.auth.admin.getUserById(fm.member_id)
+                memberEmail = userData?.user?.email
+            } catch (e) { }
+            allRecipients.push({
+                id: fm.member_id,
+                phone: fm.member_profile?.phone,
+                email: memberEmail,
+                name: `${fm.member_profile?.first_name || ''} ${fm.member_profile?.last_name || ''}`.trim()
+            })
+        }
+
+        return allRecipients
+    } catch (err) {
+        console.error('getFamilyMembersForNotification error:', err)
+        return []
+    }
+}
+
+// Helper: Send same SMS and email to all family members
+async function notifyFamilyMembers({ tenantId, propertyId, smsFn, emailFn }) {
+    const members = await getFamilyMembersForNotification(tenantId, propertyId)
+    if (members.length === 0) return
+
+    for (const member of members) {
+        // SMS
+        if (smsFn && member.phone) {
+            const phone = formatPhoneNumber(member.phone)
+            if (phone) {
+                try {
+                    await smsFn(phone, member)
+                    console.log(`✅ Family SMS sent to ${phone} (${member.name})`)
+                } catch (err) {
+                    console.error(`Family SMS failed for ${phone}:`, err.message)
+                }
+            }
+        }
+        // Email
+        if (emailFn && member.email) {
+            try {
+                await emailFn(member.email, member)
+                console.log(`✅ Family email sent to ${member.email} (${member.name})`)
+            } catch (err) {
+                console.error(`Family email failed for ${member.email}:`, err.message)
+            }
+        }
+    }
+}
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' })
@@ -142,6 +258,32 @@ export default async function handler(req, res) {
                 } catch (err) {
                     console.error(`Email failed for ${tenantEmail}:`, err.message)
                 }
+            }
+
+            // Notify family members with the same bill notification
+            if (paymentRequest.tenant && paymentRequest.property_id) {
+                await notifyFamilyMembers({
+                    tenantId: paymentRequest.tenant,
+                    propertyId: paymentRequest.property_id,
+                    smsFn: async (memberPhone) => {
+                        await sendBillNotification(memberPhone, {
+                            propertyName: propertyTitle,
+                            amount: amount.toLocaleString(),
+                            dueDate: dueDate ? new Date(dueDate).toLocaleDateString() : 'ASAP'
+                        })
+                    },
+                    emailFn: async (memberEmail, member) => {
+                        await sendNewPaymentBillEmail({
+                            to: memberEmail,
+                            tenantName: member.name || 'Tenant',
+                            propertyTitle,
+                            billType,
+                            amount,
+                            dueDate,
+                            description: paymentRequest.bills_description
+                        })
+                    }
+                })
             }
 
             return res.status(200).json({ success: true, type: 'payment_bill', results })
@@ -430,6 +572,31 @@ export default async function handler(req, res) {
                 } catch (e) { console.error('Payment confirmed SMS error:', e); }
             }
 
+            // Notify family members with the same payment confirmed notification
+            if (request.tenant && request.property_id) {
+                await notifyFamilyMembers({
+                    tenantId: request.tenant,
+                    propertyId: request.property_id,
+                    smsFn: async (memberPhone) => {
+                        await sendPaymentConfirmedNotification(memberPhone, {
+                            propertyTitle,
+                            amount: amount.toLocaleString(),
+                            method
+                        })
+                    },
+                    emailFn: async (memberEmail, member) => {
+                        await sendPaymentConfirmedEmail({
+                            to: memberEmail,
+                            tenantName: member.name || 'Tenant',
+                            propertyTitle,
+                            amount,
+                            paymentMethod: method,
+                            date: new Date().toLocaleDateString()
+                        })
+                    }
+                })
+            }
+
             return res.status(200).json({ success: true, type: 'payment_confirmed', results });
         }
 
@@ -525,6 +692,43 @@ export default async function handler(req, res) {
                 }
             }
 
+            // Notify family members with the same move-in notification
+            if (recordId) {
+                const { data: occForFamily } = await supabaseAdmin
+                    .from('tenant_occupancies')
+                    .select('tenant_id, property_id')
+                    .eq('id', recordId)
+                    .maybeSingle()
+                if (occForFamily) {
+                    await notifyFamilyMembers({
+                        tenantId: occForFamily.tenant_id,
+                        propertyId: occForFamily.property_id,
+                        smsFn: async (memberPhone) => {
+                            await sendMoveInNotification(memberPhone, {
+                                propertyName: propertyTitle || 'Property',
+                                startDate: new Date(startDate).toLocaleDateString('en-US'),
+                                endDate: new Date(endDate).toLocaleDateString('en-US'),
+                                rentAmount: Number(rentAmount || 0).toLocaleString()
+                            })
+                        },
+                        emailFn: async (memberEmail, member) => {
+                            await sendMoveInEmail({
+                                to: memberEmail,
+                                tenantName: member.name || 'Tenant',
+                                propertyTitle: propertyTitle || 'Property',
+                                propertyAddress: propertyAddress || '',
+                                startDate,
+                                endDate,
+                                landlordName: landlordName || '',
+                                landlordPhone: landlordPhone || '',
+                                securityDeposit: securityDeposit || 0,
+                                rentAmount: rentAmount || 0
+                            })
+                        }
+                    })
+                }
+            }
+
             return res.status(200).json({ success: true, type: 'move_in', results })
         }
 
@@ -598,6 +802,40 @@ export default async function handler(req, res) {
                     console.log(`✅ Renewal status SMS sent to ${phone}`)
                 } catch (err) {
                     console.error(`Renewal status SMS failed for ${phone}:`, err.message)
+                }
+            }
+
+            // Notify family members with the same renewal status
+            if (tenantId && recordId) {
+                const { data: occForFamily } = await supabaseAdmin
+                    .from('tenant_occupancies')
+                    .select('property_id')
+                    .eq('id', recordId)
+                    .maybeSingle()
+                if (occForFamily) {
+                    await notifyFamilyMembers({
+                        tenantId,
+                        propertyId: occForFamily.property_id,
+                        smsFn: async (memberPhone) => {
+                            await sendRenewalStatus(memberPhone, {
+                                propertyTitle: propertyTitle || 'Property',
+                                status,
+                                newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US') : '',
+                                signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US') : ''
+                            })
+                        },
+                        emailFn: async (memberEmail, member) => {
+                            await sendRenewalStatusEmail({
+                                to: memberEmail,
+                                tenantName: member.name || 'Tenant',
+                                propertyTitle: propertyTitle || 'Property',
+                                status,
+                                newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                                signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                                landlordName: landlordName || 'Landlord'
+                            })
+                        }
+                    })
                 }
             }
 
@@ -746,6 +984,36 @@ export default async function handler(req, res) {
                     console.log(`✅ End contract SMS sent to ${phone}`)
                 } catch (err) {
                     console.error(`End contract SMS failed:`, err.message)
+                }
+            }
+
+            // Notify family members with the same end contract notification
+            if (tenantId && recordId) {
+                const { data: occForFamily } = await supabaseAdmin
+                    .from('tenant_occupancies')
+                    .select('property_id')
+                    .eq('id', recordId)
+                    .maybeSingle()
+                if (occForFamily) {
+                    await notifyFamilyMembers({
+                        tenantId,
+                        propertyId: occForFamily.property_id,
+                        smsFn: async (memberPhone) => {
+                            await sendEndContractNotification(memberPhone, {
+                                propertyName: propertyTitle || 'Property',
+                                reason
+                            })
+                        },
+                        emailFn: async (memberEmail, member) => {
+                            await sendEndContractEmail({
+                                to: memberEmail,
+                                tenantName: member.name || 'Tenant',
+                                propertyTitle: propertyTitle || 'Property',
+                                endDate,
+                                customMessage: reason
+                            })
+                        }
+                    })
                 }
             }
 

@@ -39,7 +39,14 @@ export default function EditProperty() {
     bed_type: 'Single Bed',
     max_occupancy: 1,
     terms_conditions: '',
-    amenities: []
+    amenities: [],
+    has_security_deposit: true,
+    security_deposit_amount: '',
+    deposit_same_as_rent: true,
+    has_advance: true,
+    advance_amount: '',
+    advance_same_as_rent: true,
+    min_contract_months: ''
   })
 
   const propertyTypes = ['House Apartment', 'Studio Type', 'Solo Room', 'Boarding House']
@@ -48,10 +55,9 @@ export default function EditProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Wifi', 'Air Condition', 'Washing Machine', 'Parking',
-    'Hot Shower', 'Bathroom', 'Smoke Alarm', 'Veranda',
-    'Fire Extinguisher', 'Outside Garden', 'Furnished',
-    'Semi-Furnished', 'Pet Friendly', 'Kitchen', 'Smart TV'
+    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating',
+    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
+    'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
   ]
 
   const toggleAmenity = (amenity) => {
@@ -141,7 +147,14 @@ export default function EditProperty() {
       bed_type: data.bed_type || 'Single Bed',
       max_occupancy: data.max_occupancy || 1,
       terms_conditions: data.terms_conditions || '',
-      amenities: data.amenities || []
+      amenities: data.amenities || [],
+      has_security_deposit: data.has_security_deposit !== false,
+      security_deposit_amount: data.security_deposit_amount || '',
+      deposit_same_as_rent: data.security_deposit_amount ? (Number(data.security_deposit_amount) === Number(data.price)) : true,
+      has_advance: data.has_advance !== false,
+      advance_amount: data.advance_amount || '',
+      advance_same_as_rent: data.advance_amount ? (Number(data.advance_amount) === Number(data.price)) : true,
+      min_contract_months: data.min_contract_months || ''
     })
 
     if (data.images && data.images.length > 0) {
@@ -349,8 +362,10 @@ export default function EditProperty() {
     // Helper to ensure numeric fields are sent as numbers or 0 (not empty strings)
     const sanitizeNumber = (val) => (val === '' || val === null ? 0 : val)
 
+    const { deposit_same_as_rent, advance_same_as_rent, ...cleanedFormData } = formData
+
     const payload = {
-      ...formData,
+      ...cleanedFormData,
       price: sanitizeNumber(formData.price),
       utilities_cost: sanitizeNumber(formData.utilities_cost),
       internet_cost: sanitizeNumber(formData.internet_cost),
@@ -358,7 +373,12 @@ export default function EditProperty() {
       bedrooms: sanitizeNumber(formData.bedrooms),
       bathrooms: sanitizeNumber(formData.bathrooms),
       area_sqft: sanitizeNumber(formData.area_sqft),
-      images: validImageUrls.length > 0 ? validImageUrls : null
+      images: validImageUrls.length > 0 ? validImageUrls : null,
+      has_security_deposit: formData.has_security_deposit,
+      security_deposit_amount: formData.has_security_deposit ? (formData.deposit_same_as_rent ? sanitizeNumber(formData.price) : sanitizeNumber(formData.security_deposit_amount)) : 0,
+      has_advance: formData.has_advance,
+      advance_amount: formData.has_advance ? (formData.advance_same_as_rent ? sanitizeNumber(formData.price) : sanitizeNumber(formData.advance_amount)) : 0,
+      min_contract_months: sanitizeNumber(formData.min_contract_months) || null
     }
 
     const { error } = await supabase
@@ -461,45 +481,6 @@ export default function EditProperty() {
                 value={formData.title}
                 onChange={handleChange}
               />
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Type of Rent *</label>
-              <div className="flex flex-wrap gap-2">
-                {propertyTypes.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, property_type: type }))}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.property_type === type
-                      ? 'border-black bg-black text-white shadow-md'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                      }`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Bed Type</label>
-              <div className="flex flex-wrap gap-2">
-                {bedTypes.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, bed_type: type }))}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all cursor-pointer ${formData.bed_type === type
-                      ? 'border-black bg-black text-white shadow-md'
-                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50'
-                      }`}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mt-4 mb-2">Max People per Room</label>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.max(1, (prev.max_occupancy || 1) - 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">−</button>
-                <span className="text-lg font-bold text-gray-900 w-8 text-center">{formData.max_occupancy || 1}</span>
-                <button type="button" onClick={() => setFormData(prev => ({ ...prev, max_occupancy: Math.min(20, (prev.max_occupancy || 1) + 1) }))} className="w-9 h-9 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 cursor-pointer font-bold text-lg">+</button>
-                <span className="text-sm text-gray-400 ml-1">person(s)</span>
-              </div>
             </div>
 
             {/* Location Section */}
@@ -681,8 +662,95 @@ export default function EditProperty() {
                   </div>
                 </div>
               </div>
-            </div>
 
+              {/* Payment Terms */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-black rounded-full"></span> Payment Terms
+                </h3>
+                <div className="space-y-4">
+                  {/* Security Deposit */}
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-gray-700">Require Security Deposit?</label>
+                      <button type="button" onClick={() => setFormData(p => ({ ...p, has_security_deposit: !p.has_security_deposit }))} className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${formData.has_security_deposit ? 'bg-black' : 'bg-gray-300'}`}>
+                        <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${formData.has_security_deposit ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
+                    {formData.has_security_deposit && (
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={formData.deposit_same_as_rent} onChange={e => setFormData(p => ({ ...p, deposit_same_as_rent: e.target.checked }))} className="accent-black cursor-pointer" />
+                          <span className="text-xs font-medium text-gray-600">Same as monthly rent</span>
+                        </label>
+                        {!formData.deposit_same_as_rent && (
+                          <input type="number" name="security_deposit_amount" min="0" placeholder="Custom deposit amount" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" value={formData.security_deposit_amount} onChange={handleChange} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Advance */}
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-gray-700">Require Advance Payment?</label>
+                      <button type="button" onClick={() => setFormData(p => ({ ...p, has_advance: !p.has_advance }))} className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${formData.has_advance ? 'bg-black' : 'bg-gray-300'}`}>
+                        <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${formData.has_advance ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                      </button>
+                    </div>
+                    {formData.has_advance && (
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={formData.advance_same_as_rent} onChange={e => setFormData(p => ({ ...p, advance_same_as_rent: e.target.checked }))} className="accent-black cursor-pointer" />
+                          <span className="text-xs font-medium text-gray-600">Same as monthly rent</span>
+                        </label>
+                        {!formData.advance_same_as_rent && (
+                          <input type="number" name="advance_amount" min="0" placeholder="Custom advance amount" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" value={formData.advance_amount} onChange={handleChange} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Minimum Contract Duration */}
+                  <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                    <label className="text-xs font-bold text-gray-700 block mb-2">Minimum Contract Duration (months)</label>
+                    <input type="number" name="min_contract_months" min="1" placeholder="e.g. 6 (leave blank for no minimum)" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" value={formData.min_contract_months} onChange={handleChange} />
+                    <p className="text-[10px] text-gray-400 mt-1">If set, tenants must sign for at least this many months.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Utilities */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 mb-5 flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-black rounded-full"></span> Utilities
+                </h3>
+                <p className="text-[10px] text-gray-400 mb-3">Toggle which utilities are included free. Non-free utilities will require a due date when assigning a tenant.</p>
+                <div className="space-y-2">
+                  {[{ label: 'Water', amenity: 'Free Water', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21c-3.866 0-7-3.134-7-7 0-4.97 7-11 7-11s7 6.03 7 11c0 3.866-3.134 7-7 7z" /></svg>, color: 'blue' },
+                  { label: 'Electricity', amenity: 'Free Electricity', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>, color: 'amber' },
+                  { label: 'WiFi', amenity: 'Free WiFi', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01M5.636 13.636a9 9 0 0112.728 0M1.393 10.393a14 14 0 0121.213 0" /></svg>, color: 'violet' }
+                  ].map(u => {
+                    const isFree = formData.amenities.includes(u.amenity)
+                    const iconBg = { blue: 'bg-blue-100 text-blue-600', amber: 'bg-amber-100 text-amber-600', violet: 'bg-violet-100 text-violet-600' }
+                    return (
+                      <div key={u.amenity} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isFree ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isFree ? 'bg-green-100 text-green-600' : iconBg[u.color]}`}>{u.icon}</div>
+                        <span className={`text-sm font-bold flex-1 ${isFree ? 'text-green-700' : 'text-gray-700'}`}>{u.label}</span>
+                        <button type="button" onClick={() => {
+                          setFormData(p => ({
+                            ...p,
+                            amenities: isFree ? p.amenities.filter(a => a !== u.amenity) : [...p.amenities, u.amenity]
+                          }))
+                        }} className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${isFree ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                          {isFree ? 'Free' : 'Not Free'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
             {/* Description & Terms */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-50">
               <div className="space-y-2">
@@ -898,7 +966,7 @@ export default function EditProperty() {
               )}
             </div>
           </div>
-        </form>
+        </form >
       </div >
     </div >
   )

@@ -321,11 +321,11 @@ export default function Login() {
             <div className="text-center">
               {/* Logo Icon */}
               <div className={`mx-auto flex items-center justify-center gap-3 mb-4 cursor-pointer  transition-all duration-300 ${mounted ? 'animate-fadeInUp delay-100' : 'opacity-0'}`} onClick={() => router.push('/')}>
-                <img src="/home.png" alt="TessyNTed Logo" className="w-20 h-20 object-contain" />
-                <span className="text-5xl font-black text-gray-900">TessyNTed</span>
+                <img src="/home.png" alt="Abalay Logo" className="w-20 h-20 object-contain" />
+                <span className="text-5xl font-black text-gray-900">Abalay</span>
               </div>
               <p className={`mt-1 text-sm text-gray-500 font-medium ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
-                Sign in to your TessyNTed account
+                Sign in to your Abalay account
               </p>
             </div>
 

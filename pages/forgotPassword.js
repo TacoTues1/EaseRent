@@ -18,7 +18,7 @@ export default function ForgotPassword() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         // Redirect user to this page after they click the email link
         // You will need to create 'pages/update-password.js' to handle the new password input
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://tessynted.vercel.app'}/updatePassword`,
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay.vercel.app'}/updatePassword`,
       })
 
       if (error) throw error

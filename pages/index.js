@@ -513,8 +513,8 @@ export default function Home() {
       {/* ===== SPLASH INTRO SCREEN ===== */}
       {showSplash && (
         <div className="splash-screen">
-          <img src="/home.png" alt="TessyNTed" className="splash-logo" />
-          <div className="splash-brand">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</div>
+          <img src="/home.png" alt="Abalay" className="splash-logo" />
+          <div className="splash-brand">Abalay</div>
           <div className="splash-tagline">Find your perfect home</div>
           <div className="splash-bar"></div>
         </div>

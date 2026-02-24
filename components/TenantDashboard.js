@@ -76,6 +76,19 @@ export default function TenantDashboard({ session, profile }) {
   const [daysUntilContractEnd, setDaysUntilContractEnd] = useState(null)
   const [canRenew, setCanRenew] = useState(false)
   const [securityDepositPaid, setSecurityDepositPaid] = useState(false)
+
+  // Family Members
+  const [familyMembers, setFamilyMembers] = useState([])
+  const [showFamilyModal, setShowFamilyModal] = useState(false)
+  const [familySearchQuery, setFamilySearchQuery] = useState('')
+  const [familySearchResults, setFamilySearchResults] = useState([])
+  const [familySearching, setFamilySearching] = useState(false)
+  const [addingMember, setAddingMember] = useState(null)
+  const [removingMember, setRemovingMember] = useState(null)
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState(null)
+  const [loadingFamily, setLoadingFamily] = useState(false)
+  const [isFamilyMember, setIsFamilyMember] = useState(false)
+
   const maxDisplayItems = 8
   const router = useRouter()
 
@@ -202,16 +215,25 @@ export default function TenantDashboard({ session, profile }) {
     await loadProperties()
     await loadPropertyStats()
     const occupancy = await loadTenantOccupancy() // Modified to return occupancy
-    await loadTenantBalance(occupancy?.id) // Pass occupancy id
-    await loadPendingPayments(occupancy?.id) // Pass occupancy id
-    await loadPaymentHistory(occupancy?.id) // Pass occupancy id
+
+    // Only load payments via client if user is the primary tenant (not a family member)
+    // Family members get their payment data from the API (bypasses RLS)
+    const isOwnOccupancy = occupancy && occupancy.tenant_id === session.user.id
+    if (isOwnOccupancy) {
+      await loadTenantBalance(occupancy)
+      await loadPendingPayments(occupancy)
+      await loadPaymentHistory(occupancy)
+    }
+
     await checkPendingReviews(session.user.id)
     await loadUserFavorites()
     await loadFeaturedSections()
 
     // SCRIPT: Check Last Month Security Deposit Logic (Auto-run)
     if (occupancy) {
-      await checkLastMonthDepositLogic(occupancy)
+      if (isOwnOccupancy) {
+        await checkLastMonthDepositLogic(occupancy)
+      }
       calculateNextPayment(occupancy.id, occupancy)
     }
     setLoading(false)
@@ -339,17 +361,19 @@ export default function TenantDashboard({ session, profile }) {
       }
 
       // Refresh data
-      loadPendingPayments(occupancy.id);
+      loadPendingPayments(occupancy);
       loadTenantOccupancy();
     }
   }
 
-  async function loadPendingPayments(occupancyId) {
+  async function loadPendingPayments(occupancy) {
+    const tenantId = occupancy?.tenant_id || session.user.id
+    const occupancyId = occupancy?.id
     // Load pending payments for this tenant
     let query = supabase
       .from('payment_requests')
       .select('*')
-      .eq('tenant', session.user.id)
+      .eq('tenant', tenantId)
       .neq('status', 'paid')
       .neq('status', 'cancelled')
       .order('due_date', { ascending: true })
@@ -365,12 +389,14 @@ export default function TenantDashboard({ session, profile }) {
     if (data) setPendingPayments(data)
   }
 
-  async function loadPaymentHistory(occupancyId) {
+  async function loadPaymentHistory(occupancy) {
+    const tenantId = occupancy?.tenant_id || session.user.id
+    const occupancyId = occupancy?.id
     // Fetch PAID bills for Rent History
     let query = supabase
       .from('payment_requests')
       .select('*')
-      .eq('tenant', session.user.id)
+      .eq('tenant', tenantId)
       .eq('status', 'paid')
       .order('due_date', { ascending: true })
 
@@ -385,86 +411,51 @@ export default function TenantDashboard({ session, profile }) {
   async function calculateNextPayment(occupancyId, occupancy = null) {
     // Use passed occupancy or fall back to state
     const currentOccupancy = occupancy || tenantOccupancy;
+    const isOwn = currentOccupancy?.tenant_id === session.user.id;
 
     // 1. Check for pending bills first (including move-in payments)
-    // For newly assigned tenants: show move-in payment due date
-    // For regular tenants: show pending rent bill due date
-    // Renewal payments should NOT advance the due date until they are actually paid
+    let allPendingBills = null;
+    let allPaidBills = null;
 
-    // Get ALL pending bills for this tenant first, then filter in JavaScript
-    // This avoids issues with complex .or() queries
-    // Don't filter by is_renewal_payment here - we'll check it later
-    const { data: allPendingBills, error: pendingError } = await supabase
-      .from('payment_requests')
-      .select('due_date, is_move_in_payment, is_renewal_payment, occupancy_id, property_id, status')
-      .eq('tenant', session.user.id)
-      .eq('status', 'pending')
-      .gt('rent_amount', 0) // Only rent bills
-      .order('due_date', { ascending: true })
+    if (isOwn) {
+      // Primary tenant: query via client
+      const { data: pendingData } = await supabase
+        .from('payment_requests')
+        .select('due_date, is_move_in_payment, is_renewal_payment, occupancy_id, property_id, status')
+        .eq('tenant', currentOccupancy.tenant_id)
+        .eq('status', 'pending')
+        .gt('rent_amount', 0)
+        .order('due_date', { ascending: true })
+      allPendingBills = pendingData;
 
-    if (pendingError) {
-      console.error('Error fetching pending bills:', pendingError);
+      const { data: paidData } = await supabase
+        .from('payment_requests')
+        .select('due_date, rent_amount, advance_amount, is_renewal_payment, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
+        .eq('tenant', currentOccupancy.tenant_id)
+        .in('status', ['paid', 'pending_confirmation'])
+        .gt('rent_amount', 0)
+        .order('due_date', { ascending: false })
+      allPaidBills = paidData;
+    } else {
+      // Family member: use already-loaded state (from API)
+      allPendingBills = pendingPayments.filter(p => p.status === 'pending' && parseFloat(p.rent_amount) > 0);
+      allPaidBills = paymentHistory;
     }
-
-    console.log('All pending bills for tenant:', allPendingBills);
-    console.log('Occupancy ID:', occupancyId, 'Property ID:', currentOccupancy?.property_id);
 
     // Filter to only bills for this occupancy/property, but be lenient
     let pendingBill = null;
     if (allPendingBills && allPendingBills.length > 0) {
-      // First, try to find a bill that matches occupancy_id or property_id
       pendingBill = allPendingBills.find(bill => {
-        // Match by occupancy_id (most specific)
         if (occupancyId && bill.occupancy_id === occupancyId) return true;
-        // Match by property_id
         if (currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) return true;
-        // Include bills without occupancy_id if they match property (for move-in payments created before occupancy)
         if (!bill.occupancy_id && currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) return true;
         return false;
       });
-
-      // If no match found, use the first pending bill (for cases where occupancy_id/property_id might not be set)
-      // This is important for newly assigned tenants where the bill might not have occupancy_id yet
       if (!pendingBill && allPendingBills.length > 0) {
         pendingBill = allPendingBills[0];
-        console.log('No matching pending bill found, using first pending bill:', pendingBill);
       }
     }
 
-    console.log('Selected pending bill:', pendingBill);
-    console.log('Pending bill check - pendingBill exists:', !!pendingBill, 'has due_date:', pendingBill?.due_date, 'is_renewal:', pendingBill?.is_renewal_payment);
-
-    // Get all paid bills to find the one with the latest due_date that has advance_amount
-    // For renewal payments, we need to use the original bill (with advance_amount) not the advance payment bills
-    // Include move-in payments in the calculation
-    // Query ALL paid bills for this tenant first, then filter by property/occupancy
-    const { data: allPaidBills, error: paidBillsError } = await supabase
-      .from('payment_requests')
-      .select('due_date, rent_amount, advance_amount, is_renewal_payment, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
-      .eq('tenant', session.user.id)
-      .in('status', ['paid', 'pending_confirmation'])
-      .gt('rent_amount', 0)
-      .order('due_date', { ascending: false })
-
-    if (paidBillsError) {
-      console.error('Error fetching paid bills:', paidBillsError);
-    }
-
-    // DEBUG: Also query ALL bills (regardless of status) to see what's in the database
-    if (currentOccupancy?.property_id) {
-      const { data: allBillsDebug } = await supabase
-        .from('payment_requests')
-        .select('due_date, rent_amount, advance_amount, is_move_in_payment, property_id, occupancy_id, status')
-        .eq('tenant', session.user.id)
-        .eq('property_id', currentOccupancy.property_id)
-        .order('due_date', { ascending: false })
-        .limit(10)
-
-      console.log('DEBUG - All bills for this property (any status):', allBillsDebug);
-      if (allBillsDebug && allBillsDebug.length > 0) {
-        console.log('DEBUG - Bill statuses:', allBillsDebug.map(b => ({ id: b.id, status: b.status, due_date: b.due_date, is_move_in: b.is_move_in_payment })));
-      }
-    }
     console.log('All paid bills for tenant:', allPaidBills);
     console.log('Occupancy ID:', occupancyId, 'Property ID:', currentOccupancy?.property_id);
 
@@ -1033,17 +1024,39 @@ export default function TenantDashboard({ session, profile }) {
       .limit(1)
       .maybeSingle()
 
+    let finalOccupancy = occupancy
+
     if (error) {
       console.error("Error fetching occupancy:", error)
       return null
     }
 
-    setTenantOccupancy(occupancy)
+    if (!finalOccupancy) {
+      // Check if user is a family member via API (bypasses RLS)
+      try {
+        const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`)
+        const fmData = await fmRes.json()
+        if (fmData?.occupancy) {
+          finalOccupancy = fmData.occupancy
+          // Set payment data directly from API (bypasses RLS)
+          if (fmData.pendingPayments) setPendingPayments(fmData.pendingPayments)
+          if (fmData.paymentHistory) setPaymentHistory(fmData.paymentHistory)
+          if (fmData.tenantBalance !== undefined) setTenantBalance(fmData.tenantBalance)
+          if (fmData.lastPaidBill !== undefined) setLastPayment(fmData.lastPaidBill)
+          if (fmData.securityDepositPaid !== undefined) setSecurityDepositPaid(fmData.securityDepositPaid)
+        }
+      } catch (err) {
+        console.error('Family member check error:', err)
+      }
+      if (!finalOccupancy) return null
+    }
 
-    if (occupancy) {
+    setTenantOccupancy(finalOccupancy)
+
+    if (finalOccupancy) {
       // Calculate days until contract end for renewal
-      if (occupancy.contract_end_date) {
-        const endDate = new Date(occupancy.contract_end_date)
+      if (finalOccupancy.contract_end_date) {
+        const endDate = new Date(finalOccupancy.contract_end_date)
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         endDate.setHours(0, 0, 0, 0)
@@ -1053,39 +1066,46 @@ export default function TenantDashboard({ session, profile }) {
         // Can only renew if:
         // 1. More than 29 days remaining (not in the last month block)
         // 2. Not already requested
-        setCanRenew(diffDays > 29 && !occupancy.renewal_requested)
-        setRenewalRequested(occupancy.renewal_requested || false)
+        setCanRenew(diffDays > 29 && !finalOccupancy.renewal_requested)
+        setRenewalRequested(finalOccupancy.renewal_requested || false)
       }
 
-      // Fetch the LAST PAID BILL from payment_requests for proper due_date display
-      const { data: lastPaidBill } = await supabase
-        .from('payment_requests')
-        .select('*')
-        .eq('tenant', session.user.id)
-        .eq('occupancy_id', occupancy.id)
-        .eq('status', 'paid')
-        .gt('rent_amount', 0) // Only rent bills
-        .order('due_date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const isOwn = finalOccupancy.tenant_id === session.user.id
 
-      setLastPayment(lastPaidBill)
+      if (isOwn) {
+        // Primary tenant: query via client
+        // Fetch the LAST PAID BILL from payment_requests for proper due_date display
+        const { data: lastPaidBill } = await supabase
+          .from('payment_requests')
+          .select('*')
+          .eq('occupancy_id', finalOccupancy.id)
+          .eq('status', 'paid')
+          .gt('rent_amount', 0) // Only rent bills
+          .order('due_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-      // Check if security deposit was actually paid (look for any paid payment with security_deposit_amount > 0)
-      const { data: paidSecurityDeposit } = await supabase
-        .from('payment_requests')
-        .select('security_deposit_amount')
-        .eq('tenant', session.user.id)
-        .eq('occupancy_id', occupancy.id)
-        .eq('status', 'paid')
-        .gt('security_deposit_amount', 0)
-        .limit(1)
-        .maybeSingle()
+        setLastPayment(lastPaidBill)
 
-      setSecurityDepositPaid(!!paidSecurityDeposit)
+        // Check if security deposit was actually paid (look for any paid payment with security_deposit_amount > 0)
+        const { data: paidSecurityDeposit } = await supabase
+          .from('payment_requests')
+          .select('security_deposit_amount')
+          .eq('occupancy_id', finalOccupancy.id)
+          .eq('status', 'paid')
+          .gt('security_deposit_amount', 0)
+          .limit(1)
+          .maybeSingle()
+
+        setSecurityDepositPaid(!!paidSecurityDeposit)
+      }
+      // Family members: data was already set from the API response above
+
+      // Determine if they are a family member
+      setIsFamilyMember(!isOwn)
     }
 
-    return occupancy
+    return finalOccupancy
   }
 
   // --- RENEWAL MEETING DATE STATE ---
@@ -1152,13 +1172,15 @@ export default function TenantDashboard({ session, profile }) {
     loadTenantOccupancy()
   }
 
-  async function loadTenantBalance(occupancyId) {
+  async function loadTenantBalance(occupancy) {
+    const occupancyId = occupancy?.id
+    const tenantId = occupancy?.tenant_id || session?.user?.id
     if (!session || !occupancyId) {
       setTenantBalance(0)
       return
     }
     // Try to get balance for current occupancy first
-    const { data } = await supabase.from('tenant_balances').select('amount').eq('tenant_id', session.user.id).eq('occupancy_id', occupancyId).maybeSingle()
+    const { data } = await supabase.from('tenant_balances').select('amount').eq('tenant_id', tenantId).eq('occupancy_id', occupancyId).maybeSingle()
     if (data) {
       setTenantBalance(data.amount || 0)
     } else {
@@ -1236,6 +1258,110 @@ export default function TenantDashboard({ session, profile }) {
     await createNotification({ recipient: tenantOccupancy.landlord_id, actor: session.user.id, type: 'end_occupancy_request', message: `${profile.first_name} ${profile.last_name} requested to end occupancy on ${endRequestDate}.`, link: '/dashboard' })
     showToast.success("Request submitted")
     setShowEndRequestModal(false); setEndRequestReason(''); setEndRequestDate(''); setSubmittingEndRequest(false); loadTenantOccupancy()
+  }
+
+  // ─── FAMILY MEMBERS FUNCTIONS ───
+  async function loadFamilyMembers() {
+    if (!tenantOccupancy) return
+    // Only load family for the primary tenant (not family members themselves)
+    // But if they are a family member, we use their parent_occupancy_id
+    const occId = tenantOccupancy.is_family_member ? tenantOccupancy.parent_occupancy_id : tenantOccupancy.id
+    if (!occId) return
+    setLoadingFamily(true)
+    try {
+      const res = await fetch(`/api/family-members?occupancy_id=${occId}`)
+      const data = await res.json()
+      if (data.members) setFamilyMembers(data.members)
+    } catch (err) {
+      console.error('Failed to load family members:', err)
+    }
+    setLoadingFamily(false)
+  }
+
+  useEffect(() => {
+    if (tenantOccupancy) loadFamilyMembers()
+  }, [tenantOccupancy])
+
+  async function searchFamilyMember(query) {
+    if (!query || query.trim().length < 2) {
+      setFamilySearchResults([])
+      return
+    }
+    setFamilySearching(true)
+    try {
+      const excludeIds = [session.user.id, ...familyMembers.map(m => m.member_id)]
+      const res = await fetch('/api/family-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'search', query: query.trim(), exclude_ids: excludeIds })
+      })
+      const data = await res.json()
+      if (data.results) setFamilySearchResults(data.results)
+    } catch (err) {
+      console.error('Family search error:', err)
+    }
+    setFamilySearching(false)
+  }
+
+  useEffect(() => {
+    if (!familySearchQuery.trim()) { setFamilySearchResults([]); return }
+    const timer = setTimeout(() => searchFamilyMember(familySearchQuery), 400)
+    return () => clearTimeout(timer)
+  }, [familySearchQuery])
+
+  async function addFamilyMember(memberId) {
+    if (!tenantOccupancy || isFamilyMember) return
+    setAddingMember(memberId)
+    try {
+      const res = await fetch('/api/family-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          parent_occupancy_id: tenantOccupancy.id,
+          member_id: memberId,
+          mother_id: session.user.id
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast.success('Family member added successfully!')
+        setFamilySearchQuery('')
+        setFamilySearchResults([])
+        loadFamilyMembers()
+      } else {
+        showToast.error(data.error || 'Failed to add family member')
+      }
+    } catch (err) {
+      showToast.error('Failed to add family member')
+    }
+    setAddingMember(null)
+  }
+
+  async function removeFamilyMember(familyMemberId) {
+    if (!tenantOccupancy || isFamilyMember) return
+    setRemovingMember(familyMemberId)
+    try {
+      const res = await fetch('/api/family-members', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          family_member_id: familyMemberId,
+          mother_id: session.user.id
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast.success('Family member removed')
+        loadFamilyMembers()
+      } else {
+        showToast.error(data.error || 'Failed to remove family member')
+      }
+    } catch (err) {
+      showToast.error('Failed to remove family member')
+    }
+    setRemovingMember(null)
+    setConfirmRemoveMember(null)
   }
 
   const getPropertyImages = (property) => {
@@ -1455,13 +1581,15 @@ export default function TenantDashboard({ session, profile }) {
                           Property Terms
                         </a>
                       )}
-                      {canRenew && (
+                      {canRenew && !isFamilyMember && (
                         <button onClick={() => setShowRenewalModal(true)} className="py-2 text-sm bg-white text-black font-bold rounded-lg hover:bg-gray-50 border border-gray-300 cursor-pointer flex items-center justify-center gap-1">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                           Renew Contract
                         </button>
                       )}
-                      <button onClick={() => setShowEndRequestModal(true)} className="py-2 text-sm border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">End Contract</button>
+                      {!isFamilyMember && (
+                        <button onClick={() => setShowEndRequestModal(true)} className="py-2 text-sm border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">End Contract</button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1501,7 +1629,230 @@ export default function TenantDashboard({ session, profile }) {
                     </p>
                   )}
                 </div>
-           </div>
+
+                {/* Family Members Section */}
+                <div className="bg-white rounded-3xl p-5 border border-gray-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm">Family Members</h3>
+                        <p className="text-[10px] text-gray-400">{familyMembers.length + 1}/5 members</p>
+                      </div>
+                    </div>
+                    {!isFamilyMember && familyMembers.length < 4 && (
+                      <button
+                        onClick={() => setShowFamilyModal(true)}
+                        className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-full transition-colors cursor-pointer border border-violet-200"
+                      >
+                        + Add Member
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Primary Tenant (Mother) */}
+                  <div className="p-2.5 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-100 mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-violet-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                        {isFamilyMember
+                          ? (tenantOccupancy?.tenant?.avatar_url
+                            ? <img src={tenantOccupancy.tenant.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                            : `${tenantOccupancy?.tenant?.first_name?.[0] || ''}${tenantOccupancy?.tenant?.last_name?.[0] || ''}`)
+                          : '👑'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-gray-900 truncate">
+                          {isFamilyMember
+                            ? `${tenantOccupancy?.tenant?.first_name || ''} ${tenantOccupancy?.tenant?.last_name || ''}`.trim() || 'Primary Tenant'
+                            : `${profile.first_name} ${profile.last_name}`}
+                        </p>
+                        <p className="text-[10px] text-violet-600 font-semibold">Primary Tenant</p>
+                      </div>
+                      <span className="text-[9px] font-bold bg-violet-200 text-violet-800 px-2 py-0.5 rounded-full">Owner</span>
+                    </div>
+                  </div>
+
+                  {/* Members List */}
+                  {loadingFamily ? (
+                    <div className="text-center py-3">
+                      <div className="w-5 h-5 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin mx-auto"></div>
+                    </div>
+                  ) : familyMembers.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {familyMembers.map((fm) => (
+                        <div key={fm.id} className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-all group">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-bold text-[10px] shadow-sm">
+                              {fm.member_profile?.avatar_url ? (
+                                <img src={fm.member_profile.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                              ) : (
+                                `${fm.member_profile?.first_name?.[0] || ''}${fm.member_profile?.last_name?.[0] || ''}`
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-gray-900 truncate">
+                                {fm.member_profile?.first_name} {fm.member_profile?.last_name}
+                              </p>
+                              <p className="text-[10px] text-gray-400 truncate">{fm.member_profile?.email}</p>
+                            </div>
+                            {!isFamilyMember && (
+                              confirmRemoveMember === fm.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => removeFamilyMember(fm.id)}
+                                    disabled={removingMember === fm.id}
+                                    className="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-md cursor-pointer border border-red-200 disabled:opacity-50"
+                                  >
+                                    {removingMember === fm.id ? '...' : 'Yes'}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmRemoveMember(null)}
+                                    className="text-[9px] font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md cursor-pointer"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmRemoveMember(fm.id)}
+                                  className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-red-500 hover:text-red-700 transition-all cursor-pointer p-1"
+                                  title="Remove family member"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-3">
+                      <p className="text-[11px] text-gray-400">No family members added yet.</p>
+                    </div>
+                  )}
+
+                  {isFamilyMember && (
+                    <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-[10px] text-amber-700 font-medium flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        You are a family member. Only the primary tenant can manage family members and end the contract.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Family Member Modal */}
+                {showFamilyModal && (
+                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => { setShowFamilyModal(false); setFamilySearchQuery(''); setFamilySearchResults([]) }}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
+                    <div style={{ position: 'relative', backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px rgba(0,0,0,0.25)', width: '100%', maxWidth: '420px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                      {/* Modal Header */}
+                      <div className="bg-gradient-to-r from-violet-600 to-purple-600" style={{ padding: '20px 24px' }}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' }}>
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                            </div>
+                            <div>
+                              <p style={{ color: '#fff', fontWeight: 700, fontSize: '16px' }}>Add Family Member</p>
+                              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px' }}>{familyMembers.length}/4 slots used</p>
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => { setShowFamilyModal(false); setFamilySearchQuery(''); setFamilySearchResults([]) }} className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                            <svg className="w-4 h-4" style={{ color: '#fff' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Search Input */}
+                      <div className="p-4 border-b border-gray-100">
+                        <div className="relative">
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                          <input
+                            type="text"
+                            placeholder="Search by name or email..."
+                            value={familySearchQuery}
+                            onChange={e => setFamilySearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent transition-all"
+                            autoFocus
+                          />
+                          {familySearching && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin"></div>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 ml-1">Only tenant accounts will appear in results.</p>
+                      </div>
+
+                      {/* Search Results */}
+                      <div className="flex-1 overflow-y-auto p-4" style={{ maxHeight: '360px' }}>
+                        {familySearchResults.length > 0 ? (
+                          <div className="space-y-2">
+                            {familySearchResults.map(user => (
+                              <div key={user.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-violet-200 hover:bg-violet-50/30 transition-all">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center font-bold text-xs shadow-sm flex-shrink-0">
+                                    {user.avatar_url ? (
+                                      <img src={user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                                    ) : (
+                                      `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-900 truncate">
+                                      {user.first_name} {user.middle_name && user.middle_name.toLowerCase() !== 'n/a' ? user.middle_name + ' ' : ''}{user.last_name}
+                                    </p>
+                                    <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
+                                    {user.phone && <p className="text-[10px] text-gray-400">{user.phone}</p>}
+                                  </div>
+                                  <button
+                                    onClick={() => addFamilyMember(user.id)}
+                                    disabled={addingMember === user.id}
+                                    className="text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-sm flex-shrink-0"
+                                  >
+                                    {addingMember === user.id ? (
+                                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : 'Add'}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : familySearchQuery.trim().length >= 2 && !familySearching ? (
+                          <div className="text-center py-8">
+                            <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto mb-3">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            </div>
+                            <p className="text-sm font-medium text-gray-500">No tenant accounts found</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Try a different name or email</p>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <div className="w-12 h-12 rounded-full bg-violet-50 text-violet-400 flex items-center justify-center mx-auto mb-3">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </div>
+                            <p className="text-sm font-medium text-gray-500">Search for a tenant</p>
+                            <p className="text-[10px] text-gray-400 mt-1">Type at least 2 characters to search</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Note */}
+                      <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+                        <p className="text-[10px] text-gray-500 text-center leading-relaxed">
+                          Family members will have access to payments and maintenance for this property.
+                          They cannot end the contract.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
 
               {/* Right Column: Financials & Pending Payments */}
               <div className="lg:col-span-8 space-y-6">
@@ -1733,7 +2084,7 @@ export default function TenantDashboard({ session, profile }) {
 
                     {/* 3. Rent Payment History (Visual Tracker) */}
                     {/* <div className="bg-gray-50 rounded-2xl p-5 border border-slate-100"> */}
-                      {/* <div className="flex justify-between items-center mb-4">
+                    {/* <div className="flex justify-between items-center mb-4">
                         <div className="flex items-center gap-2">
                           <div className="p-1.5 bg-white text-slate-600 rounded-lg shadow-sm">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -1742,59 +2093,59 @@ export default function TenantDashboard({ session, profile }) {
                         </div>
                       </div> */}
 
-                      {/* Redesigned Month Tracker */}
-                      {/* <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-2"> */}
-                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
-                          // const currentYear = new Date().getFullYear();
-                          // const isPaid = paymentHistory.some(p => {
-                          //   if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
+                    {/* Redesigned Month Tracker */}
+                    {/* <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 mb-2"> */}
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, index) => {
+                      // const currentYear = new Date().getFullYear();
+                      // const isPaid = paymentHistory.some(p => {
+                      //   if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
 
-                          //   const d = new Date(p.due_date);
-                          //   const pMonth = d.getMonth();
-                          //   const pYear = d.getFullYear();
+                      //   const d = new Date(p.due_date);
+                      //   const pMonth = d.getMonth();
+                      //   const pYear = d.getFullYear();
 
-                          //   // Use advance_amount to determine if this bill covers future months
-                          //   const advance = parseFloat(p.advance_amount || 0);
-                          //   const rent = parseFloat(p.rent_amount || 0);
-                          //   let monthsCovered = 1; // Default covers the due_date month
+                      //   // Use advance_amount to determine if this bill covers future months
+                      //   const advance = parseFloat(p.advance_amount || 0);
+                      //   const rent = parseFloat(p.rent_amount || 0);
+                      //   let monthsCovered = 1; // Default covers the due_date month
 
-                          //   if (advance > 0 && rent > 0) {
-                          //     monthsCovered += Math.floor(advance / rent);
-                          //   }
+                      //   if (advance > 0 && rent > 0) {
+                      //     monthsCovered += Math.floor(advance / rent);
+                      //   }
 
-                          //   // Calculate start and end month indices relative to the payment start
-                          //   const targetAbsoluteMonth = currentYear * 12 + index;
-                          //   const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
-                          //   const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
+                      //   // Calculate start and end month indices relative to the payment start
+                      //   const targetAbsoluteMonth = currentYear * 12 + index;
+                      //   const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
+                      //   const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
 
-                          //   return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
-                          // });
+                      //   return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
+                      // });
 
-                          // const isActiveMonth = new Date().getMonth() === index;
+                      // const isActiveMonth = new Date().getMonth() === index;
 
-                          // return (
-                          //   <div key={month} className="flex flex-col items-center justify-center p-2">
-                          //     <span className={`text-[10px] font-bold uppercase mb-1.5 ${isPaid ? 'text-black' : 'text-gray-400'}`}>
-                          //       {month}
-                          //     </span>
+                      // return (
+                      //   <div key={month} className="flex flex-col items-center justify-center p-2">
+                      //     <span className={`text-[10px] font-bold uppercase mb-1.5 ${isPaid ? 'text-black' : 'text-gray-400'}`}>
+                      //       {month}
+                      //     </span>
 
-                          //     {isPaid ? (
-                          //       <div className="w-5 h-5 rounded-full bg-green-300 text-black flex items-center justify-center shadow-sm">
-                          //         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          //           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          //         </svg>
-                          //       </div>
-                          //     ) : isActiveMonth ? (
-                          //       <div className="w-5 h-5 rounded-full border-2 border-black flex items-center justify-center">
-                          //         <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
-                          //       </div>
-                          //     ) : (
-                          //       <div className="w-5 h-5 rounded-full border border-gray-200"></div>
-                          //     )}
-                          //   </div>
-                          // )
-                        })}
-                      {/* </div> */}
+                      //     {isPaid ? (
+                      //       <div className="w-5 h-5 rounded-full bg-green-300 text-black flex items-center justify-center shadow-sm">
+                      //         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      //           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      //         </svg>
+                      //       </div>
+                      //     ) : isActiveMonth ? (
+                      //       <div className="w-5 h-5 rounded-full border-2 border-black flex items-center justify-center">
+                      //         <div className="w-1.5 h-1.5 rounded-full bg-black"></div>
+                      //       </div>
+                      //     ) : (
+                      //       <div className="w-5 h-5 rounded-full border border-gray-200"></div>
+                      //     )}
+                      //   </div>
+                      // )
+                    })}
+                    {/* </div> */}
                     {/* </div> */}
                   </div>
                 </div>

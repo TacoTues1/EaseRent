@@ -181,7 +181,7 @@ const systemFlows = {
     },
     overview: {
         title: 'System Overview',
-        description: 'High-level view of TessyNTed rental management platform',
+        description: 'High-level view of Abalay rental management platform',
         nodes: [
             { id: 'visitor', label: 'Visitor', type: 'start', x: 400, y: 40, icon: '👤' },
             { id: 'browse', label: 'Browse Properties', type: 'process', x: 400, y: 130, icon: '🏠' },
@@ -566,8 +566,8 @@ export default function FlowchartPage() {
     return (
         <>
             <Head>
-                <title>System Flowchart — TessyNTed</title>
-                <meta name="description" content="Interactive flowchart showing the complete TessyNTed rental management system architecture, user journeys, and process flows." />
+                <title>System Flowchart — Abalay</title>
+                <meta name="description" content="Interactive flowchart showing the complete Abalay rental management system architecture, user journeys, and process flows." />
             </Head>
 
             <div className="min-h-screen bg-[#F3F4F5]">
@@ -600,7 +600,7 @@ export default function FlowchartPage() {
                             System <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Flowchart</span>
                         </h1>
                         <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-                            Interactive visualization of the complete TessyNTed rental management platform — from user journeys to technical architecture.
+                            Interactive visualization of the complete Abalay rental management platform — from user journeys to technical architecture.
                         </p>
 
                         {/* Stats */}
@@ -727,7 +727,7 @@ export default function FlowchartPage() {
                     {/* Footer */}
                     <div className="mt-12 text-center">
                         <p className="text-xs text-gray-400">
-                            TessyNTed Rental Management System — Built with Next.js, Supabase, PayMongo, Stripe & Brevo
+                            Abalay Rental Management System — Built with Next.js, Supabase, PayMongo, Stripe & Brevo
                         </p>
                     </div>
                 </div>

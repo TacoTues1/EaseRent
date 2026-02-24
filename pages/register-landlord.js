@@ -499,8 +499,8 @@ export default function RegisterLandlord() {
                     {/* Logo */}
                     <div className="text-center">
                         <div className={`mx-auto flex items-center justify-center gap-3 mb-2 cursor-pointer transition-all duration-300 ${mounted ? 'animate-fadeInUp delay-100' : 'opacity-0'}`} onClick={() => router.push('/')}>
-                            <img src="/home.png" alt="TessyNTed Logo" className="w-14 h-14 object-contain" />
-                            <span className="text-3xl font-black text-gray-900">TessyNTed</span>
+                            <img src="/home.png" alt="Abalay Logo" className="w-14 h-14 object-contain" />
+                            <span className="text-3xl font-black text-gray-900">Abalay</span>
                         </div>
                         <h2 className="text-lg font-black text-gray-900 tracking-tight">Landlord Registration</h2>
                     </div>

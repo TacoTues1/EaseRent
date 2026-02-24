@@ -3,7 +3,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 
 // ==========================================
-// GANTT CHART DATA — TessyNTed Development
+// GANTT CHART DATA — Abalay Development
 // ==========================================
 const phases = [
     {
@@ -719,8 +719,8 @@ export default function GanttChartPage() {
     return (
         <>
             <Head>
-                <title>Gantt Chart — TessyNTed Development Timeline</title>
-                <meta name="description" content="Development timeline and Gantt chart for the TessyNTed rental management platform, showing all phases from planning to deployment." />
+                <title>Gantt Chart — Abalay Development Timeline</title>
+                <meta name="description" content="Development timeline and Gantt chart for the Abalay rental management platform, showing all phases from planning to deployment." />
             </Head>
 
             <div className="min-h-screen bg-[#F3F4F5]">
@@ -756,7 +756,7 @@ export default function GanttChartPage() {
                             Development <span className="bg-gradient-to-r from-orange-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Gantt Chart</span>
                         </h1>
                         <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-                            Visual timeline of the TessyNTed platform development — from initial planning to production deployment.
+                            Visual timeline of the Abalay platform development — from initial planning to production deployment.
                         </p>
                     </div>
                 </div>
@@ -813,7 +813,7 @@ export default function GanttChartPage() {
                     {/* Footer */}
                     <div className="mt-12 text-center">
                         <p className="text-xs text-gray-400">
-                            TessyNTed Rental Management System — Development Timeline (Oct 2025 – Feb 2026)
+                            Abalay Rental Management System — Development Timeline (Oct 2025 – Feb 2026)
                         </p>
                     </div>
                 </div>

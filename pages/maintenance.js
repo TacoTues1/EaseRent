@@ -738,7 +738,7 @@ export default function MaintenancePage() {
                               {req.status === 'scheduled' && (
                                 <button onClick={() => updateRequestStatus(req.id, 'in_progress')} className="px-4 py-2 bg-orange-50 text-orange-700 text-xs font-bold rounded-lg hover:bg-orange-100 cursor-pointer">Start Working</button>
                               )}
-                              {(req.status === 'in_progress' || req.status === 'completed') && (
+                              {(req.status === 'in_progress' || (req.status === 'completed' && req.maintenance_cost == null)) && (
                                 <button onClick={() => openCostModal(req)} className="px-4 py-2 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 cursor-pointer">Log Maintenance Cost</button>
                               )}
                               {(req.status === 'completed' || req.status === 'resolved') && (

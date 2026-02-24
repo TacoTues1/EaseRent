@@ -495,8 +495,8 @@ export default function Register() {
             {/* Header Section */}
             <div className="text-center">
               <div className={`mx-auto flex items-center justify-center gap-3 mb-4 cursor-pointer transition-all duration-300 ${mounted ? 'animate-fadeInUp delay-100' : 'opacity-0'}`} onClick={() => router.push('/')}>
-                <img src="/home.png" alt="TessyNTed Logo" className="w-20 h-20 object-contain" />
-                <span className="text-5xl font-black text-gray-900">TessyNTed</span>
+                <img src="/home.png" alt="Abalay Logo" className="w-20 h-20 object-contain" />
+                <span className="text-5xl font-black text-gray-900">Abalay</span>
               </div>
               <h2 className={`text-lg sm:text-xl font-black text-gray-900 tracking-tight ${mounted ? 'animate-fadeInUp delay-200' : 'opacity-0'}`}>
                 {showOtpInput ? 'Verify Email' : 'Create Account'}

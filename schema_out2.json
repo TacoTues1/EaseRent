@@ -1,0 +1,19 @@
+{
+  "payments": [
+    "id",
+    "property_id",
+    "tenant",
+    "landlord",
+    "amount",
+    "currency",
+    "method",
+    "status",
+    "paid_at",
+    "water_bill",
+    "electrical_bill",
+    "other_bills",
+    "bills_description",
+    "application_id",
+    "due_date"
+  ]
+}
