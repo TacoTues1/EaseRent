@@ -85,46 +85,40 @@ export default function GetDirections() {
     return Math.round(distanceMeters / (speeds[mode] || speeds.driving));
   };
 
-  // 1. Initialize Leaflet Map
+  // 1. Initialize MapLibre Map
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (mapInstance.current || isInitializing.current) return;
 
     isInitializing.current = true;
 
-    import('leaflet').then((L) => {
-      if (!mapRef.current || mapInstance.current || mapRef.current._leaflet_id) {
+    import('maplibre-gl').then((mlglModule) => {
+      const mlgl = mlglModule.default || mlglModule;
+      import('maplibre-gl/dist/maplibre-gl.css').catch(() => { });
+
+      if (!mapRef.current || mapInstance.current) {
         isInitializing.current = false;
         return;
       }
-      delete L.Icon.Default.prototype._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+
+      const map = new mlgl.Map({
+        container: mapRef.current,
+        style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+        center: [123.8854, 10.3157],
+        zoom: 13,
+        attributionControl: false
       });
 
-      // CartoDB Voyager Tiles (Premium Look)
-      const map = L.map(mapRef.current, {
-        zoomControl: false,
-        attributionControl: false
-      }).setView([10.3157, 123.8854], 13);
+      map.addControl(new mlgl.NavigationControl({ showCompass: false }), 'top-right');
+      map.addControl(new mlgl.AttributionControl({ compact: false }), 'bottom-right');
 
-      L.control.zoom({ position: 'topright' }).addTo(map);
+      map.on('load', () => {
+        mapInstance.current = map;
+        isInitializing.current = false;
+      })
 
-      // Add Attribution manually in a nicer way or use standard
-      L.control.attribution({ position: 'bottomright' }).addTo(map);
-
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
-      }).addTo(map);
-
-      mapInstance.current = map;
-      isInitializing.current = false;
     }).catch(err => {
-      console.error("Failed to load Leaflet", err);
+      console.error("Failed to load MapLibre", err);
       isInitializing.current = false;
     });
     return () => {
@@ -137,6 +131,15 @@ export default function GetDirections() {
     };
   }, []);
 
+  // Helper mapping callback
+  const getMap = (callback) => {
+    if (mapInstance.current) {
+      import('maplibre-gl').then((mlglModule) => {
+        callback(mlglModule.default || mlglModule, mapInstance.current);
+      });
+    }
+  }
+
   // 2. Handle URL Params
   useEffect(() => {
     if (router.isReady) {
@@ -146,15 +149,15 @@ export default function GetDirections() {
       const checkMapReady = setInterval(() => {
         if (mapInstance.current) {
           clearInterval(checkMapReady);
-          import('leaflet').then((L) => {
+          getMap((mlgl, map) => {
             // Set destination marker
             if (lat && lng) {
               const dLat = parseFloat(lat);
               const dLng = parseFloat(lng);
               setDestLocation({ lat: dLat, lng: dLng });
-              addDestinationMarker(dLat, dLng, L);
+              addDestinationMarker(dLat, dLng, mlgl, map);
             } else if (to) {
-              geocodeAddress(to, L);
+              geocodeAddress(to, mlgl, map);
             }
 
             // Set origin: use "from" params if provided (user typed a location on property page)
@@ -164,7 +167,7 @@ export default function GetDirections() {
               setFromAddress(from);
               setUserLocation({ lat: fLat, lng: fLng });
               manualOrigin.current = true; // Mark as manual origin
-              updateUserMarker(fLat, fLng, L);
+              updateUserMarker(fLat, fLng, mlgl, map);
             } else {
               // No from address provided — auto-detect GPS location
               handleShowMyLocation();
@@ -184,22 +187,20 @@ export default function GetDirections() {
   useEffect(() => {
     if (userLocation && destLocation && mapInstance.current) {
       if (routesData.driving.length === 0 && !isRouting) {
-        import('leaflet').then(L => {
-          calculateAllRoutes(userLocation, destLocation, L);
+        getMap((mlgl, map) => {
+          if (map) calculateAllRoutes(userLocation, destLocation, mlgl, map);
         });
       }
     }
   }, [userLocation, destLocation]);
 
   // --- Markers & Geocoding ---
-  const addDestinationMarker = (lat, lng, L) => {
-    if (!mapInstance.current) return;
+  const addDestinationMarker = (lat, lng, mlgl, map) => {
+    if (!map) return;
     if (destMarker.current) destMarker.current.remove();
 
-    // Custom Red Pin Marker
-    const redIcon = L.divIcon({
-      className: 'bg-transparent',
-      html: `
+    const el = document.createElement('div');
+    el.innerHTML = `
         <div class="relative w-12 h-12">
             <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-8 flex items-center justify-center">
                  <div class="w-3 h-1 bg-black/20 blur-[2px] rounded-full absolute bottom-0.5"></div>
@@ -209,18 +210,20 @@ export default function GetDirections() {
                  </svg>
             </div>
         </div>
-      `,
-      iconSize: [, 48],
-      iconAnchor: [24, 46], // Tip of pin
-      popupAnchor: [0, -25]
-    });
+    `;
 
-    const marker = L.marker([lat, lng], { icon: redIcon }).addTo(mapInstance.current).bindPopup("<b>Property Location</b>").openPopup();
+    const marker = new mlgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([lng, lat])
+      .setPopup(new mlgl.Popup({ offset: 25 }).setHTML("<b>Property Location</b>"))
+      .addTo(map);
+
+    marker.togglePopup();
+
     destMarker.current = marker;
-    mapInstance.current.setView([lat, lng], 15);
+    map.flyTo({ center: [lng, lat], zoom: 15 });
   };
 
-  const geocodeAddress = async (address, L) => {
+  const geocodeAddress = async (address, mlgl, map) => {
     setStatusMsg('Locating property...');
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
@@ -229,7 +232,7 @@ export default function GetDirections() {
         const lat = parseFloat(data[0].lat);
         const lng = parseFloat(data[0].lon);
         setDestLocation({ lat, lng });
-        addDestinationMarker(lat, lng, L);
+        addDestinationMarker(lat, lng, mlgl, map);
         setStatusMsg('');
         return true;
       } else {
@@ -243,12 +246,13 @@ export default function GetDirections() {
   };
 
   // --- Route Drawing Helper ---
-  const drawRoutes = useCallback((routes, LInstance, mode, selectedIdx = 0) => {
-    if (!mapInstance.current || !routes || routes.length === 0) return;
+  const drawRoutes = useCallback((routes, mlgl, map, mode, selectedIdx = 0) => {
+    if (!map || !routes || routes.length === 0) return;
 
     // Clear existing route lines
-    routeLines.current.forEach(line => {
-      if (line && line.remove) line.remove();
+    routeLines.current.forEach(id => {
+      if (map && map.getLayer && map.getLayer(id)) map.removeLayer(id);
+      if (map && map.getSource && map.getSource(id)) map.removeSource(id);
     });
     routeLines.current = [];
 
@@ -260,57 +264,108 @@ export default function GetDirections() {
     routes.forEach((route, index) => {
       if (index === selectedIdx) return; // Skip selected, draw it last
 
-      const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-      const polyline = LInstance.polyline(coords, {
-        color: '#94a3b8',
-        weight: 5,
-        opacity: 0.4,
-        lineJoin: 'round',
-        className: 'route-alternate cursor-pointer hover:opacity-70 transition-opacity'
-      }).addTo(mapInstance.current);
+      const sourceId = `route-alt-source-${index}`;
+      const layerId = `route-alt-layer-${index}`;
 
-      // Make alternate routes clickable to select them
-      polyline.on('click', () => {
-        setSelectedRouteIndex(index);
-        drawRoutes(routes, LInstance, mode, index);
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: route.geometry }
       });
 
-      routeLines.current.push(polyline);
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#94a3b8', 'line-width': 5, 'line-opacity': 0.4 }
+      });
+
+      // Make alternates clickable
+      map.on('click', layerId, () => {
+        setSelectedRouteIndex(index);
+        // Do not call drawRoutes here because it's managed by a useEffect based on selectedRouteIndex
+      });
+      map.on('mouseenter', layerId, () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', layerId, () => {
+        map.getCanvas().style.cursor = '';
+      });
+
+      routeLines.current.push(layerId);
+      routeLines.current.push(sourceId);
     });
 
     // Draw selected route last (on top)
     const selectedRoute = routes[selectedIdx];
     if (selectedRoute) {
-      const selectedCoords = selectedRoute.geometry.coordinates.map(c => [c[1], c[0]]);
+      activeRouteCoords.current = selectedRoute.geometry.coordinates;
 
-      // Store active route coordinates for navigation
-      activeRouteCoords.current = selectedCoords;
+      const sourceId = `route-selected-source`;
+      const glowLayerId = `route-selected-glow`;
+      const layerId = `route-selected-layer`;
 
-      // Outer glow for visibility (optional)
-      const glow = LInstance.polyline(selectedCoords, {
-        color: '#ffffff',
-        weight: 9,
-        opacity: 0.8,
-        lineJoin: 'round'
-      }).addTo(mapInstance.current);
-      routeLines.current.push(glow);
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: selectedRoute.geometry }
+      });
 
-      const selectedPolyline = LInstance.polyline(selectedCoords, {
-        color: mainColor,
-        weight: 6,
-        opacity: 1.0,
-        lineJoin: 'round',
-        className: 'route-selected'
-      }).addTo(mapInstance.current);
+      map.addLayer({
+        id: glowLayerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.8 }
+      });
 
-      routeLines.current.push(selectedPolyline);
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': mainColor, 'line-width': 6, 'line-opacity': 1.0 }
+      });
+
+      routeLines.current.push(layerId);
+      routeLines.current.push(glowLayerId);
+      routeLines.current.push(sourceId);
 
       // Only fit bounds if we are NOT navigating
-      if (!isNavigating) {
-        mapInstance.current.fitBounds(selectedPolyline.getBounds(), {
-          paddingTopLeft: [50, 50],
-          paddingBottomRight: [50, 350]
-        });
+      if (!isNavigating && selectedRoute.geometry.coordinates && selectedRoute.geometry.coordinates.length > 0) {
+        const coords = selectedRoute.geometry.coordinates;
+        // Ensure coordinates exist and are valid [lng, lat] arrays before bound creation
+        if (Array.isArray(coords) && coords[0] && Array.isArray(coords[0]) && coords[0].length === 2) {
+          try {
+            // MapLibre arrays natively come as [lng, lat], fitBounds expects this
+            let bounds;
+            let boundsInitialized = false;
+
+            for (const coord of coords) {
+              if (Array.isArray(coord) && coord.length === 2) {
+                // Ensure values are numbers before extending bounds
+                const lng = Number(coord[0]);
+                const lat = Number(coord[1]);
+                if (!isNaN(lng) && !isNaN(lat)) {
+                  if (!boundsInitialized) {
+                    bounds = new mlgl.LngLatBounds([lng, lat], [lng, lat]);
+                    boundsInitialized = true;
+                  } else {
+                    bounds.extend([lng, lat]);
+                  }
+                }
+              }
+            }
+
+            if (boundsInitialized && !bounds.isEmpty()) {
+              map.fitBounds(bounds, {
+                padding: { top: 50, left: 50, right: 50, bottom: 350 },
+                maxZoom: 16 // Prevent zooming in too close on tiny routes
+              });
+            }
+          } catch (e) {
+            console.warn("MapLibre fitBounds error in drawRoutes:", e);
+          }
+        }
       }
     }
   }, [isNavigating]);
@@ -340,30 +395,64 @@ export default function GetDirections() {
   };
 
   // Draw a straight dashed line between two points (fallback when no road route exists)
-  const drawStraightLine = (start, end, L) => {
-    if (!mapInstance.current) return;
-    // Clear existing
-    routeLines.current.forEach(line => { if (line && line.remove) line.remove(); });
+  const drawStraightLine = (start, end, mlgl, map) => {
+    if (!map || !map.getLayer) return;
+    routeLines.current.forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+    });
     routeLines.current = [];
 
-    const coords = [[start.lat, start.lng], [end.lat, end.lng]];
-    const dashLine = L.polyline(coords, {
-      color: '#ef4444',
-      weight: 3,
-      opacity: 0.6,
-      dashArray: '10, 10',
-      lineJoin: 'round'
-    }).addTo(mapInstance.current);
-    routeLines.current.push(dashLine);
+    const sourceId = 'straight-line-source';
+    const layerId = 'straight-line-layer';
 
-    mapInstance.current.fitBounds(dashLine.getBounds(), {
-      paddingTopLeft: [50, 50],
-      paddingBottomRight: [50, 350]
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[start.lng, start.lat], [end.lng, end.lat]] }
+      }
     });
+
+    map.addLayer({
+      id: layerId,
+      type: 'line',
+      source: sourceId,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#ef4444', 'line-width': 3, 'line-opacity': 0.6, 'line-dasharray': [2, 2] }
+    });
+
+    routeLines.current.push(layerId);
+    routeLines.current.push(sourceId);
+
+    if (start && end && start.lng && start.lat && end.lng && end.lat) {
+      const lng1 = Number(start.lng);
+      const lat1 = Number(start.lat);
+      const lng2 = Number(end.lng);
+      const lat2 = Number(end.lat);
+
+      if (!isNaN(lng1) && !isNaN(lat1) && !isNaN(lng2) && !isNaN(lat2)) {
+        try {
+          const lons = [lng1, lng2];
+          const lats = [lat1, lat2];
+          const bounds = new mlgl.LngLatBounds(
+            [Math.min(...lons), Math.min(...lats)],
+            [Math.max(...lons), Math.max(...lats)]
+          );
+
+          map.fitBounds(bounds, {
+            padding: { top: 50, bottom: 350, left: 50, right: 50 },
+            maxZoom: 16
+          });
+        } catch (e) {
+          console.warn("MapLibre fitBounds fallback error:", e);
+        }
+      }
+    }
   };
 
   // Wrapped in useCallback to use in useEffect
-  const calculateAllRoutes = useCallback(async (start, end, L, preserveMode = false) => {
+  const calculateAllRoutes = useCallback(async (start, end, mlgl, map, preserveMode = false) => {
     if (!start || !end) return;
 
     // Don't show "Calculating" toast if we are just updating the line live
@@ -405,7 +494,7 @@ export default function GetDirections() {
       }
 
       // Draw dashed straight line on map
-      drawStraightLine(start, end, L);
+      drawStraightLine(start, end, mlgl, map);
       return;
     }
 
@@ -430,9 +519,8 @@ export default function GetDirections() {
     const routeIdx = preserveMode ? selectedRouteIndex : 0;
 
     // Draw based on the determined mode
-    // All modes use the same geometry (driving road path), different times
     const routesToDraw = modeToUse === 'bike' ? bikeRoutes : modeToUse === 'foot' ? footRoutes : drivingRoutes;
-    if (routesToDraw.length > 0) drawRoutes(routesToDraw, L, modeToUse, routeIdx);
+    if (routesToDraw.length > 0) drawRoutes(routesToDraw, mlgl, map, modeToUse, routeIdx);
   }, [selectedMode, isNavigating, selectedRouteIndex, drawRoutes]);
 
   // --- Real-time Route Updater ---
@@ -443,9 +531,9 @@ export default function GetDirections() {
       // Throttle updates to every 4 seconds to reduce API calls
       if (now - lastRouteUpdate.current > 4000) {
         lastRouteUpdate.current = now;
-        import('leaflet').then(L => {
+        getMap((mlgl, map) => {
           // Redraw with current location to get updated geometry if needed
-          calculateAllRoutes(userLocation, destLocation, L, true);
+          calculateAllRoutes(userLocation, destLocation, mlgl, map, true);
         });
       }
     }
@@ -485,26 +573,28 @@ export default function GetDirections() {
     setNoRouteAvailable(false);
 
     // Clear existing route lines from the map
-    routeLines.current.forEach(line => {
-      if (line && line.remove) line.remove();
+    routeLines.current.forEach(id => {
+      if (mapInstance.current && mapInstance.current.getLayer && mapInstance.current.getLayer(id)) mapInstance.current.removeLayer(id);
+      if (mapInstance.current && mapInstance.current.getSource && mapInstance.current.getSource(id)) mapInstance.current.removeSource(id);
     });
     routeLines.current = [];
 
     setUserLocation({ lat, lng });
     if (mapInstance.current) {
-      import('leaflet').then((L) => {
-        updateUserMarker(lat, lng, L);
+      getMap((mlgl, map) => {
+        updateUserMarker(lat, lng, mlgl, map);
         if (destLocation) {
           // Directly calculate routes from the NEW origin to destination
-          calculateAllRoutes({ lat, lng }, destLocation, L);
+          calculateAllRoutes({ lat, lng }, destLocation, mlgl, map);
         } else {
-          mapInstance.current.setView([lat, lng], 15);
+          map.flyTo({ center: [lng, lat], zoom: 15 });
         }
       });
     }
   };
 
-  const updateUserMarker = (lat, lng, L, heading = null) => {
+  const updateUserMarker = (lat, lng, mlgl, map, heading = null) => {
+    if (!map) return;
     if (userMarker.current) userMarker.current.remove();
     if (userArrow.current) userArrow.current.remove();
 
@@ -519,22 +609,21 @@ export default function GetDirections() {
     }
 
     // Create a sleek navigation marker
-    const navigationIcon = L.divIcon({
-      className: 'bg-transparent',
-      html: `
-        <div class="relative w-16 h-16 flex items-center justify-center">
-          <div class="absolute w-12 h-12 bg-blue-500/30 rounded-full animate-ping"></div>
-          <div class="absolute w-5 h-5 bg-blue-600 border-[3px] border-white rounded-full shadow-lg z-20"></div>
-          <div class="absolute w-full h-full flex items-center justify-center transition-transform duration-300 ease-linear z-10" style="transform: rotate(${bearingDeg}deg);">
-            <div class="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[20px] border-b-blue-600/90 -mt-8"></div>
-          </div>
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div class="relative w-16 h-16 flex items-center justify-center">
+        <div class="absolute w-12 h-12 bg-blue-500/30 rounded-full animate-ping"></div>
+        <div class="absolute w-5 h-5 bg-blue-600 border-[3px] border-white rounded-full shadow-lg z-20"></div>
+        <div class="absolute w-full h-full flex items-center justify-center transition-transform duration-300 ease-linear z-10" style="transform: rotate(${bearingDeg}deg);">
+          <div class="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[20px] border-b-blue-600/90 -mt-8"></div>
         </div>
-      `,
-      iconSize: [64, 64],
-      iconAnchor: [32, 32]
-    });
+      </div>
+    `;
 
-    const marker = L.marker([lat, lng], { icon: navigationIcon, zIndexOffset: 1000 }).addTo(mapInstance.current);
+    const marker = new mlgl.Marker({ element: el })
+      .setLngLat([lng, lat])
+      .addTo(map);
+
     userMarker.current = marker;
   };
 
@@ -570,10 +659,10 @@ export default function GetDirections() {
         setStatusMsg('');
 
         if (mapInstance.current) {
-          import('leaflet').then((L) => {
-            updateUserMarker(lat, lng, L);
+          getMap((mlgl, map) => {
+            updateUserMarker(lat, lng, mlgl, map);
             if (!destLocation) {
-              mapInstance.current.setView([lat, lng], 15);
+              map.flyTo({ center: [lng, lat], zoom: 15 });
             }
           });
         }
@@ -585,9 +674,11 @@ export default function GetDirections() {
   };
 
   // Helper to offset user position to bottom of screen so they see more road ahead
-  const getOffsetCenter = (lat, lng, offsetY = 0.0008) => {
-    // Offset north so user appears in lower part of screen
-    return [lat + offsetY, lng];
+  const getOffsetCenter = (lat, lng, offsetY = -0.0008) => {
+    // Offset north so user appears in lower part of screen (decrease lat shifts view down, placing user up? Wait)
+    // Actually, latitude offset is just added to center
+    // Let's just return coordinates
+    return [lng, lat + offsetY];
   };
 
   const toggleNavigation = () => {
@@ -618,15 +709,17 @@ export default function GetDirections() {
         setStatusMsg('Route Preview Active');
 
         // Zoom to show the full route between typed origin and destination
-        if (mapInstance.current && userLocation && destLocation) {
-          import('leaflet').then(L => {
-            const bounds = L.latLngBounds(
-              [userLocation.lat, userLocation.lng],
-              [destLocation.lat, destLocation.lng]
+        if (mapInstance.current && userLocation && destLocation && userLocation.lng && destLocation.lng) {
+          getMap((mlgl, map) => {
+            const lons = [userLocation.lng, destLocation.lng];
+            const lats = [userLocation.lat, destLocation.lat];
+            const bounds = new mlgl.LngLatBounds(
+              [Math.min(...lons), Math.min(...lats)],
+              [Math.max(...lons), Math.max(...lats)]
             );
-            mapInstance.current.fitBounds(bounds, {
-              paddingTopLeft: [50, 80],
-              paddingBottomRight: [50, 120]
+            map.fitBounds(bounds, {
+              padding: { top: 80, bottom: 120, left: 50, right: 50 },
+              maxZoom: 16
             });
           });
         }
@@ -638,9 +731,9 @@ export default function GetDirections() {
         setStatusMsg('Live Navigation Active');
 
         // Zoom in close with user at bottom of screen
-        if (mapInstance.current && userLocation) {
+        if (mapInstance.current && userLocation && mapInstance.current.flyTo) {
           const offsetCenter = getOffsetCenter(userLocation.lat, userLocation.lng);
-          mapInstance.current.setView(offsetCenter, 18, { animate: true });
+          mapInstance.current.flyTo({ center: offsetCenter, zoom: 18 });
         }
 
         watchId.current = navigator.geolocation.watchPosition(
@@ -651,10 +744,10 @@ export default function GetDirections() {
             setUserLocation({ lat, lng });
 
             if (mapInstance.current) {
-              import('leaflet').then((L) => {
-                updateUserMarker(lat, lng, L, heading);
+              getMap((mlgl, map) => {
+                updateUserMarker(lat, lng, mlgl, map, heading);
                 const offsetCenter = getOffsetCenter(lat, lng);
-                mapInstance.current.setView(offsetCenter, 18, { animate: true, duration: 0.3 });
+                map.easeTo({ center: offsetCenter, zoom: 18, duration: 300 });
               });
             }
           },
@@ -668,15 +761,20 @@ export default function GetDirections() {
   // New Helper: Recenter Map
   const recenterMap = () => {
     if (!mapInstance.current) return;
-    import('leaflet').then(L => {
+    getMap((mlgl, map) => {
       if (isNavigating && userLocation) {
         const offsetCenter = getOffsetCenter(userLocation.lat, userLocation.lng);
-        mapInstance.current.setView(offsetCenter, 18, { animate: true });
-      } else if (userLocation && destLocation) {
-        const bounds = L.latLngBounds([userLocation.lat, userLocation.lng], [destLocation.lat, destLocation.lng]);
-        mapInstance.current.fitBounds(bounds, { padding: [50, 50] });
-      } else if (userLocation) {
-        mapInstance.current.setView([userLocation.lat, userLocation.lng], 15, { animate: true });
+        map.flyTo({ center: offsetCenter, zoom: 18 });
+      } else if (userLocation && destLocation && userLocation.lng && destLocation.lng) {
+        const lons = [userLocation.lng, destLocation.lng];
+        const lats = [userLocation.lat, destLocation.lat];
+        const bounds = new mlgl.LngLatBounds(
+          [Math.min(...lons), Math.min(...lats)],
+          [Math.max(...lons), Math.max(...lats)]
+        );
+        map.fitBounds(bounds, { padding: 50, maxZoom: 16 });
+      } else if (userLocation && userLocation.lng) {
+        map.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 15 });
       }
     });
   };
@@ -684,18 +782,18 @@ export default function GetDirections() {
   const handleModeClick = (mode) => {
     setSelectedMode(mode);
     setSelectedRouteIndex(0); // Reset to first route when changing mode
-    import('leaflet').then(L => {
+    getMap((mlgl, map) => {
       if (routesData[mode] && routesData[mode].length > 0) {
-        drawRoutes(routesData[mode], L, mode, 0);
+        drawRoutes(routesData[mode], mlgl, map, mode, 0);
       }
     });
   };
 
   const handleRouteSelect = (index) => {
     setSelectedRouteIndex(index);
-    import('leaflet').then(L => {
+    getMap((mlgl, map) => {
       if (routesData[selectedMode] && routesData[selectedMode].length > 0) {
-        drawRoutes(routesData[selectedMode], L, selectedMode, index);
+        drawRoutes(routesData[selectedMode], mlgl, map, selectedMode, index);
       }
     });
   };
@@ -712,7 +810,7 @@ export default function GetDirections() {
   return (
     <>
       <Head>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossOrigin="" />
+        <link href="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.css" rel="stylesheet" />
       </Head>
 
       <div className="relative h-screen w-full bg-gray-100 overflow-hidden font-sans">

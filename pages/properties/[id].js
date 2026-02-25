@@ -644,6 +644,7 @@ export default function PropertyDetail() {
   return (
     <>
       <Head>
+        <link href="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.css" rel="stylesheet" />
       </Head>
       <div className="min-h-[calc(100vh-64px)] bg-[#F3F4F5] px-4 pt-4 pb-0 font-sans">
         <div className="max-w-6xl mx-auto">
