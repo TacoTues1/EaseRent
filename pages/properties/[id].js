@@ -228,7 +228,6 @@ export default function PropertyDetail() {
 
       import('maplibre-gl').then((mlglModule) => {
         const mlgl = mlglModule.default || mlglModule;
-        import('maplibre-gl/dist/maplibre-gl.css').catch(() => { });
 
         if (!locationMapRef.current || locationMapInstance.current) return
 
@@ -245,6 +244,9 @@ export default function PropertyDetail() {
           scrollZoom: true,
           attributionControl: false
         })
+
+        // Crucial Fix: Set map instance IMMEDIATELY to prevent double-inits in StrictMode
+        locationMapInstance.current = map
 
         map.addControl(new mlgl.NavigationControl({ showCompass: false }), 'top-right')
 
@@ -716,7 +718,7 @@ export default function PropertyDetail() {
                   {propertyImages.slice(1, 3).map((img, idx) => (
                     <div
                       key={idx}
-                      className="cursor-pointer overflow-hidden group"
+                      className="cursor-pointer overflow-hidden group w-full h-full relative"
                       onClick={() => { setCurrentImageIndex(idx + 1); setShowGalleryModal(true); }}
                     >
                       <img

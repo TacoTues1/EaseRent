@@ -94,7 +94,6 @@ export default function GetDirections() {
 
     import('maplibre-gl').then((mlglModule) => {
       const mlgl = mlglModule.default || mlglModule;
-      import('maplibre-gl/dist/maplibre-gl.css').catch(() => { });
 
       if (!mapRef.current || mapInstance.current) {
         isInitializing.current = false;
@@ -109,18 +108,32 @@ export default function GetDirections() {
         attributionControl: false
       });
 
+      // Crucial Fix: Set map instance IMMEDIATELY to prevent double-inits in StrictMode
+      mapInstance.current = map;
+
+      map.on('error', (e) => {
+        console.error("MapLibre Engine Error:", e.error || e);
+      });
+
       map.addControl(new mlgl.NavigationControl({ showCompass: false }), 'top-right');
       map.addControl(new mlgl.AttributionControl({ compact: false }), 'bottom-right');
 
       map.on('load', () => {
-        mapInstance.current = map;
+        console.log("MapLibre Map Fully Loaded");
         isInitializing.current = false;
-      })
+        // Fix for white map: force MapLibre to read the screen dimensions and paint tiles
+        setTimeout(() => {
+          if (mapInstance.current) {
+            mapInstance.current.resize();
+          }
+        }, 100);
+      });
 
     }).catch(err => {
-      console.error("Failed to load MapLibre", err);
+      console.error("Failed to load MapLibre Component", err);
       isInitializing.current = false;
     });
+
     return () => {
       if (mapInstance.current) {
         mapInstance.current.remove();
@@ -131,11 +144,18 @@ export default function GetDirections() {
     };
   }, []);
 
-  // Helper mapping callback
+  // Helper mapping callback - Guarantee Map is LOADED before we manipulate sources
   const getMap = (callback) => {
-    if (mapInstance.current) {
+    if (mapInstance.current && mapInstance.current.loaded()) {
       import('maplibre-gl').then((mlglModule) => {
         callback(mlglModule.default || mlglModule, mapInstance.current);
+      });
+    } else if (mapInstance.current) {
+      // If it exists but isn't finished loading yet, wait for it
+      mapInstance.current.once('load', () => {
+        import('maplibre-gl').then((mlglModule) => {
+          callback(mlglModule.default || mlglModule, mapInstance.current);
+        });
       });
     }
   }
@@ -816,7 +836,7 @@ export default function GetDirections() {
       <div className="relative h-screen w-full bg-gray-100 overflow-hidden font-sans">
 
         {/* MAP LAYER */}
-        <div id="map" ref={mapRef} className="absolute inset-0 z-0 outline-none" />
+        <div id="map" ref={mapRef} className="absolute inset-0 z-0 outline-none" style={{ width: '100%', height: '100%', position: 'absolute' }} />
 
         {/* TOP BAR */}
         <div className="absolute top-0 left-0 right-0 p-4 z-[500] flex justify-between items-start pointer-events-none">
