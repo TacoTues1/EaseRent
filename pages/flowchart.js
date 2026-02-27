@@ -16,27 +16,37 @@ const systemFlows = {
             // === ROW 1: Authentication ===
             { id: 'has_account', label: 'Has Account?', type: 'decision', x: 560, y: 120, icon: '🔐' },
             { id: 'register', label: 'Register\n(Tenant / Landlord)', type: 'process', x: 340, y: 210, icon: '📝' },
-            { id: 'login', label: 'Login\n(Email / Google)', type: 'process', x: 780, y: 210, icon: '🔑' },
+            { id: 'login', label: 'Login\n(Email/Google/FB)', type: 'process', x: 780, y: 210, icon: '🔑' },
 
             // === ROW 2: Role Split ===
             { id: 'role', label: 'User Role?', type: 'decision', x: 560, y: 310, icon: '👥' },
 
+            // === ADMIN COLUMN (Far Right) ===
+            { id: 'ad_dash', label: 'Admin Dashboard', type: 'start', x: 1200, y: 410, icon: '👑' },
+            { id: 'ad_users', label: 'User Management\nCRUD + Roles', type: 'process', x: 1200, y: 500, icon: '👥' },
+            { id: 'ad_stmts', label: 'Monthly Statements\nPDF via Brevo', type: 'process', x: 1200, y: 590, icon: '📄' },
+            { id: 'ad_reminders', label: 'Auto Reminders\nToggle ON/OFF', type: 'end', x: 1200, y: 680, icon: '🔔' },
+
             // === TENANT COLUMN (Left) ===
             { id: 't_dash', label: 'Tenant Dashboard', type: 'start', x: 200, y: 410, icon: '🏡' },
             { id: 't_browse', label: 'Browse & Search\nProperties', type: 'process', x: 200, y: 500, icon: '🔍' },
+            { id: 't_compare', label: 'Compare\nProperties', type: 'process', x: 30, y: 500, icon: '⚖️' },
+            { id: 't_favs', label: 'Favorites ❤️', type: 'process', x: 30, y: 590, icon: '❤️' },
             { id: 't_view', label: 'View Property\nDetails & Map', type: 'process', x: 200, y: 590, icon: '🏠' },
+            { id: 't_directions', label: 'Get Directions\nDrive/Bike/Walk', type: 'end', x: 30, y: 680, icon: '🧭' },
             { id: 't_book', label: 'Book a Viewing\nSchedule Date', type: 'process', x: 200, y: 680, icon: '📅' },
             { id: 't_approved', label: 'Approved?', type: 'decision', x: 200, y: 770, icon: '⏳' },
-            { id: 't_rejected', label: 'Rejected', type: 'end', x: 30, y: 860, icon: '❌' },
+            { id: 't_rejected', label: 'Rejected', type: 'end', x: 30, y: 770, icon: '❌' },
             { id: 't_attend', label: 'Attend Viewing', type: 'process', x: 200, y: 860, icon: '🏃' },
 
             // === LANDLORD COLUMN (Right) ===
             { id: 'l_dash', label: 'Landlord Dashboard', type: 'start', x: 920, y: 410, icon: '🏢' },
             { id: 'l_props', label: 'Manage Properties\nAdd / Edit / Images', type: 'process', x: 920, y: 500, icon: '🏠' },
+            { id: 'l_schedule', label: 'Set Schedule\nAvailable Days', type: 'process', x: 1120, y: 500, icon: '📋' },
             { id: 'l_bookings', label: 'Review Booking\nRequests', type: 'process', x: 920, y: 590, icon: '📅' },
             { id: 'l_approve', label: 'Approve or\nReject Booking', type: 'decision', x: 920, y: 680, icon: '✅' },
-            { id: 'l_rejected', label: 'Booking Rejected\nNotify Tenant', type: 'end', x: 1120, y: 680, icon: '❌' },
-            { id: 'l_assign', label: 'Assign Tenant\nto Property', type: 'process', x: 920, y: 770, icon: '📋' },
+            { id: 'l_rejected', label: 'Rejected\nNotify Tenant', type: 'end', x: 1120, y: 680, icon: '❌' },
+            { id: 'l_assign', label: 'Assign Tenant\n(4-Step Wizard)', type: 'process', x: 920, y: 770, icon: '📋' },
             { id: 'l_bills', label: 'Send Bills\n(Rent + Utilities)', type: 'process', x: 920, y: 860, icon: '📄' },
 
             // === CENTER: Move-in & Active Tenancy ===
@@ -44,50 +54,61 @@ const systemFlows = {
             { id: 'active', label: '🟢 Active Tenancy', type: 'start', x: 560, y: 1000, icon: '🏡' },
 
             // === ROW: Active Tenant Actions ===
-            { id: 'a_rent', label: 'Monthly Rent\nBills Due', type: 'process', x: 120, y: 1100, icon: '📄' },
-            { id: 'a_utils', label: 'Utility Bills\n(Water/Electric/WiFi)', type: 'process', x: 340, y: 1100, icon: '💡' },
-            { id: 'a_maint', label: 'Submit\nMaintenance', type: 'process', x: 560, y: 1100, icon: '🔧' },
-            { id: 'a_msg', label: 'Message\nLandlord', type: 'process', x: 780, y: 1100, icon: '💬' },
-            { id: 'a_msg_end', label: 'Message Sent\n& Delivered', type: 'end', x: 780, y: 1210, icon: '✅' },
-            { id: 'a_contract', label: 'Contract\nManagement', type: 'process', x: 1000, y: 1100, icon: '📝' },
+            { id: 'a_rent', label: 'Monthly Rent\nBills Due', type: 'process', x: 60, y: 1100, icon: '📄' },
+            { id: 'a_utils', label: 'Utility Bills\n(Water/Elec/WiFi)', type: 'process', x: 250, y: 1100, icon: '💡' },
+            { id: 'a_maint', label: 'Submit\nMaintenance', type: 'process', x: 440, y: 1100, icon: '🔧' },
+            { id: 'a_msg', label: 'Message\nLandlord', type: 'process', x: 630, y: 1100, icon: '💬' },
+            { id: 'a_msg_end', label: 'Message Sent\n& Delivered', type: 'end', x: 630, y: 1210, icon: '✅' },
+            { id: 'a_contract', label: 'Contract\nManagement', type: 'process', x: 820, y: 1100, icon: '📝' },
+            { id: 'a_family', label: 'Family\nMembers', type: 'process', x: 1010, y: 1100, icon: '�‍👩‍👧' },
+            { id: 'a_settings', label: 'Settings &\nProfile', type: 'process', x: 1200, y: 1100, icon: '⚙️' },
+
+            // === FAMILY FLOW ===
+            { id: 'f_add', label: 'Add Family\nMember', type: 'process', x: 1010, y: 1210, icon: '➕' },
+            { id: 'f_access', label: 'Family Can\nPay & Request', type: 'end', x: 1010, y: 1310, icon: '✅' },
+
+            // === SETTINGS END ===
+            { id: 'a_settings_end', label: 'Profile Updated\nPayment Methods', type: 'end', x: 1200, y: 1210, icon: '✅' },
 
             // === PAYMENT FLOW ===
-            { id: 'pay_method', label: 'Choose Payment\nMethod', type: 'decision', x: 230, y: 1210, icon: '💳' },
-            { id: 'pay_cash', label: 'Cash', type: 'process', x: 30, y: 1310, icon: '💵' },
-            { id: 'pay_qr', label: 'QR Code', type: 'process', x: 200, y: 1310, icon: '📱' },
-            { id: 'pay_pm', label: 'PayMongo\n(GCash/Maya/\nQR PH/Card)', type: 'process', x: 380, y: 1310, icon: '🏦' },
-            { id: 'pay_stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 560, y: 1310, icon: '💳' },
-            { id: 'pay_manual', label: 'Landlord\nConfirms', type: 'process', x: 120, y: 1430, icon: '👍' },
-            { id: 'pay_auto', label: 'Auto-Verified\n(Webhook/API)', type: 'process', x: 470, y: 1430, icon: '⚡' },
-            { id: 'pay_done', label: 'Bill Marked\nas Paid', type: 'end', x: 300, y: 1530, icon: '✅' },
+            { id: 'pay_method', label: 'Choose Payment\nMethod', type: 'decision', x: 155, y: 1210, icon: '💳' },
+            { id: 'pay_cash', label: 'Cash', type: 'process', x: 0, y: 1320, icon: '💵' },
+            { id: 'pay_qr', label: 'QR Code', type: 'process', x: 140, y: 1320, icon: '📱' },
+            { id: 'pay_pm', label: 'PayMongo\n(GCash/Maya/\nQR PH/Card)', type: 'process', x: 280, y: 1320, icon: '🏦' },
+            { id: 'pay_stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 420, y: 1320, icon: '💳' },
+            { id: 'pay_paypal', label: 'PayPal', type: 'process', x: 560, y: 1320, icon: '🅿️' },
+            { id: 'pay_manual', label: 'Landlord\nConfirms', type: 'process', x: 70, y: 1440, icon: '👍' },
+            { id: 'pay_auto', label: 'Auto-Verified\n(Webhook/API)', type: 'process', x: 420, y: 1440, icon: '⚡' },
+            { id: 'pay_done', label: 'Bill Marked\nas Paid', type: 'process', x: 250, y: 1540, icon: '✅' },
+            { id: 'pay_payout', label: 'Auto Payout\n99% → Landlord\n1% Platform Fee', type: 'process', x: 250, y: 1640, icon: '💸' },
+            { id: 'pay_end', label: 'Payment\nComplete', type: 'end', x: 250, y: 1750, icon: '✅' },
 
             // === MAINTENANCE FLOW ===
-            { id: 'm_submit', label: 'Tenant Submits\nRequest + Photos', type: 'process', x: 560, y: 1210, icon: '📸' },
-            { id: 'm_landlord', label: 'Landlord Reviews\n& Responds', type: 'process', x: 560, y: 1310, icon: '👁️' },
-            { id: 'm_status', label: 'Status: Pending\n→ In Progress\n→ Completed', type: 'end', x: 560, y: 1430, icon: '✅' },
+            { id: 'm_submit', label: 'Tenant Submits\nRequest + Photos', type: 'process', x: 440, y: 1210, icon: '📸' },
+            { id: 'm_landlord', label: 'Landlord Reviews\n& Responds', type: 'process', x: 440, y: 1320, icon: '👁️' },
+            { id: 'm_status', label: 'Status: Pending\n→ In Progress\n→ Completed', type: 'end', x: 440, y: 1440, icon: '✅' },
 
             // === CONTRACT LIFECYCLE ===
-            { id: 'c_near_end', label: 'Contract Nearing\nEnd (40 days)', type: 'process', x: 890, y: 1210, icon: '⚠️' },
-            { id: 'c_decision', label: 'Renew or\nEnd?', type: 'decision', x: 890, y: 1310, icon: '🤔' },
-            { id: 'c_renew', label: 'Request Renewal\n→ Landlord Approves\n→ Pay Renewal', type: 'process', x: 780, y: 1430, icon: '🔄' },
-            { id: 'c_renew_end', label: 'Contract Renewed\n→ Back to Active', type: 'end', x: 780, y: 1560, icon: '🟢' },
-            { id: 'c_end', label: 'End Occupancy\n→ Move Out\n→ Deposit Return', type: 'process', x: 1020, y: 1430, icon: '🚪' },
+            { id: 'c_near_end', label: 'Contract Nearing\nEnd (40 days)', type: 'process', x: 750, y: 1210, icon: '⚠️' },
+            { id: 'c_decision', label: 'Renew or\nEnd?', type: 'decision', x: 750, y: 1320, icon: '🤔' },
+            { id: 'c_renew', label: 'Request Renewal\n→ Landlord Approves\n→ Pay Renewal', type: 'process', x: 650, y: 1440, icon: '🔄' },
+            { id: 'c_renew_end', label: 'Contract\nRenewed', type: 'end', x: 650, y: 1570, icon: '🟢' },
+            { id: 'c_end', label: 'End Occupancy\n→ Move Out\n→ Deposit Return', type: 'process', x: 880, y: 1440, icon: '🚪' },
+            { id: 'review', label: 'Leave Property\nReview ⭐', type: 'end', x: 880, y: 1570, icon: '⭐' },
 
             // === NOTIFICATION SYSTEM ===
-            { id: 'n_hub', label: 'Notification System\n(Auto-Triggered)', type: 'decision', x: 560, y: 1610, icon: '🔔' },
-            { id: 'n_rent_r', label: 'Rent Reminder\n(3 days before)', type: 'process', x: 80, y: 1720, icon: '🏠' },
-            { id: 'n_util_r', label: 'Utility Reminder\n(Day 1-3 of month)', type: 'process', x: 280, y: 1720, icon: '💡' },
-            { id: 'n_booking_r', label: 'Booking Reminder\n(12 hrs before)', type: 'process', x: 480, y: 1720, icon: '📅' },
-            { id: 'n_contract_r', label: 'Contract Expiry\n(40 days before)', type: 'process', x: 680, y: 1720, icon: '📄' },
-            { id: 'n_payment_r', label: 'Payment Events\n(Paid/Late)', type: 'process', x: 890, y: 1720, icon: '💰' },
-            { id: 'n_msg_r', label: 'Unread Message\n(6 hrs old)', type: 'process', x: 1070, y: 1720, icon: '💬' },
-            { id: 'n_channels', label: 'Delivery', type: 'decision', x: 560, y: 1840, icon: '📤' },
-            { id: 'n_inapp', label: 'In-App\nToast + Bell', type: 'end', x: 340, y: 1940, icon: '🔔' },
-            { id: 'n_email', label: 'Email\n(Brevo)', type: 'end', x: 560, y: 1940, icon: '📧' },
-            { id: 'n_sms', label: 'SMS\n(Gateway)', type: 'end', x: 780, y: 1940, icon: '📱' },
-
-            // === REVIEW ===
-            { id: 'review', label: 'Leave Property\nReview ⭐', type: 'end', x: 1020, y: 1560, icon: '⭐' },
+            { id: 'n_hub', label: 'Notification System\n(Auto-Triggered)', type: 'decision', x: 560, y: 1820, icon: '🔔' },
+            { id: 'n_rent_r', label: 'Rent Reminder\n(3 days before)', type: 'process', x: 80, y: 1930, icon: '🏠' },
+            { id: 'n_util_r', label: 'Utility Reminder\n(Day 1-3)', type: 'process', x: 260, y: 1930, icon: '💡' },
+            { id: 'n_booking_r', label: 'Booking Reminder\n(12 hrs before)', type: 'process', x: 440, y: 1930, icon: '📅' },
+            { id: 'n_contract_r', label: 'Contract Expiry\n(40 days)', type: 'process', x: 620, y: 1930, icon: '📄' },
+            { id: 'n_payment_r', label: 'Payment Events\n(Paid/Late)', type: 'process', x: 800, y: 1930, icon: '💰' },
+            { id: 'n_msg_r', label: 'Unread Message\n(6 hrs old)', type: 'process', x: 980, y: 1930, icon: '💬' },
+            { id: 'n_movein_r', label: 'Move-in\nWelcome', type: 'process', x: 1140, y: 1930, icon: '🏠' },
+            { id: 'n_channels', label: 'Delivery\nChannel?', type: 'decision', x: 560, y: 2050, icon: '�' },
+            { id: 'n_inapp', label: 'In-App\nToast + Bell', type: 'end', x: 340, y: 2160, icon: '�' },
+            { id: 'n_email', label: 'Email\n(Brevo)', type: 'end', x: 560, y: 2160, icon: '�' },
+            { id: 'n_sms', label: 'SMS\n(Gateway)', type: 'end', x: 780, y: 2160, icon: '📱' },
         ],
         edges: [
             // Entry
@@ -100,10 +121,19 @@ const systemFlows = {
             // Role split
             { from: 'role', to: 't_dash', label: 'Tenant' },
             { from: 'role', to: 'l_dash', label: 'Landlord' },
+            { from: 'role', to: 'ad_dash', label: 'Admin' },
+
+            // Admin flow
+            { from: 'ad_dash', to: 'ad_users' },
+            { from: 'ad_users', to: 'ad_stmts' },
+            { from: 'ad_stmts', to: 'ad_reminders' },
 
             // Tenant flow
             { from: 't_dash', to: 't_browse' },
+            { from: 't_browse', to: 't_compare' },
             { from: 't_browse', to: 't_view' },
+            { from: 't_compare', to: 't_favs' },
+            { from: 't_view', to: 't_directions' },
             { from: 't_view', to: 't_book' },
             { from: 't_book', to: 't_approved' },
             { from: 't_approved', to: 't_rejected', label: 'No' },
@@ -112,6 +142,7 @@ const systemFlows = {
 
             // Landlord flow
             { from: 'l_dash', to: 'l_props' },
+            { from: 'l_props', to: 'l_schedule' },
             { from: 'l_props', to: 'l_bookings' },
             { from: 'l_bookings', to: 'l_approve' },
             { from: 'l_approve', to: 'l_assign', label: 'Yes' },
@@ -129,6 +160,15 @@ const systemFlows = {
             { from: 'active', to: 'a_msg' },
             { from: 'a_msg', to: 'a_msg_end' },
             { from: 'active', to: 'a_contract' },
+            { from: 'active', to: 'a_family' },
+            { from: 'active', to: 'a_settings' },
+
+            // Family flow
+            { from: 'a_family', to: 'f_add' },
+            { from: 'f_add', to: 'f_access' },
+
+            // Settings
+            { from: 'a_settings', to: 'a_settings_end' },
 
             // Payment flow
             { from: 'a_rent', to: 'pay_method' },
@@ -137,12 +177,16 @@ const systemFlows = {
             { from: 'pay_method', to: 'pay_qr', label: 'QR' },
             { from: 'pay_method', to: 'pay_pm', label: 'Online' },
             { from: 'pay_method', to: 'pay_stripe', label: 'Card' },
+            { from: 'pay_method', to: 'pay_paypal', label: 'PayPal' },
             { from: 'pay_cash', to: 'pay_manual' },
             { from: 'pay_qr', to: 'pay_manual' },
             { from: 'pay_pm', to: 'pay_auto' },
             { from: 'pay_stripe', to: 'pay_auto' },
+            { from: 'pay_paypal', to: 'pay_auto' },
             { from: 'pay_manual', to: 'pay_done' },
             { from: 'pay_auto', to: 'pay_done' },
+            { from: 'pay_done', to: 'pay_payout' },
+            { from: 'pay_payout', to: 'pay_end' },
 
             // Maintenance flow
             { from: 'a_maint', to: 'm_submit' },
@@ -159,7 +203,7 @@ const systemFlows = {
             { from: 'c_end', to: 'n_hub' },
 
             // Notifications
-            { from: 'pay_done', to: 'n_hub' },
+            { from: 'pay_end', to: 'n_hub' },
             { from: 'm_status', to: 'n_hub' },
             { from: 'c_renew', to: 'n_hub' },
             { from: 'n_hub', to: 'n_rent_r' },
@@ -168,12 +212,14 @@ const systemFlows = {
             { from: 'n_hub', to: 'n_contract_r' },
             { from: 'n_hub', to: 'n_payment_r' },
             { from: 'n_hub', to: 'n_msg_r' },
+            { from: 'n_hub', to: 'n_movein_r' },
             { from: 'n_rent_r', to: 'n_channels' },
             { from: 'n_util_r', to: 'n_channels' },
             { from: 'n_booking_r', to: 'n_channels' },
             { from: 'n_contract_r', to: 'n_channels' },
             { from: 'n_payment_r', to: 'n_channels' },
             { from: 'n_msg_r', to: 'n_channels' },
+            { from: 'n_movein_r', to: 'n_channels' },
             { from: 'n_channels', to: 'n_inapp' },
             { from: 'n_channels', to: 'n_email' },
             { from: 'n_channels', to: 'n_sms' },
@@ -253,18 +299,21 @@ const systemFlows = {
             { id: 'bill', label: 'Landlord Sends Bill\nor Auto-Generated', type: 'start', x: 400, y: 40, icon: '📄' },
             { id: 'tenant_views', label: 'Tenant Views\nPending Bill', type: 'process', x: 400, y: 130, icon: '👁️' },
             { id: 'method', label: 'Choose Payment\nMethod', type: 'decision', x: 400, y: 230, icon: '💳' },
-            { id: 'cash', label: 'Cash Payment', type: 'process', x: 100, y: 340, icon: '💵' },
-            { id: 'qr', label: 'QR Code Payment', type: 'process', x: 280, y: 340, icon: '📱' },
-            { id: 'paymongo', label: 'PayMongo\n(GCash, Maya, Card,\nQR PH, GrabPay)', type: 'process', x: 510, y: 340, icon: '🏦' },
-            { id: 'stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 720, y: 340, icon: '💳' },
-            { id: 'cash_confirm', label: 'Tenant Confirms\n→ Landlord Verifies', type: 'process', x: 100, y: 460, icon: '✋' },
-            { id: 'qr_proof', label: 'Upload Proof\n+ Reference #', type: 'process', x: 280, y: 460, icon: '📸' },
-            { id: 'pm_checkout', label: 'PayMongo Checkout\n→ Webhook/Polling', type: 'process', x: 510, y: 460, icon: '🔄' },
-            { id: 'stripe_pay', label: 'Stripe Form\n→ Auto-Processes', type: 'process', x: 720, y: 460, icon: '✅' },
-            { id: 'landlord_confirm', label: 'Landlord Confirms\nPayment', type: 'process', x: 200, y: 570, icon: '👍' },
-            { id: 'auto_confirm', label: 'Auto-Confirmed\nby Gateway', type: 'process', x: 600, y: 570, icon: '⚡' },
-            { id: 'paid', label: 'Bill Marked as Paid', type: 'process', x: 400, y: 660, icon: '✅' },
-            { id: 'notify', label: 'Email + SMS + In-App\nNotifications Sent', type: 'end', x: 400, y: 750, icon: '🔔' },
+            { id: 'cash', label: 'Cash Payment', type: 'process', x: 60, y: 340, icon: '💵' },
+            { id: 'qr', label: 'QR Code Payment', type: 'process', x: 220, y: 340, icon: '📱' },
+            { id: 'paymongo', label: 'PayMongo\n(GCash, Maya, Card,\nQR PH, GrabPay)', type: 'process', x: 400, y: 340, icon: '🏦' },
+            { id: 'stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 590, y: 340, icon: '💳' },
+            { id: 'paypal', label: 'PayPal', type: 'process', x: 740, y: 340, icon: '🅿️' },
+            { id: 'cash_confirm', label: 'Tenant Confirms\n→ Landlord Verifies', type: 'process', x: 60, y: 460, icon: '✋' },
+            { id: 'qr_proof', label: 'Upload Proof\n+ Reference #', type: 'process', x: 220, y: 460, icon: '📸' },
+            { id: 'pm_checkout', label: 'PayMongo Checkout\n→ Webhook/Polling', type: 'process', x: 400, y: 460, icon: '🔄' },
+            { id: 'stripe_pay', label: 'Stripe Form\n→ Auto-Processes', type: 'process', x: 590, y: 460, icon: '✅' },
+            { id: 'paypal_pay', label: 'PayPal Checkout\n→ Capture Order', type: 'process', x: 740, y: 460, icon: '✅' },
+            { id: 'landlord_confirm', label: 'Landlord Confirms\nPayment', type: 'process', x: 150, y: 570, icon: '👍' },
+            { id: 'auto_confirm', label: 'Auto-Confirmed\nby Gateway', type: 'process', x: 550, y: 570, icon: '⚡' },
+            { id: 'paid', label: 'Bill Marked as Paid', type: 'process', x: 350, y: 660, icon: '✅' },
+            { id: 'payout', label: 'Auto Payout\n99% → Landlord\n1% Platform Fee', type: 'process', x: 350, y: 750, icon: '💸' },
+            { id: 'notify', label: 'Email + SMS + In-App\nNotifications Sent', type: 'end', x: 350, y: 840, icon: '🔔' },
         ],
         edges: [
             { from: 'bill', to: 'tenant_views' },
@@ -273,17 +322,21 @@ const systemFlows = {
             { from: 'method', to: 'qr', label: 'QR' },
             { from: 'method', to: 'paymongo', label: 'Online' },
             { from: 'method', to: 'stripe', label: 'Card' },
+            { from: 'method', to: 'paypal', label: 'PayPal' },
             { from: 'cash', to: 'cash_confirm' },
             { from: 'qr', to: 'qr_proof' },
             { from: 'paymongo', to: 'pm_checkout' },
             { from: 'stripe', to: 'stripe_pay' },
+            { from: 'paypal', to: 'paypal_pay' },
             { from: 'cash_confirm', to: 'landlord_confirm' },
             { from: 'qr_proof', to: 'landlord_confirm' },
             { from: 'pm_checkout', to: 'auto_confirm' },
             { from: 'stripe_pay', to: 'auto_confirm' },
+            { from: 'paypal_pay', to: 'auto_confirm' },
             { from: 'landlord_confirm', to: 'paid' },
             { from: 'auto_confirm', to: 'paid' },
-            { from: 'paid', to: 'notify' },
+            { from: 'paid', to: 'payout' },
+            { from: 'payout', to: 'notify' },
         ]
     },
     landlord: {
@@ -370,16 +423,19 @@ const systemFlows = {
         description: 'Technology stack and integrations',
         nodes: [
             { id: 'client', label: 'Next.js Frontend\n(React + TailwindCSS)', type: 'start', x: 400, y: 40, icon: '🖥️' },
-            { id: 'api', label: 'Next.js API Routes\n(/api/*)', type: 'process', x: 400, y: 150, icon: '⚙️' },
+            { id: 'api', label: 'Next.js API Routes\n(/api/* — 35+ endpoints)', type: 'process', x: 400, y: 150, icon: '⚙️' },
             { id: 'services', label: 'External Services', type: 'decision', x: 400, y: 260, icon: '🔌' },
-            { id: 'supabase', label: 'Supabase\nDB + Auth + Storage\n+ Realtime', type: 'process', x: 130, y: 380, icon: '🗄️' },
-            { id: 'paymongo', label: 'PayMongo\nGCash, Maya, QR PH\nCards, GrabPay', type: 'process', x: 340, y: 380, icon: '🏦' },
-            { id: 'stripe', label: 'Stripe\nCredit Card\nPayments', type: 'process', x: 530, y: 380, icon: '💳' },
-            { id: 'brevo', label: 'Brevo\nEmail\nService', type: 'process', x: 700, y: 380, icon: '📧' },
-            { id: 'sms_gw', label: 'SMS Gateway\nText Notifications', type: 'process', x: 130, y: 510, icon: '📱' },
-            { id: 'vercel', label: 'Vercel\nHosting + Serverless', type: 'process', x: 400, y: 510, icon: '▲' },
-            { id: 'webhooks', label: 'Webhooks\nPayMongo → API\n(Real-time)', type: 'process', x: 670, y: 510, icon: '🔄' },
-            { id: 'realtime', label: 'Supabase Realtime\nLive Notifications\n+ Chat', type: 'end', x: 400, y: 620, icon: '⚡' },
+            { id: 'supabase', label: 'Supabase\nDB + Auth + Storage\n+ Realtime + RLS', type: 'process', x: 80, y: 380, icon: '🗄️' },
+            { id: 'paymongo', label: 'PayMongo\nGCash, Maya, QR PH\nCards, GrabPay', type: 'process', x: 260, y: 380, icon: '🏦' },
+            { id: 'stripe', label: 'Stripe\nCredit Card\nPayments', type: 'process', x: 430, y: 380, icon: '💳' },
+            { id: 'paypal', label: 'PayPal\nOnline\nPayments', type: 'process', x: 590, y: 380, icon: '🅿️' },
+            { id: 'brevo', label: 'Brevo\nEmail Service\n(20+ templates)', type: 'process', x: 750, y: 380, icon: '📧' },
+            { id: 'sms_gw', label: 'SMS Gateway\n(15+ SMS types)', type: 'process', x: 80, y: 510, icon: '📱' },
+            { id: 'maplibre', label: 'MapLibre GL\nMaps + Directions\n+ Navigation', type: 'process', x: 260, y: 510, icon: '�️' },
+            { id: 'vercel', label: 'Vercel\nHosting + Serverless\n+ Analytics', type: 'process', x: 430, y: 510, icon: '▲' },
+            { id: 'webhooks', label: 'Webhooks\nPayMongo + Stripe\n(Real-time)', type: 'process', x: 590, y: 510, icon: '🔄' },
+            { id: 'pdfkit', label: 'PDFKit\nMonthly Statements\n+ Reports', type: 'process', x: 750, y: 510, icon: '�' },
+            { id: 'realtime', label: 'Supabase Realtime\nLive Notifications\n+ Chat + Presence', type: 'end', x: 400, y: 620, icon: '⚡' },
         ],
         edges: [
             { from: 'client', to: 'api' },
@@ -387,14 +443,94 @@ const systemFlows = {
             { from: 'services', to: 'supabase' },
             { from: 'services', to: 'paymongo' },
             { from: 'services', to: 'stripe' },
+            { from: 'services', to: 'paypal' },
             { from: 'services', to: 'brevo' },
             { from: 'supabase', to: 'sms_gw' },
+            { from: 'supabase', to: 'maplibre' },
             { from: 'paymongo', to: 'vercel' },
-            { from: 'stripe', to: 'vercel' },
-            { from: 'brevo', to: 'webhooks' },
+            { from: 'stripe', to: 'webhooks' },
+            { from: 'brevo', to: 'pdfkit' },
             { from: 'sms_gw', to: 'realtime' },
+            { from: 'maplibre', to: 'realtime' },
             { from: 'vercel', to: 'realtime' },
             { from: 'webhooks', to: 'realtime' },
+            { from: 'pdfkit', to: 'realtime' },
+        ]
+    },
+    admin: {
+        title: 'Admin & Family System',
+        description: 'Admin management and family member flows',
+        nodes: [
+            { id: 'admin_login', label: 'Admin Logs In', type: 'start', x: 400, y: 40, icon: '🔐' },
+            { id: 'admin_dash', label: 'Admin Dashboard\nOverview + Stats', type: 'process', x: 400, y: 130, icon: '📊' },
+            { id: 'admin_action', label: 'Choose Action', type: 'decision', x: 400, y: 230, icon: '🎯' },
+            { id: 'user_mgmt', label: 'User Management\nCRUD + Role Change', type: 'process', x: 100, y: 340, icon: '👥' },
+            { id: 'prop_mgmt', label: 'Property\nManagement', type: 'process', x: 280, y: 340, icon: '🏠' },
+            { id: 'pay_hist', label: 'Payment History\n& Revenue', type: 'process', x: 460, y: 340, icon: '💰' },
+            { id: 'bookings_l', label: 'Bookings List\n& Schedules', type: 'process', x: 640, y: 340, icon: '📅' },
+            { id: 'auto_procs', label: 'Automated\nProcesses', type: 'decision', x: 250, y: 460, icon: '⚡' },
+            { id: 'monthly_stmt', label: 'Monthly Statements\n(PDF via Brevo)', type: 'process', x: 100, y: 560, icon: '📄' },
+            { id: 'reminder_toggle', label: 'Payment Reminders\nToggle ON/OFF', type: 'process', x: 400, y: 560, icon: '🔔' },
+            { id: 'auto_send', label: 'Auto-Send\n30th of Month', type: 'end', x: 100, y: 660, icon: '✅' },
+            // Family Member Flow
+            { id: 'family_start', label: 'Primary Tenant\n(Has Occupancy)', type: 'start', x: 700, y: 460, icon: '👤' },
+            { id: 'add_family', label: 'Add Family\nMember by Search', type: 'process', x: 700, y: 550, icon: '👨‍👩‍👧' },
+            { id: 'family_access', label: 'Family Member\nGets Access', type: 'process', x: 700, y: 640, icon: '🏡' },
+            { id: 'family_actions', label: 'View Bills • Pay\nMaintenance Req', type: 'end', x: 700, y: 730, icon: '✅' },
+        ],
+        edges: [
+            { from: 'admin_login', to: 'admin_dash' },
+            { from: 'admin_dash', to: 'admin_action' },
+            { from: 'admin_action', to: 'user_mgmt' },
+            { from: 'admin_action', to: 'prop_mgmt' },
+            { from: 'admin_action', to: 'pay_hist' },
+            { from: 'admin_action', to: 'bookings_l' },
+            { from: 'user_mgmt', to: 'auto_procs' },
+            { from: 'prop_mgmt', to: 'auto_procs' },
+            { from: 'auto_procs', to: 'monthly_stmt', label: 'Statements' },
+            { from: 'auto_procs', to: 'reminder_toggle', label: 'Reminders' },
+            { from: 'monthly_stmt', to: 'auto_send' },
+            { from: 'family_start', to: 'add_family' },
+            { from: 'add_family', to: 'family_access' },
+            { from: 'family_access', to: 'family_actions' },
+        ]
+    },
+    discovery: {
+        title: 'Property Discovery',
+        description: 'Search, compare, favorites, directions, and booking flow',
+        nodes: [
+            { id: 'visitor', label: 'Visitor / Tenant\nArrives', type: 'start', x: 400, y: 40, icon: '🌐' },
+            { id: 'homepage', label: 'Homepage\nFeatured + Top Rated\n+ Most Favorited', type: 'process', x: 400, y: 140, icon: '🏠' },
+            { id: 'search', label: 'Search & Filter\nPrice • Location\n• Amenities', type: 'process', x: 400, y: 250, icon: '🔍' },
+            { id: 'browse', label: 'All Properties\nGrid View', type: 'process', x: 180, y: 350, icon: '📋' },
+            { id: 'compare', label: 'Compare\n(Up to 3)', type: 'process', x: 400, y: 350, icon: '⚖️' },
+            { id: 'favorites', label: 'Toggle\nFavorites ❤️', type: 'process', x: 620, y: 350, icon: '❤️' },
+            { id: 'detail', label: 'Property Detail\nImages • Reviews\n• Amenities • Map', type: 'process', x: 400, y: 460, icon: '🏡' },
+            { id: 'map_action', label: 'Map Action?', type: 'decision', x: 180, y: 570, icon: '🗺️' },
+            { id: 'inline_route', label: 'Inline Route\nCalculation', type: 'process', x: 60, y: 670, icon: '📍' },
+            { id: 'full_nav', label: 'Full Navigation\nDrive • Bike • Walk', type: 'process', x: 250, y: 670, icon: '🧭' },
+            { id: 'book_view', label: 'Book Viewing\nSelect Date + Slot', type: 'process', x: 500, y: 570, icon: '📅' },
+            { id: 'needs_login', label: 'Logged In?', type: 'decision', x: 500, y: 670, icon: '🔐' },
+            { id: 'auth_modal', label: 'Auth Modal\nSign In / Sign Up', type: 'process', x: 680, y: 670, icon: '🔑' },
+            { id: 'booking_sent', label: 'Booking Request\nSent to Landlord', type: 'end', x: 500, y: 770, icon: '✅' },
+        ],
+        edges: [
+            { from: 'visitor', to: 'homepage' },
+            { from: 'homepage', to: 'search' },
+            { from: 'search', to: 'browse' },
+            { from: 'search', to: 'compare' },
+            { from: 'search', to: 'favorites' },
+            { from: 'browse', to: 'detail' },
+            { from: 'compare', to: 'detail' },
+            { from: 'favorites', to: 'detail' },
+            { from: 'detail', to: 'map_action' },
+            { from: 'detail', to: 'book_view' },
+            { from: 'map_action', to: 'inline_route', label: 'Inline' },
+            { from: 'map_action', to: 'full_nav', label: 'Navigate' },
+            { from: 'book_view', to: 'needs_login' },
+            { from: 'needs_login', to: 'auth_modal', label: 'No' },
+            { from: 'needs_login', to: 'booking_sent', label: 'Yes' },
+            { from: 'auth_modal', to: 'booking_sent' },
         ]
     }
 }
@@ -411,19 +547,29 @@ function FlowchartCanvas({ flow }) {
     const maxX = Math.max(...flow.nodes.map(n => n.x)) + 200
     const maxY = Math.max(...flow.nodes.map(n => n.y)) + 100
 
+    const nodeW = 160
     const getNodeCenter = (node) => {
-        const w = node.type === 'decision' ? 160 : 160
-        const h = node.type === 'decision' ? 80 : 70
-        return { x: node.x + w / 2, y: node.y + h / 2 }
+        const h = node.type === 'decision' ? 90 : 70
+        return { x: node.x + nodeW / 2, y: node.y + h / 2 }
     }
 
     const getNodeById = (id) => flow.nodes.find(n => n.id === id)
 
     const nodeColors = {
-        start: { bg: 'from-emerald-500 to-green-600', border: 'border-emerald-400', text: 'text-white', shadow: 'shadow-emerald-200' },
-        process: { bg: 'from-slate-700 to-slate-900', border: 'border-slate-500', text: 'text-white', shadow: 'shadow-slate-300' },
-        decision: { bg: 'from-amber-400 to-orange-500', border: 'border-amber-300', text: 'text-white', shadow: 'shadow-amber-200' },
-        end: { bg: 'from-blue-500 to-indigo-600', border: 'border-blue-400', text: 'text-white', shadow: 'shadow-blue-200' },
+        start: { bg: 'from-emerald-500 to-green-600', text: 'text-white', shadow: 'shadow-emerald-200' },
+        process: { bg: 'from-slate-700 to-slate-900', text: 'text-white', shadow: 'shadow-slate-300' },
+        decision: { bg: 'from-amber-400 to-orange-500', text: 'text-white', shadow: 'shadow-amber-200' },
+        end: { bg: 'from-blue-500 to-indigo-600', text: 'text-white', shadow: 'shadow-blue-200' },
+    }
+
+    // Shape styles per type
+    const getShapeStyle = (type) => {
+        switch (type) {
+            case 'decision': return { clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', padding: '28px 10px' }
+            case 'start': return { borderRadius: '9999px', padding: '10px 16px' }
+            case 'end': return { borderRadius: '9999px', padding: '10px 16px', border: '3px solid rgba(255,255,255,0.4)' }
+            default: return { borderRadius: '12px', padding: '10px 12px' }
+        }
     }
 
     return (
@@ -431,7 +577,7 @@ function FlowchartCanvas({ flow }) {
             {/* Zoom Controls */}
             <div className="sticky top-3 right-3 z-20 flex justify-end px-3">
                 <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl shadow-sm px-2 py-1">
-                    <button onClick={() => setScale(s => Math.max(0.4, s - 0.1))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
+                    <button onClick={() => setScale(s => Math.max(0.3, s - 0.1))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
                     </button>
                     <span className="text-xs font-mono text-gray-400 w-10 text-center">{Math.round(scale * 100)}%</span>
@@ -444,10 +590,10 @@ function FlowchartCanvas({ flow }) {
 
             <div
                 className="relative p-8 min-w-[860px]"
-                style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: maxX + 60, height: maxY + 60 }}
+                style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: maxX + 60, height: maxY + 80 }}
             >
                 {/* SVG Arrows */}
-                <svg className="absolute inset-0 pointer-events-none" style={{ width: maxX + 60, height: maxY + 60 }}>
+                <svg className="absolute inset-0 pointer-events-none" style={{ width: maxX + 60, height: maxY + 80 }}>
                     <defs>
                         <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                             <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
@@ -460,18 +606,17 @@ function FlowchartCanvas({ flow }) {
                         const from = getNodeCenter(fromNode)
                         const to = getNodeCenter(toNode)
 
-                        // Offset to avoid overlapping start/end at node border
                         const dx = to.x - from.x
                         const dy = to.y - from.y
                         const dist = Math.sqrt(dx * dx + dy * dy)
-                        const offsetStart = 40
-                        const offsetEnd = 40
+                        if (dist === 0) return null
+                        const offsetStart = fromNode.type === 'decision' ? 50 : 40
+                        const offsetEnd = toNode.type === 'decision' ? 50 : 40
                         const sx = from.x + (dx / dist) * offsetStart
                         const sy = from.y + (dy / dist) * offsetStart
                         const ex = to.x - (dx / dist) * offsetEnd
                         const ey = to.y - (dy / dist) * offsetEnd
 
-                        // Midpoint for label
                         const mx = (sx + ex) / 2
                         const my = (sy + ey) / 2
 
@@ -486,7 +631,7 @@ function FlowchartCanvas({ flow }) {
                                 />
                                 {edge.label && (
                                     <>
-                                        <rect x={mx - 20} y={my - 10} width="40" height="20" rx="6" fill="white" stroke="#e2e8f0" strokeWidth="1" />
+                                        <rect x={mx - 22} y={my - 10} width="44" height="20" rx="6" fill="white" stroke="#e2e8f0" strokeWidth="1" />
                                         <text x={mx} y={my + 4} textAnchor="middle" fontSize="10" fontWeight="600" fill="#64748b">
                                             {edge.label}
                                         </text>
@@ -501,26 +646,24 @@ function FlowchartCanvas({ flow }) {
                 {flow.nodes.map((node) => {
                     const colors = nodeColors[node.type]
                     const isHovered = hoveredNode === node.id
-                    const isDecision = node.type === 'decision'
                     const lines = node.label.split('\n')
+                    const shapeStyle = getShapeStyle(node.type)
 
                     return (
                         <div
                             key={node.id}
                             className={`absolute transition-all duration-200 cursor-default select-none ${isHovered ? 'z-10 scale-105' : 'z-0'}`}
-                            style={{ left: node.x, top: node.y, width: 160 }}
+                            style={{ left: node.x, top: node.y, width: nodeW }}
                             onMouseEnter={() => setHoveredNode(node.id)}
                             onMouseLeave={() => setHoveredNode(null)}
                         >
-                            <div className={`
-                relative bg-gradient-to-br ${colors.bg} ${colors.text}
-                ${isDecision ? 'rotate-0 rounded-xl border-2 border-amber-300' : 'rounded-xl border border-white/20'}
-                shadow-lg ${isHovered ? `shadow-xl ${colors.shadow}` : ''}
-                px-3 py-3 text-center
-              `}>
-                                <div className="text-xl mb-1">{node.icon}</div>
+                            <div
+                                className={`relative bg-gradient-to-br ${colors.bg} ${colors.text} shadow-lg ${isHovered ? `shadow-xl ${colors.shadow}` : ''} text-center`}
+                                style={shapeStyle}
+                            >
+                                <div className="text-lg mb-0.5">{node.icon}</div>
                                 {lines.map((line, i) => (
-                                    <div key={i} className="text-[11px] font-semibold leading-tight">{line}</div>
+                                    <div key={i} className="text-[10px] font-semibold leading-tight">{line}</div>
                                 ))}
                             </div>
                         </div>
@@ -561,6 +704,8 @@ export default function FlowchartPage() {
         landlord: '🏢',
         notifications: '🔔',
         architecture: '⚙️',
+        admin: '👑',
+        discovery: '🔍',
     }
 
     return (
@@ -607,9 +752,10 @@ export default function FlowchartPage() {
                         <div className="flex flex-wrap justify-center gap-6 mt-10">
                             {[
                                 { label: 'User Roles', value: '3', icon: '👥' },
-                                { label: 'Payment Methods', value: '6+', icon: '💳' },
-                                { label: 'Notification Types', value: '15+', icon: '🔔' },
-                                { label: 'API Endpoints', value: '30+', icon: '⚙️' },
+                                { label: 'Payment Methods', value: '7+', icon: '💳' },
+                                { label: 'Notification Types', value: '20+', icon: '🔔' },
+                                { label: 'API Endpoints', value: '35+', icon: '⚙️' },
+                                { label: 'Family Members', value: '✓', icon: '👨‍👩‍👧' },
                             ].map((stat, i) => (
                                 <div key={i} className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-5 py-3 backdrop-blur-sm">
                                     <span className="text-2xl">{stat.icon}</span>
@@ -684,27 +830,27 @@ export default function FlowchartPage() {
                         {[
                             {
                                 icon: '🏠', title: 'Property Management',
-                                items: ['Add/edit properties with images', 'Set availability status', 'Property badges (Top Rated, Most Favorite)', 'Map integration with directions']
+                                items: ['Add/edit properties with images', 'Set availability status', 'Property badges (Top Rated, Most Favorite)', 'Map integration + turn-by-turn navigation', 'Compare up to 3 properties', 'Favorites system']
                             },
                             {
                                 icon: '📅', title: 'Booking System',
-                                items: ['Schedule property viewings', 'Landlord approval workflow', 'Automatic reminders (12h before)', 'Calendar management']
+                                items: ['Schedule property viewings', 'Landlord approval workflow', 'Automatic reminders (12h before)', 'Calendar management', 'Landlord schedule day setup']
                             },
                             {
                                 icon: '💰', title: 'Payment Processing',
-                                items: ['PayMongo (GCash, Maya, QR PH, Card)', 'Stripe (Credit Card)', 'Cash + QR Code (manual)', 'Auto billing & late fees']
+                                items: ['PayMongo (GCash, Maya, QR PH, Card)', 'Stripe (Credit Card)', 'PayPal (Online)', 'Cash + QR Code (manual)', 'Auto payout (1% platform fee)', 'Family member payments']
                             },
                             {
                                 icon: '🔔', title: 'Notifications',
-                                items: ['In-app real-time toasts', 'Email via Brevo', 'SMS via Gateway', 'Auto bill reminders']
+                                items: ['In-app real-time toasts', 'Email via Brevo (20+ templates)', 'SMS via Gateway (15+ types)', 'Auto bill + contract reminders', 'Bulk landlord notifications']
                             },
                             {
                                 icon: '🔧', title: 'Maintenance',
-                                items: ['Tenant request submission', 'Photo attachment support', 'Status tracking workflow', 'Landlord response management']
+                                items: ['Tenant/family request submission', 'Multi-photo upload support', 'Status: Pending → In Progress → Done', 'Cost tracking + billing', 'Tenant feedback system']
                             },
                             {
-                                icon: '📝', title: 'Contract Management',
-                                items: ['Occupancy assignment', 'Contract renewal requests', 'End of contract handling', 'Security deposit management']
+                                icon: '📝', title: 'Contract & Family',
+                                items: ['4-step tenant assignment wizard', 'Contract renewal requests', 'End of contract + deposit return', 'Family member management', 'Monthly PDF statements', 'OTP verification (Email + Phone)']
                             },
                         ].map((card, i) => (
                             <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 hover:border-gray-300 hover:shadow-md transition-all">

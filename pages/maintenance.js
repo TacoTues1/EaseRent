@@ -146,11 +146,22 @@ export default function MaintenancePage() {
         fmMap = fData.membersMap || {}
       } catch (e) { console.error('Error fetching members lookup', e) }
 
-      const enrichedRequests = data.map(req => ({
-        ...req,
-        is_family_member: !!fmMap[req.tenant],
-        primary_tenant_name: fmMap[req.tenant] ? `${fmMap[req.tenant].first_name} ${fmMap[req.tenant].last_name}` : null
-      }))
+      const enrichedRequests = data.map(req => {
+        // Freeze family member status directly from the table (new flow), or fallback to map (legacy)
+        let isFam = req.is_family_member;
+        let pName = req.primary_tenant_name;
+
+        if (isFam === null || isFam === undefined) {
+          isFam = !!fmMap[req.tenant];
+          pName = fmMap[req.tenant] ? `${fmMap[req.tenant].first_name} ${fmMap[req.tenant].last_name}` : null;
+        }
+
+        return {
+          ...req,
+          is_family_member: isFam,
+          primary_tenant_name: pName
+        };
+      })
 
       setRequests(enrichedRequests)
     } else {
@@ -459,11 +470,27 @@ export default function MaintenancePage() {
     try {
       const attachmentUrls = await uploadProofFiles()
 
+      // Calculate family member status
+      let is_family = false;
+      let primary_name = null;
+      try {
+        const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`);
+        const fmData = await fmRes.json();
+        if (fmData && fmData.occupancy && fmData.occupancy.tenant) {
+          is_family = true;
+          primary_name = `${fmData.occupancy.tenant.first_name} ${fmData.occupancy.tenant.last_name}`;
+        }
+      } catch (e) {
+        console.error('Error checking family member info', e);
+      }
+
       const { data: insertData, error } = await supabase.from('maintenance_requests').insert({
         ...formData,
         tenant: session.user.id,
         status: 'pending',
-        attachment_urls: attachmentUrls // Save array of file URLs
+        attachment_urls: attachmentUrls, // Save array of file URLs
+        is_family_member: is_family,
+        primary_tenant_name: primary_name
       }).select('*, properties(title, landlord)')
 
       if (error) throw error
@@ -555,7 +582,16 @@ export default function MaintenancePage() {
   // Filter requests based on status and search
   const filteredRequests = requests.filter(req => {
     const matchesStatus = statusFilter === 'all' || req.status === statusFilter
-    const matchesSearch = searchId === '' || req.id.toLowerCase().includes(searchId.toLowerCase())
+    if (searchId === '') return matchesStatus;
+
+    const sLower = searchId.toLowerCase()
+    const tenantName = req.tenant_profile ? `${req.tenant_profile.first_name || ''} ${req.tenant_profile.last_name || ''}`.toLowerCase() : ''
+    const famName = req.primary_tenant_name ? req.primary_tenant_name.toLowerCase() : ''
+
+    const matchesSearch = req.id.toLowerCase().includes(sLower) ||
+      tenantName.includes(sLower) ||
+      famName.includes(sLower)
+
     return matchesStatus && matchesSearch
   })
 
@@ -647,7 +683,7 @@ export default function MaintenancePage() {
             </svg>
             <input
               type="text"
-              placeholder="Search by Request ID..."
+              placeholder="Search ID, Tenant, or Family Name..."
               value={searchId}
               onChange={(e) => setSearchId(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"

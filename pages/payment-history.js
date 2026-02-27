@@ -12,6 +12,7 @@ export default function PaymentHistoryPage() {
   const [userRole, setUserRole] = useState(null)
   const [chartYear, setChartYear] = useState(new Date().getFullYear())
   const [chartFilter, setChartFilter] = useState('all')
+  const [selectedDetailPayment, setSelectedDetailPayment] = useState(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -34,25 +35,22 @@ export default function PaymentHistoryPage() {
     setUserRole(data?.role || 'tenant')
   }
 
-  // UPDATED: Added Realtime Subscription
+  // Realtime Subscription
   useEffect(() => {
     if (session && userRole) {
       loadPayments()
 
-      // Subscribe to changes in the 'payments' table
       const channel = supabase
         .channel('payment_history_realtime')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'payments' },
           () => {
-            // Re-fetch data whenever a change occurs
             loadPayments()
           }
         )
         .subscribe()
 
-      // Cleanup subscription on unmount
       return () => {
         supabase.removeChannel(channel)
       }
@@ -85,8 +83,10 @@ export default function PaymentHistoryPage() {
     return sum + rent + water + electrical + other
   }, 0)
 
-  // Ensure no unneeded old getChartData remains
-
+  function getMethodLabel(method) {
+    if (!method) return 'Cash'
+    return method === 'paymongo' ? 'E-Wallet / Cards' : method === 'stripe' ? 'Stripe' : method === 'qr_code' ? 'QR Code' : method === 'cash' ? 'Cash' : method.charAt(0).toUpperCase() + method.slice(1).replace('_', ' ')
+  }
 
   if (!session) {
     return (
@@ -106,7 +106,7 @@ export default function PaymentHistoryPage() {
           </div>
           <Link
             href="/payments"
-            className="px-6 py-2.5 bg-white border-2 border-black text-black font-bold rounded-lg cursor-pointer"
+            className="px-6 py-2.5 bg-white border-2 border-black text-black font-bold rounded-lg cursor-pointer hover:bg-black hover:text-white transition-all"
           >
             ← Back to Payments
           </Link>
@@ -249,7 +249,7 @@ export default function PaymentHistoryPage() {
                   const grandTotal = rent + totalBills
 
                   return (
-                    <div key={payment.id} className="p-5 hover:bg-gray-50 transition-colors">
+                    <div key={payment.id} className="p-5 hover:bg-gray-50 transition-colors cursor-pointer active:bg-gray-100" onClick={() => setSelectedDetailPayment(payment)}>
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <div className="font-bold text-sm text-black">{payment.properties?.title || 'Unknown Property'}</div>
@@ -259,7 +259,7 @@ export default function PaymentHistoryPage() {
                             </div>
                           )}
                         </div>
-                        <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-black text-white border border-black rounded-sm">
+                        <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-green-50 text-green-700 border border-green-100 rounded-full">
                           Paid
                         </span>
                       </div>
@@ -276,7 +276,7 @@ export default function PaymentHistoryPage() {
 
                       <div className="flex justify-between items-center text-xs text-gray-400 border-t border-gray-100 pt-3">
                         <div className="flex items-center gap-1">
-                          <span className="uppercase font-bold tracking-wider">{payment.method?.replace('_', ' ')}</span>
+                          <span className="uppercase font-bold tracking-wider">{getMethodLabel(payment.method)}</span>
                         </div>
                         <span>{new Date(payment.paid_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                       </div>
@@ -290,16 +290,16 @@ export default function PaymentHistoryPage() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Property</th>
                       {userRole === 'landlord' && (
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tenant</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Tenant</th>
                       )}
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Rent</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Bills</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
-                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Method</th>
-                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rent</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Bills</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Total</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Method</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -312,26 +312,39 @@ export default function PaymentHistoryPage() {
                       const grandTotal = rent + totalBills
 
                       return (
-                        <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 text-sm font-bold text-black">
-                            {payment.properties?.title || 'N/A'}
+                        <tr key={payment.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedDetailPayment(payment)}>
+                          {/* Property */}
+                          <td className="px-3 py-2.5">
+                            <div className="max-w-[160px]">
+                              <div className="text-sm font-bold text-black truncate" title={payment.properties?.title}>
+                                {payment.properties?.title || 'N/A'}
+                              </div>
+                            </div>
                           </td>
+
+                          {/* Tenant */}
                           {userRole === 'landlord' && (
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {payment.profiles?.first_name} {payment.profiles?.last_name || 'N/A'}
+                            <td className="px-3 py-2.5 text-sm text-gray-600">
+                              <div className="max-w-[120px] truncate">
+                                {payment.profiles?.first_name} {payment.profiles?.last_name || 'N/A'}
+                              </div>
                             </td>
                           )}
-                          <td className="px-6 py-4 text-sm text-right font-medium text-gray-600">
-                            ₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+
+                          {/* Rent */}
+                          <td className="px-3 py-2.5">
+                            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">₱{rent.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-right">
+
+                          {/* Bills */}
+                          <td className="px-3 py-2.5">
                             {totalBills > 0 ? (
                               <div className="group relative inline-block cursor-help">
-                                <span className="font-medium text-gray-600 border-b border-dotted border-gray-400">
+                                <span className="text-sm font-medium text-gray-600 border-b border-dotted border-gray-400 whitespace-nowrap">
                                   ₱{totalBills.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                 </span>
                                 {/* Tooltip for bill breakdown */}
-                                <div className="absolute bottom-full right-0 mb-2 w-48 bg-black text-white text-xs p-3 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                                <div className="absolute bottom-full right-0 mb-2 w-48 bg-black text-white text-xs p-3 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
                                   <div className="flex justify-between mb-1"><span>Water:</span> <span>₱{water.toLocaleString()}</span></div>
                                   <div className="flex justify-between mb-1"><span>Electric:</span> <span>₱{electrical.toLocaleString()}</span></div>
                                   <div className="flex justify-between"><span>Other:</span> <span>₱{other.toLocaleString()}</span></div>
@@ -346,19 +359,29 @@ export default function PaymentHistoryPage() {
                               <span className="text-gray-300">-</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-right font-bold text-black">
-                            ₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+
+                          {/* Total */}
+                          <td className="px-3 py-2.5">
+                            <span className="text-sm font-bold text-black whitespace-nowrap">₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 border border-gray-200 px-2 py-1 rounded-sm bg-gray-50">
-                              {payment.method?.replace('_', ' ') || 'Cash'}
+
+                          {/* Method */}
+                          <td className="px-3 py-2.5">
+                            <span className="text-xs font-bold uppercase tracking-wider text-gray-500 border border-gray-200 px-2 py-1 rounded-sm bg-gray-50 whitespace-nowrap">
+                              {getMethodLabel(payment.method)}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-center text-gray-500">
-                            {new Date(payment.paid_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+
+                          {/* Date */}
+                          <td className="px-3 py-2.5">
+                            <span className="text-sm text-gray-600 whitespace-nowrap">
+                              {new Date(payment.paid_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-black text-white border border-black rounded-full">
+
+                          {/* Status */}
+                          <td className="px-3 py-2.5">
+                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-green-50 text-green-700 border border-green-100 rounded-full whitespace-nowrap">
                               Paid
                             </span>
                           </td>
@@ -372,6 +395,124 @@ export default function PaymentHistoryPage() {
           )}
         </div>
       </div>
+
+      {/* ===== SLIDE-IN DETAIL PANEL (same as payments.js) ===== */}
+      {selectedDetailPayment && (() => {
+        const r = selectedDetailPayment
+        const rent = parseFloat(r.amount) || 0
+        const water = parseFloat(r.water_bill) || 0
+        const electrical = parseFloat(r.electrical_bill) || 0
+        const wifi = parseFloat(r.wifi_bill) || 0
+        const other = parseFloat(r.other_bills) || 0
+        const grandTotal = rent + water + electrical + wifi + other
+
+        return (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelectedDetailPayment(null)} />
+            <div className="relative w-full max-w-md bg-white shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300">
+              {/* Header */}
+              <div className="sticky top-0 bg-white z-10 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="text-lg font-black">Payment Details</h3>
+                <button onClick={() => setSelectedDetailPayment(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Status Badge */}
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-full border bg-green-50 text-green-700 border-green-200">
+                    Paid
+                  </span>
+                  <span className="text-xs font-bold bg-gray-100 px-2 py-1 rounded">Payment</span>
+                </div>
+
+                {/* Property */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Property</label>
+                  <p className="font-bold text-gray-900 mt-0.5">{r.properties?.title || 'N/A'}</p>
+                </div>
+
+                {/* People */}
+                {userRole === 'landlord' && (
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tenant</label>
+                    <p className="font-bold text-sm mt-0.5">
+                      {r.profiles?.first_name} {r.profiles?.middle_name && r.profiles?.middle_name !== 'N/A' ? r.profiles.middle_name + ' ' : ''}{r.profiles?.last_name || ''}
+                    </p>
+                  </div>
+                )}
+
+                {/* Amount Breakdown */}
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Amount Breakdown</label>
+                  </div>
+                  <div className="p-4 space-y-2">
+                    {rent > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Rent</span><span className="font-bold">₱{rent.toLocaleString()}</span></div>}
+                    {water > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Water Bill</span><span className="font-bold">₱{water.toLocaleString()}</span></div>}
+                    {electrical > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Electric Bill</span><span className="font-bold">₱{electrical.toLocaleString()}</span></div>}
+                    {wifi > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Wifi Bill</span><span className="font-bold">₱{wifi.toLocaleString()}</span></div>}
+                    {other > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Other Charges</span><span className="font-bold">₱{other.toLocaleString()}</span></div>}
+                    <div className="border-t border-gray-100 pt-2 flex justify-between font-bold">
+                      <span>Total</span>
+                      <span className="text-lg">₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Details */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-50">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Date Paid</span>
+                    <span className="text-sm font-bold text-gray-900">
+                      {r.paid_at ? new Date(r.paid_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-50">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Time</span>
+                    <span className="text-sm font-bold text-gray-900">
+                      {r.paid_at ? new Date(r.paid_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-50">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Payment Method</span>
+                    <span className="text-sm font-bold text-gray-900">
+                      {getMethodLabel(r.method)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-50">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Reference No.</span>
+                    <span className="text-sm font-bold font-mono text-gray-900">{r.reference_number || '-'}</span>
+                  </div>
+                  {r.bills_description && (
+                    <div className="py-2 border-b border-gray-50">
+                      <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Message / Description</span>
+                      <p className="text-sm text-gray-700">{r.bills_description}</p>
+                    </div>
+                  )}
+                  {r.receipt_url && (
+                    <div className="py-2 border-b border-gray-50">
+                      <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Attachment</span>
+                      <a href={r.receipt_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 font-bold hover:underline">View File →</a>
+                    </div>
+                  )}
+                  {r.proof_url && (
+                    <div className="py-2">
+                      <span className="text-xs font-bold text-gray-400 uppercase block mb-2">Payment Proof</span>
+                      <img src={r.proof_url} alt="Payment Proof" className="w-full max-h-48 object-cover rounded-xl border border-gray-100" />
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center py-2 border-b border-gray-50">
+                    <span className="text-xs font-bold text-gray-400 uppercase">Created</span>
+                    <span className="text-sm text-gray-600">{r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

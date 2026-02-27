@@ -20,6 +20,8 @@ export default function PaymentsPage() {
   const [showCashConfirmModal, setShowCashConfirmModal] = useState(false) // NEW: for cash confirmation
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedBill, setSelectedBill] = useState(null)
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false)
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false)
   const [userRole, setUserRole] = useState(null)
   const [confirmPaymentId, setConfirmPaymentId] = useState(null)
   const [cancelBillId, setCancelBillId] = useState(null)
@@ -492,51 +494,93 @@ export default function PaymentsPage() {
   }
 
   const [maxPaymentLimit, setMaxPaymentLimit] = useState(null)
+  const [loadingPayBtn, setLoadingPayBtn] = useState(null)
 
   async function handlePayBill(request) {
-    setSelectedBill(request)
-
-    // Fetch landlord's accepted payment methods
+    setLoadingPayBtn(request.id)
     try {
-      const { data: landlordProfile } = await supabase
-        .from('profiles')
-        .select('accepted_payments')
-        .eq('id', request.landlord)
-        .single()
-      setLandlordAcceptedPayments(landlordProfile?.accepted_payments || { cash: true })
-    } catch (e) {
-      console.error('Failed to fetch landlord payment methods:', e)
-      setLandlordAcceptedPayments({ cash: true })
-    }
-    const total = (
-      parseFloat(request.rent_amount || 0) +
-      parseFloat(request.security_deposit_amount || 0) +
-      parseFloat(request.advance_amount || 0) + // Include Advance in Total
-      parseFloat(request.water_bill || 0) +
-      parseFloat(request.electrical_bill || 0) +
-      parseFloat(request.wifi_bill || 0) +
-      parseFloat(request.other_bills || 0)
-    )
+      setSelectedBill(request)
 
-    // 1. Fetch Tenant Credit (filtered by occupancy)
-    let credit = 0;
-    if (userRole === 'tenant') {
-      if (isFamilyMember && primaryTenantId) {
-        // Family members: use API to bypass RLS
-        try {
-          const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`, { cache: 'no-store' })
-          const fmData = await fmRes.json()
-          credit = parseFloat(fmData?.tenantBalance || 0)
-        } catch (err) {
-          console.error('Error fetching family member credit:', err)
+      // Fetch landlord's accepted payment methods
+      try {
+        const { data: landlordProfile } = await supabase
+          .from('profiles')
+          .select('accepted_payments')
+          .eq('id', request.landlord)
+          .single()
+        setLandlordAcceptedPayments(landlordProfile?.accepted_payments || { cash: true })
+      } catch (e) {
+        console.error('Failed to fetch landlord payment methods:', e)
+        setLandlordAcceptedPayments({ cash: true })
+      }
+      const total = (
+        parseFloat(request.rent_amount || 0) +
+        parseFloat(request.security_deposit_amount || 0) +
+        parseFloat(request.advance_amount || 0) + // Include Advance in Total
+        parseFloat(request.water_bill || 0) +
+        parseFloat(request.electrical_bill || 0) +
+        parseFloat(request.wifi_bill || 0) +
+        parseFloat(request.other_bills || 0)
+      )
+
+      // 1. Fetch Tenant Credit (filtered by occupancy)
+      let credit = 0;
+      if (userRole === 'tenant') {
+        if (isFamilyMember && primaryTenantId) {
+          // Family members: use API to bypass RLS
+          try {
+            const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`, { cache: 'no-store' })
+            const fmData = await fmRes.json()
+            credit = parseFloat(fmData?.tenantBalance || 0)
+          } catch (err) {
+            console.error('Error fetching family member credit:', err)
+          }
+        } else {
+          // Primary tenant: use direct Supabase query
+          let query = supabase.from('tenant_balances').select('amount').eq('tenant_id', session.user.id);
+
+          let targetOccupancyId = request.occupancy_id;
+
+          if (!targetOccupancyId) {
+            const { data: activeOcc } = await supabase
+              .from('tenant_occupancies')
+              .select('id')
+              .eq('tenant_id', session.user.id)
+              .eq('status', 'active')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (activeOcc) targetOccupancyId = activeOcc.id;
+          }
+
+          if (targetOccupancyId) {
+            query = query.eq('occupancy_id', targetOccupancyId);
+          } else {
+            query = query.is('occupancy_id', null);
+          }
+
+          const { data } = await query.maybeSingle();
+          credit = parseFloat(data?.amount || 0);
         }
-      } else {
-        // Primary tenant: use direct Supabase query
-        let query = supabase.from('tenant_balances').select('amount').eq('tenant_id', session.user.id);
+      }
+      setAppliedCredit(credit);
 
-        let targetOccupancyId = request.occupancy_id;
+      // 2. Calculate Max Payment Limit based on Contract
+      let limit = Infinity;
+      let rentPerMonth = parseFloat(request.rent_amount || 0);
+      let endDate = null;
+      let startDate = null;
+      let maxMonths = 1; // Default to 1 month only
 
-        if (!targetOccupancyId) {
+      // Try to get occupancy_id from bill, or find active occupancy for tenant
+      let occupancyId = request.occupancy_id;
+
+      if (!occupancyId && userRole === 'tenant') {
+        // For family members, use parentOccupancyId; otherwise lookup from tenant_occupancies
+        if (parentOccupancyId) {
+          occupancyId = parentOccupancyId;
+          console.log('Using parent occupancy for family member:', occupancyId);
+        } else {
           const { data: activeOcc } = await supabase
             .from('tenant_occupancies')
             .select('id')
@@ -545,176 +589,140 @@ export default function PaymentsPage() {
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-          if (activeOcc) targetOccupancyId = activeOcc.id;
-        }
 
-        if (targetOccupancyId) {
-          query = query.eq('occupancy_id', targetOccupancyId);
-        } else {
-          query = query.is('occupancy_id', null);
-        }
-
-        const { data } = await query.maybeSingle();
-        credit = parseFloat(data?.amount || 0);
-      }
-    }
-    setAppliedCredit(credit);
-
-    // 2. Calculate Max Payment Limit based on Contract
-    let limit = Infinity;
-    let rentPerMonth = parseFloat(request.rent_amount || 0);
-    let endDate = null;
-    let startDate = null;
-    let maxMonths = 1; // Default to 1 month only
-
-    // Try to get occupancy_id from bill, or find active occupancy for tenant
-    let occupancyId = request.occupancy_id;
-
-    if (!occupancyId && userRole === 'tenant') {
-      // For family members, use parentOccupancyId; otherwise lookup from tenant_occupancies
-      if (parentOccupancyId) {
-        occupancyId = parentOccupancyId;
-        console.log('Using parent occupancy for family member:', occupancyId);
-      } else {
-        const { data: activeOcc } = await supabase
-          .from('tenant_occupancies')
-          .select('id')
-          .eq('tenant_id', session.user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (activeOcc) {
-          occupancyId = activeOcc.id;
-          console.log('Found active occupancy:', occupancyId);
-        }
-      }
-    }
-
-    console.log('Occupancy ID for calculation:', occupancyId);
-
-    if (occupancyId) {
-      try {
-        let occupancy = null;
-
-        if (isFamilyMember) {
-          // Family members: use API to bypass RLS
-          const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`)
-          const fmData = await fmRes.json()
-          if (fmData?.occupancy) {
-            occupancy = {
-              contract_end_date: fmData.occupancy.contract_end_date,
-              start_date: fmData.occupancy.start_date,
-              security_deposit: fmData.occupancy.security_deposit
-            }
+          if (activeOcc) {
+            occupancyId = activeOcc.id;
+            console.log('Found active occupancy:', occupancyId);
           }
-        } else {
-          // Primary tenant: use direct Supabase query
-          const { data: occData, error: occError } = await supabase
-            .from('tenant_occupancies')
-            .select('contract_end_date, start_date')
-            .eq('id', occupancyId)
-            .single();
-          occupancy = occData;
-          console.log('Occupancy query result - data:', JSON.stringify(occData), 'error:', occError);
         }
+      }
 
-        if (occupancy) {
-          // Use rent from the bill request since occupancy doesn't have rent_amount
-          rentPerMonth = parseFloat(request.rent_amount || 0);
-          endDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
-          startDate = occupancy.start_date ? new Date(occupancy.start_date) : null;
+      console.log('Occupancy ID for calculation:', occupancyId);
 
-          console.log('Parsed dates - start:', startDate, 'end:', endDate);
+      if (occupancyId) {
+        try {
+          let occupancy = null;
 
-          if (endDate && startDate) {
-            // SIMPLIFIED: Calculate total months in contract by comparing start and end dates
-            // Contract Feb 3 to Apr 3 = 2 months (Feb-Mar, Mar-Apr)
-            const startYear = startDate.getFullYear();
-            const startMonth = startDate.getMonth();
-            const endYear = endDate.getFullYear();
-            const endMonth = endDate.getMonth();
-
-            // Total months in the contract period
-            const totalContractMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
-
-            // ADJUSTMENT: If Security Deposit covers payment for the last month,
-            // we should not allow paying for that last month in advance via cash.
-            // Check if there is a security deposit in the request or occupancy
-            const depositAmount = parseFloat(request.security_deposit_amount || occupancy?.security_deposit || 0);
-            let adjustedTotalKey = totalContractMonths;
-
-            // If deposit is sufficient to cover one month rent, effectively the last month is "pre-paid" by deposit
-            if (rentPerMonth > 0 && depositAmount >= (rentPerMonth * 0.9)) { // Allow small difference
-              adjustedTotalKey = Math.max(1, totalContractMonths - 1);
-            }
-
-            // Minimum 1 month
-            maxMonths = Math.max(1, adjustedTotalKey);
-
-            console.log('Contract calculation:', {
-              startYear, startMonth, endYear, endMonth,
-              totalContractMonths,
-              maxMonths
-            });
-
-            // Limit cannot be negative (contract ended)
-            if (endDate < new Date()) {
-              maxMonths = 1;
-              limit = total + parseFloat(request.security_deposit_amount || 0);
-            } else {
-              // Max rent payments = months * rent per month
-              const maxContractValue = maxMonths * rentPerMonth;
-              // Add security deposit to the limit (it's separate from rent)
-              const securityDeposit = parseFloat(request.security_deposit_amount || 0);
-              const utilities = (
-                parseFloat(request.water_bill || 0) +
-                parseFloat(request.electrical_bill || 0) +
-                parseFloat(request.wifi_bill || 0) +
-                parseFloat(request.other_bills || 0)
-              );
-              const advance = parseFloat(request.advance_amount || 0); // Include Advance
-              limit = Math.max(0, maxContractValue + securityDeposit + utilities + advance - credit);
+          if (isFamilyMember) {
+            // Family members: use API to bypass RLS
+            const fmRes = await fetch(`/api/family-members?member_id=${session.user.id}`)
+            const fmData = await fmRes.json()
+            if (fmData?.occupancy) {
+              occupancy = {
+                contract_end_date: fmData.occupancy.contract_end_date,
+                start_date: fmData.occupancy.start_date,
+                security_deposit: fmData.occupancy.security_deposit
+              }
             }
           } else {
-            console.log('Missing dates - startDate or endDate is null');
+            // Primary tenant: use direct Supabase query
+            const { data: occData, error: occError } = await supabase
+              .from('tenant_occupancies')
+              .select('contract_end_date, start_date')
+              .eq('id', occupancyId)
+              .single();
+            occupancy = occData;
+            console.log('Occupancy query result - data:', JSON.stringify(occData), 'error:', occError);
           }
-        } else {
-          console.log('No occupancy data returned');
+
+          if (occupancy) {
+            // Use rent from the bill request since occupancy doesn't have rent_amount
+            rentPerMonth = parseFloat(request.rent_amount || 0);
+            endDate = occupancy.contract_end_date ? new Date(occupancy.contract_end_date) : null;
+            startDate = occupancy.start_date ? new Date(occupancy.start_date) : null;
+
+            console.log('Parsed dates - start:', startDate, 'end:', endDate);
+
+            if (endDate && startDate) {
+              // SIMPLIFIED: Calculate total months in contract by comparing start and end dates
+              // Contract Feb 3 to Apr 3 = 2 months (Feb-Mar, Mar-Apr)
+              const startYear = startDate.getFullYear();
+              const startMonth = startDate.getMonth();
+              const endYear = endDate.getFullYear();
+              const endMonth = endDate.getMonth();
+
+              // Total months in the contract period
+              const totalContractMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
+
+              // ADJUSTMENT: If Security Deposit covers payment for the last month,
+              // we should not allow paying for that last month in advance via cash.
+              // Check if there is a security deposit in the request or occupancy
+              const depositAmount = parseFloat(request.security_deposit_amount || occupancy?.security_deposit || 0);
+              let adjustedTotalKey = totalContractMonths;
+
+              // If deposit is sufficient to cover one month rent, effectively the last month is "pre-paid" by deposit
+              if (rentPerMonth > 0 && depositAmount >= (rentPerMonth * 0.9)) { // Allow small difference
+                adjustedTotalKey = Math.max(1, totalContractMonths - 1);
+              }
+
+              // Minimum 1 month
+              maxMonths = Math.max(1, adjustedTotalKey);
+
+              console.log('Contract calculation:', {
+                startYear, startMonth, endYear, endMonth,
+                totalContractMonths,
+                maxMonths
+              });
+
+              // Limit cannot be negative (contract ended)
+              if (endDate < new Date()) {
+                maxMonths = 1;
+                limit = total + parseFloat(request.security_deposit_amount || 0);
+              } else {
+                // Max rent payments = months * rent per month
+                const maxContractValue = maxMonths * rentPerMonth;
+                // Add security deposit to the limit (it's separate from rent)
+                const securityDeposit = parseFloat(request.security_deposit_amount || 0);
+                const utilities = (
+                  parseFloat(request.water_bill || 0) +
+                  parseFloat(request.electrical_bill || 0) +
+                  parseFloat(request.wifi_bill || 0) +
+                  parseFloat(request.other_bills || 0)
+                );
+                const advance = parseFloat(request.advance_amount || 0); // Include Advance
+                limit = Math.max(0, maxContractValue + securityDeposit + utilities + advance - credit);
+              }
+            } else {
+              console.log('Missing dates - startDate or endDate is null');
+            }
+          } else {
+            console.log('No occupancy data returned');
+          }
+        } catch (err) {
+          console.error('Error fetching occupancy:', err);
         }
-      } catch (err) {
-        console.error('Error fetching occupancy:', err);
       }
+
+      setMonthlyRent(rentPerMonth);
+      setContractEndDate(endDate);
+      setContractStartDate(startDate);
+      setMaxMonthsAllowed(maxMonths);
+      setMaxPaymentLimit(limit);
+      setMonthsCovered(1);
+      setExceedsContract(false);
+
+      // Set minimum payment (total bill minus credit)
+      let toPay = Math.max(0, total - credit);
+
+      // FIX: For Renewal bills (which have advance_amount), minimum payment should be the full renewal amount (Rent + Advance)
+      // Assuming credit can still apply, but we want to default the input to the full amount needed.
+      if (request.advance_amount && parseFloat(request.advance_amount) > 0) {
+        // For renewal, explicitly require the rent + advance sum if possible, or at least default to it
+        // The user wants "minimum need to pay" to be the total. 
+        // Actually, if we set minimumPayment to 'total', it forces the user to pay that much. 
+        toPay = Math.max(0, total - credit);
+      }
+
+      setMinimumPayment(toPay);
+      setIsBelowMinimum(false);
+
+      // Ensure default is the FULL amount for renewals, or the calc amount otherwise
+      setCustomAmount(Math.min(toPay, limit === Infinity ? toPay : limit).toFixed(2));
+
+      setShowPaymentModal(true)
+    } finally {
+      setLoadingPayBtn(null)
     }
-
-    setMonthlyRent(rentPerMonth);
-    setContractEndDate(endDate);
-    setContractStartDate(startDate);
-    setMaxMonthsAllowed(maxMonths);
-    setMaxPaymentLimit(limit);
-    setMonthsCovered(1);
-    setExceedsContract(false);
-
-    // Set minimum payment (total bill minus credit)
-    let toPay = Math.max(0, total - credit);
-
-    // FIX: For Renewal bills (which have advance_amount), minimum payment should be the full renewal amount (Rent + Advance)
-    // Assuming credit can still apply, but we want to default the input to the full amount needed.
-    if (request.advance_amount && parseFloat(request.advance_amount) > 0) {
-      // For renewal, explicitly require the rent + advance sum if possible, or at least default to it
-      // The user wants "minimum need to pay" to be the total. 
-      // Actually, if we set minimumPayment to 'total', it forces the user to pay that much. 
-      toPay = Math.max(0, total - credit);
-    }
-
-    setMinimumPayment(toPay);
-    setIsBelowMinimum(false);
-
-    // Ensure default is the FULL amount for renewals, or the calc amount otherwise
-    setCustomAmount(Math.min(toPay, limit === Infinity ? toPay : limit).toFixed(2));
-
-    setShowPaymentModal(true)
   }
 
   // Recalculate months covered when key values change (fixes React state timing issues)
@@ -1027,14 +1035,26 @@ export default function PaymentsPage() {
         }
       } catch (notifyErr) { console.error('Notify Error:', notifyErr); }
 
-      setShowPaymentModal(false);
-      setSelectedBill(null);
-      setPaymentMethod('cash');
-      setProofFile(null);
-      setProofPreview(null);
-      setReferenceNumber('');
-      loadPaymentRequests();
-      showToast.success('Payment submitted! Waiting for landlord confirmation.', { duration: 4000, progress: true, position: "top-center", transition: "bounceIn", icon: '', sound: true });
+      // Show confirmation animation
+      setShowPaymentConfirmation(true);
+      setPaymentConfirmed(false);
+      // After 3 seconds, mark confirmed
+      setTimeout(() => {
+        setPaymentConfirmed(true);
+      }, 3000);
+      // After 5.5 seconds total, close everything
+      setTimeout(() => {
+        setShowPaymentConfirmation(false);
+        setPaymentConfirmed(false);
+        setShowPaymentModal(false);
+        setSelectedBill(null);
+        setPaymentMethod('cash');
+        setProofFile(null);
+        setProofPreview(null);
+        setReferenceNumber('');
+        loadPaymentRequests();
+        showToast.success('Payment submitted! Waiting for landlord confirmation.', { duration: 4000, progress: true, position: "top-center", transition: "bounceIn", icon: '', sound: true });
+      }, 5500);
 
     } catch (error) {
       console.error('Payment error:', error);
@@ -1082,9 +1102,20 @@ export default function PaymentsPage() {
         })
       }
 
-      showToast.success('Paid successfully using credit balance!', { duration: 4000, transition: "bounceIn" });
-      setShowPaymentModal(false);
-      loadPaymentRequests();
+      // Show confirmation animation
+      setShowPaymentConfirmation(true);
+      setPaymentConfirmed(false);
+      setTimeout(() => {
+        setPaymentConfirmed(true);
+      }, 3000);
+      setTimeout(() => {
+        setShowPaymentConfirmation(false);
+        setPaymentConfirmed(false);
+        setShowPaymentModal(false);
+        setSelectedBill(null);
+        loadPaymentRequests();
+        showToast.success('Paid successfully using credit balance!', { duration: 4000, transition: "bounceIn" });
+      }, 5500);
     } catch (err) {
       console.error(err);
       showToast.error(err.message, { duration: 4000 });
@@ -1351,12 +1382,14 @@ export default function PaymentsPage() {
             setSelectedBill(null);
             setPaymentMethod('cash');
             setUploadingProof(false);
+            return;
           }
           else if (attempts >= maxAttempts) {
             pollingStopped = true;
             clearInterval(pollInterval);
             setUploadingProof(false);
             showToast.warning('Automatic verification timed out. The system will retry when you revisit this page, or check "View History".', { duration: 6000 });
+            return;
           }
 
           try {
@@ -2433,13 +2466,27 @@ export default function PaymentsPage() {
                           <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-2">
                               {userRole === 'tenant' && request.status === 'pending' && (
-                                <button onClick={() => handlePayBill(request)} className="px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap">Pay Now</button>
+                                <button onClick={() => handlePayBill(request)} disabled={loadingPayBtn === request.id} className="relative px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap disabled:opacity-75 disabled:cursor-wait min-w-[65px] flex justify-center items-center">
+                                  {loadingPayBtn === request.id ? (
+                                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : "Pay Now"}
+                                </button>
                               )}
                               {userRole === 'tenant' && request.status === 'pending_confirmation' && (
                                 <span className="text-xs font-bold text-gray-400 whitespace-nowrap">Wait for approval</span>
                               )}
                               {userRole === 'tenant' && request.status === 'rejected' && (
-                                <button onClick={() => handlePayBill(request)} className="px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap">Resend</button>
+                                <button onClick={() => handlePayBill(request)} disabled={loadingPayBtn === request.id} className="relative px-3 py-1.5 bg-black text-white text-xs font-bold rounded hover:bg-gray-800 cursor-pointer shadow-sm whitespace-nowrap disabled:opacity-75 disabled:cursor-wait min-w-[65px] flex justify-center items-center">
+                                  {loadingPayBtn === request.id ? (
+                                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : "Resend"}
+                                </button>
                               )}
                               {userRole === 'landlord' && request.status === 'pending' && (
                                 <div className="flex gap-1">
@@ -2601,312 +2648,486 @@ export default function PaymentsPage() {
           )
         })()}
 
-        {/* Payment Modal for Tenants - Redesigned */}
+        {/* Payment Full Page for Tenants */}
         {showPaymentModal && selectedBill && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-            <div
-              className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
-              onClick={() => {
-                setShowPaymentModal(false)
-                setSelectedBill(null)
-                setPaymentMethod('cash')
-                setProofFile(null)
-                setProofPreview(null)
-                setReferenceNumber('')
-              }}
-            />
-            <div className="relative bg-white rounded-3xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 ring-1 ring-black/5">
+          <>
+            <style>{`
+              @keyframes confirmProgressBar {
+                0% { width: 0%; }
+                100% { width: 100%; }
+              }
+              @keyframes checkmarkPop {
+                0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+                50% { transform: scale(1.2) rotate(0deg); opacity: 1; }
+                100% { transform: scale(1) rotate(0deg); opacity: 1; }
+              }
+              @keyframes checkmarkCircle {
+                0% { stroke-dashoffset: 166; }
+                100% { stroke-dashoffset: 0; }
+              }
+              @keyframes checkmarkCheck {
+                0% { stroke-dashoffset: 48; }
+                100% { stroke-dashoffset: 0; }
+              }
+              @keyframes fadeInUp {
+                0% { opacity: 0; transform: translateY(16px); }
+                100% { opacity: 1; transform: translateY(0); }
+              }
+              @keyframes pulseGlow {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+                50% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+              }
+              .confirm-progress-bar {
+                animation: confirmProgressBar 3s ease-in-out forwards;
+              }
+              .checkmark-pop {
+                animation: checkmarkPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+              }
+              .checkmark-circle {
+                stroke-dasharray: 166;
+                stroke-dashoffset: 166;
+                animation: checkmarkCircle 0.6s ease-in-out forwards;
+              }
+              .checkmark-check {
+                stroke-dasharray: 48;
+                stroke-dashoffset: 48;
+                animation: checkmarkCheck 0.4s 0.3s ease-in-out forwards;
+              }
+              .fade-in-up {
+                animation: fadeInUp 0.5s 0.4s ease-out forwards;
+                opacity: 0;
+              }
+              .pulse-glow {
+                animation: pulseGlow 2s infinite;
+              }
+            `}</style>
 
-              {/* Header */}
-              <div className="flex-none p-5 border-b border-gray-100 bg-white z-10 flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 tracking-tight">Pay Bill</h3>
-                  <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-500">
-                    <span className="font-medium text-gray-900">{selectedBill.properties?.title}</span>
-                    <span className="text-gray-300">•</span>
-                    <span className="truncate max-w-[180px]">{selectedBill.properties?.address}</span>
+            {/* Confirmation Animation Overlay */}
+            {showPaymentConfirmation && (
+              <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center">
+                <div className="w-full max-w-md px-8 flex flex-col items-center">
+                  {/* Checkmark (appears after bar fills) */}
+                  {paymentConfirmed && (
+                    <div className="mb-8 checkmark-pop">
+                      <div className="w-24 h-24 rounded-full bg-green-50 flex items-center justify-center pulse-glow">
+                        <svg className="w-24 h-24" viewBox="0 0 52 52">
+                          <circle className="checkmark-circle" cx="26" cy="26" r="25" fill="none" stroke="#22c55e" strokeWidth="2" />
+                          <path className="checkmark-check" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Progress Bar */}
+                  <div className="w-full mb-6">
+                    <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${paymentConfirmed ? 'bg-green-500 w-full' : 'bg-black confirm-progress-bar'}`}
+                        style={paymentConfirmed ? { width: '100%' } : {}}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Text */}
+                  <div className={`text-center ${paymentConfirmed ? 'fade-in-up' : ''}`}>
+                    {paymentConfirmed ? (
+                      <>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">Payment Submitted!</h3>
+                        <p className="text-sm text-gray-500">Your landlord has been notified.</p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">We're confirming your payment</h3>
+                        <p className="text-sm text-gray-400">Please be patient, as this could take a moment</p>
+                      </>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowPaymentModal(false)
-                    setSelectedBill(null)
-                    setPaymentMethod('cash')
-                    setProofFile(null)
-                    setProofPreview(null)
-                    setReferenceNumber('')
-                  }}
-                  className="p-2 -mr-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
               </div>
+            )}
 
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+            {/* Full-page Pay Bill View */}
+            {!showPaymentConfirmation && (
+              <div className="fixed inset-0 z-50 bg-[#F5F5F5] overflow-y-auto">
+                <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10 min-h-screen flex flex-col">
 
-                {/* View Bill Receipt Button */}
-                {selectedBill.bill_receipt_url && (
+                  {/* Back Button */}
                   <button
-                    type="button"
                     onClick={() => {
-                      setSelectedBillReceipt(selectedBill.bill_receipt_url)
-                      setShowBillReceiptModal(true)
+                      setShowPaymentModal(false)
+                      setSelectedBill(null)
+                      setPaymentMethod('cash')
+                      setProofFile(null)
+                      setProofPreview(null)
+                      setReferenceNumber('')
                     }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-100 hover:border-gray-300 font-semibold text-sm transition-all cursor-pointer group"
+                    className="flex items-center gap-2 text-gray-400 hover:text-black font-bold text-sm mb-8 group cursor-pointer transition-colors self-start"
                   >
-                    <svg className="w-4 h-4 text-gray-500 group-hover:text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    View Original Bill Receipt
+                    <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    Back to Bills
                   </button>
-                )}
 
-                {/* Bill Breakdown Card */}
-                <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-center pb-2 border-b border-gray-200/60">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Bill Details</span>
-                    <div className="flex gap-2">
-                      {/* {selectedBill.due_date && new Date(selectedBill.due_date) < new Date() && (
-                        <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold border border-red-200">Late Payment</span>
-                      )} */}
-                      {selectedBill.is_move_in_payment && (
-                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold border border-green-200">Move-in</span>
-                      )}
-                      {selectedBill.is_renewal_payment && (
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">Renewal</span>
-                      )}
-                    </div>
-                  </div>
+                  {/* Two Column Layout */}
+                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 pb-24">
 
-                  <div className="space-y-2">
-                    {[
-                      { label: 'House Rent', value: selectedBill.rent_amount },
-                      { label: 'Security Deposit', value: selectedBill.security_deposit_amount, color: 'text-amber-600' },
-                      { label: 'Advance Payment', value: selectedBill.advance_amount, color: 'text-indigo-600' },
-                      { label: 'Water', value: selectedBill.water_bill },
-                      { label: 'Electricity', value: selectedBill.electrical_bill },
-                      { label: 'Late Payment', value: selectedBill.other_bills }
-                    ].map((item, idx) => (
-                      parseFloat(item.value || 0) > 0 && (
-                        <div key={idx} className="flex justify-between text-sm items-center">
-                          <span className="text-gray-500 font-medium">{item.label}</span>
-                          <span className={`font-bold ${item.color || 'text-gray-900'}`}>₱{parseFloat(item.value).toLocaleString()}</span>
-                        </div>
-                      )
-                    ))}
-
-                    {appliedCredit > 0 && (
-                      <div className="flex justify-between text-sm text-green-600 font-bold pt-1">
-                        <span className="flex items-center gap-1"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> Credit Applied</span>
-                        <span>-₱{appliedCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between text-base font-black pt-3 border-t border-gray-200 mt-2 text-gray-900">
-                      <span>Total Due</span>
-                      <span>
-                        ₱{(
-                          parseFloat(selectedBill.rent_amount || 0) +
-                          parseFloat(selectedBill.security_deposit_amount || 0) +
-                          parseFloat(selectedBill.advance_amount || 0) +
-                          parseFloat(selectedBill.water_bill || 0) +
-                          parseFloat(selectedBill.electrical_bill || 0) +
-                          parseFloat(selectedBill.other_bills || 0)
-                        ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Amount Input */}
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-sm font-bold text-gray-700">Amount to Pay</label>
-                    {isFamilyMember && (
-                      <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded-md">Expected amount only</span>
-                    )}
-                  </div>
-                  <div className="relative group">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-lg group-focus-within:text-black transition-colors">₱</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="1"
-                      value={customAmount}
-                      onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      disabled={isFamilyMember}
-                      className={`w-full bg-white border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500 bg-red-50/50' : 'border-gray-200 hover:border-gray-300 focus:border-black'} ${isFamilyMember ? 'bg-gray-50 text-gray-500 cursor-not-allowed border-gray-100' : ''} rounded-2xl pl-10 pr-4 py-4 font-bold text-2xl outline-none transition-all placeholder:text-gray-300`}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  {/* Validation Messages */}
-                  {isBelowMinimum && (
-                    <div className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100">
-                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      Minimum payment is ₱{minimumPayment.toLocaleString()} (No partials).
-                    </div>
-                  )}
-
-                  {monthlyRent > 0 && parseFloat(customAmount) > 0 && (
-                    <div className={`p-3 rounded-lg text-sm border flex items-start gap-2 ${exceedsContract
-                      ? 'bg-red-50 border-red-200 text-red-700'
-                      : monthsCovered > 1
-                        ? 'bg-blue-50 border-blue-200 text-blue-700'
-                        : 'bg-gray-50 border-gray-200 text-gray-600'
-                      }`}>
-                      <svg className={`w-5 h-5 shrink-0 ${exceedsContract ? 'text-red-500' : monthsCovered > 1 ? 'text-blue-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      <div>
-                        <p className="font-bold">
-                          {exceedsContract ? 'Exceeds Contract Period' : monthsCovered > 1 ? `Covers ${monthsCovered} Months` : 'Covers 1 Month'}
+                    {/* LEFT COLUMN — Title, Payment Method, Amount */}
+                    <div className="flex flex-col">
+                      {/* Page Title */}
+                      <div className="mb-8">
+                        <h1 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Pay Bill</h1>
+                        <p className="text-sm text-gray-400 mt-1 font-medium">
+                          {selectedBill.properties?.title}
+                          {selectedBill.properties?.address && <> • {selectedBill.properties?.address}</>}
                         </p>
-                        {monthsCovered > 1 && !exceedsContract && contractEndDate && (
-                          <p className="text-xs opacity-80 mt-0.5">
-                            Paid until {new Date(new Date(selectedBill.due_date).setMonth(new Date(selectedBill.due_date).getMonth() + monthsCovered - 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                          </p>
-                        )}
-                        {exceedsContract && (
-                          <p className="text-xs mt-0.5">
-                            Contract ends {contractEndDate?.toLocaleDateString()}. Limit: {maxMonthsAllowed} months.
-                          </p>
-                        )}
                       </div>
-                    </div>
-                  )}
 
-                  {maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit && (
-                    <p className="text-xs font-bold text-red-500 mt-1 pl-1">
-                      Max allowed: ₱{maxPaymentLimit.toLocaleString()}
-                    </p>
-                  )}
-                </div>
-
-                {/* Payment Method Selection */}
-                {minimumPayment <= 0 && appliedCredit > 0 ? (
-                  <div className="bg-green-50 border border-green-200 p-5 rounded-2xl text-center space-y-3">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    </div>
-                    <h4 className="font-bold text-green-800">Fully Covered by Credit!</h4>
-                    <p className="text-sm text-green-700">Your credit balance is sufficient to pay this bill.</p>
-                    <button
-                      onClick={handleCreditPayment}
-                      className="w-full bg-black text-white py-3.5 rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg hover:shadow-xl translate-y-0 hover:-translate-y-0.5"
-                    >
-                      Pay with Credit Balance
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <label className="block text-sm font-bold text-gray-700">Payment Method</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {[
-                        { id: 'cash', label: 'Cash', icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, show: landlordAcceptedPayments?.cash },
-                        { id: 'paymongo', label: 'E-Wallet', icon: <div className="flex -space-x-1"><div className="w-3.5 h-3.5 rounded-full bg-blue-500 border border-white"></div><div className="w-3.5 h-3.5 rounded-full bg-green-500 border border-white"></div></div>, show: landlordAcceptedPayments?.gcash || landlordAcceptedPayments?.maya },
-                      ].filter(m => m.show).map(method => (
+                      {/* View Bill Receipt */}
+                      {selectedBill.bill_receipt_url && (
                         <button
-                          key={method.id}
                           type="button"
-                          onClick={() => setPaymentMethod(method.id)}
-                          disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
-                          className={`relative p-3 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all text-sm font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
-                            ${paymentMethod === method.id
-                              ? 'border-black bg-black text-white shadow-md scale-[1.02]'
-                              : 'border-gray-100 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                          onClick={() => {
+                            setSelectedBillReceipt(selectedBill.bill_receipt_url)
+                            setShowBillReceiptModal(true)
+                          }}
+                          className="flex items-center gap-2 text-gray-500 hover:text-black text-sm font-semibold mb-6 cursor-pointer transition-colors group"
                         >
-                          {method.icon}
-                          {method.id === 'paymongo' ? (
-                            <span className="text-[10px] text-center leading-tight">
-                              {[landlordAcceptedPayments?.gcash && 'GCash', landlordAcceptedPayments?.maya && 'Maya'].filter(Boolean).join(' / ')}
-                              <br />Cards
-                            </span>
-                          ) : (
-                            <span>{method.label}</span>
-                          )}
-                          {paymentMethod === method.id && (
-                            <div className="absolute top-1 right-1 w-2 h-2 bg-green-400 rounded-full border border-black max-sm:hidden"></div>
-                          )}
+                          <svg className="w-4 h-4 group-hover:text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          View Bill Receipt
                         </button>
-                      ))}
-                    </div>
-                    {/* 1% Platform Fee Notice */}
-                    {paymentMethod === 'paymongo' && (
-                      <p className="text-[10px] text-gray-400 text-center">1% platform fee is auto-deducted. Landlord receives 99%.</p>
-                    )}
+                      )}
 
-                    {/* PayMongo Content */}
-                    {paymentMethod === 'paymongo' && (
-                      <div className="bg-teal-50 border border-teal-100 rounded-2xl p-5 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {!isBelowMinimum && !exceedsContract && (
-                          <>
-                            <h4 className="font-bold text-teal-900 mb-3 text-center">Secure Payment via E-Wallets</h4>
-                            <div className="flex justify-center gap-2 mb-2">
-                              {[landlordAcceptedPayments?.gcash && 'GCash', landlordAcceptedPayments?.maya && 'Maya', 'QR PH', 'GrabPay', 'Cards'].filter(Boolean).map(n => (
-                                <span key={n} className="px-2 py-1 bg-white rounded border border-teal-100 text-[10px] font-bold text-teal-700 shadow-sm">{n}</span>
+                      {/* Payment Method Selection */}
+                      {minimumPayment <= 0 && appliedCredit > 0 ? (
+                        <div className="bg-green-50 border border-green-200 p-6 rounded-2xl text-center space-y-3 mb-8">
+                          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                          <h4 className="font-bold text-green-800">Fully Covered by Credit!</h4>
+                          <p className="text-sm text-green-700">Your credit balance is sufficient to pay this bill.</p>
+                          <button
+                            onClick={handleCreditPayment}
+                            className="w-full bg-black text-white py-3.5 rounded-full font-bold hover:bg-gray-800 transition-colors shadow-lg cursor-pointer"
+                          >
+                            Pay with Credit Balance
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mb-8">
+                            <h2 className="text-lg font-bold text-gray-900 mb-4">Payment Method</h2>
+                            <div className="flex flex-col gap-3">
+                              {[
+                                { id: 'cash', label: 'Cash', icon: <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>, show: landlordAcceptedPayments?.cash },
+                                { id: 'paymongo', label: 'E-Wallet', sublabel: [landlordAcceptedPayments?.gcash && 'GCash', landlordAcceptedPayments?.maya && 'Maya'].filter(Boolean).join(' / ') + '\nCards', icon: <div className="flex items-center gap-0.5"><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#007DFE" /><text x="12" y="16" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="Arial">G</text></svg><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#00B274" /><text x="12" y="16" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold" fontFamily="Arial">M</text></svg><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="3" fill="#374151" /><rect x="2" y="8" width="20" height="3" fill="#1F2937" /><rect x="4" y="14" width="5" height="2" rx="1" fill="#9CA3AF" /><rect x="11" y="14" width="3" height="2" rx="1" fill="#9CA3AF" /></svg></div>, show: landlordAcceptedPayments?.gcash || landlordAcceptedPayments?.maya },
+                              ].filter(m => m.show).map(method => (
+                                <button
+                                  key={method.id}
+                                  type="button"
+                                  onClick={() => setPaymentMethod(method.id)}
+                                  disabled={isBelowMinimum || exceedsContract || (maxPaymentLimit !== null && maxPaymentLimit !== Infinity && parseFloat(customAmount) > maxPaymentLimit)}
+                                  className={`relative w-full p-4 rounded-2xl border-2 flex items-center gap-4 transition-all text-left font-bold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                                    ${paymentMethod === method.id
+                                      ? 'border-green-500 bg-green-50/40 shadow-sm'
+                                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}
+                                >
+                                  <div className={`h-10 shrink-0 rounded-full flex items-center justify-center transition-all ${paymentMethod === method.id ? 'w-10 bg-green-100 text-green-600' : method.id === 'cash' ? 'w-10 bg-gray-100 text-gray-400' : 'w-auto px-1.5 bg-gray-100 text-gray-400'}`}>
+                                    {paymentMethod === method.id ? (
+                                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                    ) : method.icon}
+                                  </div>
+                                  <div className="flex-1">
+                                    <span className="text-sm font-bold text-gray-900">{method.label}</span>
+                                    {method.id === 'paymongo' && (
+                                      <span className="block text-[11px] text-gray-400 font-medium leading-tight mt-0.5">
+                                        {[landlordAcceptedPayments?.gcash && 'GCash', landlordAcceptedPayments?.maya && 'Maya'].filter(Boolean).join(' / ')} • Cards
+                                      </span>
+                                    )}
+                                  </div>
+                                  {paymentMethod === method.id && (
+                                    <svg className="w-5 h-5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                                  )}
+                                </button>
                               ))}
                             </div>
-                            <p className="text-[10px] text-teal-600 text-center mb-3">1% platform fee auto-deducted. Landlord receives ₱{(Math.round(parseFloat(customAmount || 0) * 0.99 * 100) / 100).toLocaleString()} to their e-wallet.</p>
-                            <button
-                              onClick={handlePayMongoPayment}
-                              disabled={uploadingProof}
-                              className="w-full py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              {uploadingProof ? <span className="animate-pulse">Redirecting...</span> : `Pay ₱${parseFloat(customAmount).toLocaleString()}`}
-                            </button>
-                          </>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Amount to Pay */}
+                      {!(minimumPayment <= 0 && appliedCredit > 0) && (
+                        <div className="mb-8">
+                          <div className="flex justify-between items-center mb-3">
+                            <h2 className="text-lg font-bold text-gray-900">Amount to Pay</h2>
+                            {isFamilyMember && (
+                              <span className="text-[10px] text-purple-700 font-bold bg-purple-100 px-2.5 py-1 rounded-full border border-purple-200">Expected amount only</span>
+                            )}
+                          </div>
+                          <div className="relative group">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-lg group-focus-within:text-black transition-colors">₱</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="1"
+                              value={customAmount}
+                              onChange={(e) => handleCustomAmountChange(e.target.value)}
+                              disabled={isFamilyMember}
+                              className={`w-full sm:w-48 bg-white border-2 ${exceedsContract || isBelowMinimum ? 'border-red-500 bg-red-50/50' : 'border-gray-200 hover:border-gray-300 focus:border-black'} ${isFamilyMember ? 'bg-gray-50 text-gray-500 cursor-not-allowed border-gray-100' : ''} rounded-2xl pl-10 pr-4 py-3 font-bold text-xl outline-none transition-all placeholder:text-gray-300`}
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          {/* Validation */}
+                          {isBelowMinimum && (
+                            <div className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-50 p-3 rounded-lg border border-red-100 mt-3">
+                              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              Minimum payment is ₱{minimumPayment.toLocaleString()} (No partials).
+                            </div>
+                          )}
+
+                          {maxPaymentLimit !== null && parseFloat(customAmount) > maxPaymentLimit && (
+                            <p className="text-xs font-bold text-red-500 mt-2 pl-1">
+                              Max allowed: ₱{maxPaymentLimit.toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+
+
+                      {paymentMethod === 'stripe' && !isBelowMinimum && !exceedsContract && (
+                        <div className="bg-[#f0f2fc] border border-[#e3e8fc] rounded-2xl p-4 mb-6">
+                          <StripePaymentForm
+                            amount={parseFloat(customAmount || 0).toFixed(2)}
+                            description={`Payment - ${selectedBill.properties?.title}`}
+                            paymentRequestId={selectedBill.id}
+                            onSuccess={handleStripeSuccess}
+                            onCancel={() => showToast.error('Cancelled')}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* RIGHT COLUMN — Bill Details */}
+                    <div className="flex flex-col h-full relative">
+                      <div className="sticky top-8 flex flex-col gap-6">
+                        <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-lg shadow-gray-200/50">
+                          {/* Header */}
+                          <div className="pb-4 mb-4 border-b border-gray-100">
+                            <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Bill Details</span>
+                            <div className="flex gap-2 mt-2">
+                              {selectedBill.is_move_in_payment && (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold border border-green-200">Move-in</span>
+                              )}
+                              {selectedBill.is_renewal_payment && (
+                                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">Renewal</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Items */}
+                          <div className="space-y-3 mb-6">
+                            {[
+                              { label: 'House Rent', value: selectedBill.rent_amount },
+                              { label: 'Security Deposit', value: selectedBill.security_deposit_amount },
+                              { label: 'Advance Payment', value: selectedBill.advance_amount },
+                              { label: 'Water', value: selectedBill.water_bill },
+                              { label: 'Electricity', value: selectedBill.electrical_bill },
+                              { label: 'Late Payment', value: selectedBill.other_bills }
+                            ].map((item, idx) => (
+                              parseFloat(item.value || 0) > 0 && (
+                                <div key={idx} className="flex justify-between items-center">
+                                  <span className="text-base text-gray-600">{item.label}</span>
+                                  <span className="text-base font-bold text-gray-900">₱{parseFloat(item.value).toLocaleString()}</span>
+                                </div>
+                              )
+                            ))}
+
+                            {(() => {
+                              const baseTotal = (
+                                parseFloat(selectedBill.rent_amount || 0) +
+                                parseFloat(selectedBill.security_deposit_amount || 0) +
+                                parseFloat(selectedBill.advance_amount || 0) +
+                                parseFloat(selectedBill.water_bill || 0) +
+                                parseFloat(selectedBill.electrical_bill || 0) +
+                                parseFloat(selectedBill.other_bills || 0)
+                              );
+                              const amountTyped = parseFloat(customAmount) || 0;
+                              const excess = amountTyped - (baseTotal - appliedCredit);
+
+                              return excess > 0 ? (
+                                <div className="flex justify-between items-center text-blue-600 pt-1">
+                                  <span className="text-base font-semibold">Additional Advance Payment</span>
+                                  <span className="text-base font-bold">₱{excess.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              ) : null;
+                            })()}
+
+                            {appliedCredit > 0 && (
+                              <div className="flex justify-between text-base text-green-600 font-bold pt-1">
+                                <span className="flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                  Credit Applied
+                                </span>
+                                <span>-₱{appliedCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Total */}
+                          <div className="flex justify-between items-end pt-4 border-t border-gray-100">
+                            <span className="text-sm font-medium text-gray-500">Total Due</span>
+                            <span className="text-3xl font-black text-gray-900">
+                              ₱{(() => {
+                                const baseTotal = (
+                                  parseFloat(selectedBill.rent_amount || 0) +
+                                  parseFloat(selectedBill.security_deposit_amount || 0) +
+                                  parseFloat(selectedBill.advance_amount || 0) +
+                                  parseFloat(selectedBill.water_bill || 0) +
+                                  parseFloat(selectedBill.electrical_bill || 0) +
+                                  parseFloat(selectedBill.other_bills || 0)
+                                );
+                                const amountTyped = parseFloat(customAmount) || 0;
+                                return Math.max(baseTotal - appliedCredit, amountTyped).toLocaleString('en-US', { minimumFractionDigits: 2 });
+                              })()}
+                            </span>
+                          </div>
+
+                          {/* Billing Period Info */}
+                          {monthlyRent > 0 && parseFloat(customAmount) > 0 && (
+                            <div className={`mt-5 p-4 rounded-2xl border flex items-start gap-3 ${exceedsContract
+                              ? 'bg-red-50 border-red-200'
+                              : 'bg-[#F8F9FA] border-gray-100'
+                              }`}>
+                              <svg className={`w-5 h-5 shrink-0 mt-0.5 ${exceedsContract ? 'text-red-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              <div>
+                                <p className={`font-bold text-sm ${exceedsContract ? 'text-red-700' : 'text-gray-900'}`}>
+                                  {exceedsContract ? 'Exceeds Contract Period' : `Billing Period`}
+                                </p>
+                                <p className={`text-xs mt-0.5 ${exceedsContract ? 'text-red-600' : 'text-gray-500'}`}>
+                                  {exceedsContract
+                                    ? `Contract ends ${contractEndDate?.toLocaleDateString()}. Limit: ${maxMonthsAllowed} months.`
+                                    : `Covers ${monthsCovered} Month${monthsCovered > 1 ? 's' : ''}`}
+                                </p>
+                                {monthsCovered > 1 && !exceedsContract && contractEndDate && (
+                                  <p className="text-[11px] text-gray-400 mt-0.5">
+                                    Paid until {new Date(new Date(selectedBill.due_date).setMonth(new Date(selectedBill.due_date).getMonth() + monthsCovered - 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* PayMongo E-Wallet Section */}
+                        {paymentMethod === 'paymongo' && !isBelowMinimum && !exceedsContract && (
+                          <div className="bg-teal-50 border border-teal-100 rounded-2xl p-5">
+                            {!uploadingProof ? (
+                              <>
+                                <h4 className="font-bold text-teal-900 mb-3 text-center">Secure Payment via E-Wallets</h4>
+                                <div className="flex justify-center gap-3 mb-3 flex-wrap">
+                                  {landlordAcceptedPayments?.gcash && (
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-lg border border-teal-100 shadow-sm">
+                                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#007DFE" /><path d="M7.5 15.5c0-2.5 1.5-4.5 4-5.5 1.5-.6 3-.4 4 .5.5.5.8 1 .8 1.8 0 1-.5 1.8-1.3 2.3-.8.4-1.7.3-2.5-.2-.5-.3-.7-.8-.5-1.3.2-.4.5-.6 1-.6" stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none" /></svg>
+                                      <span className="text-xs font-bold text-gray-700">GCash</span>
+                                    </div>
+                                  )}
+                                  {landlordAcceptedPayments?.maya && (
+                                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-lg border border-teal-100 shadow-sm">
+                                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#00B274" /><path d="M6 12.5l2.5-4h2l-2.5 4h2l-2.5 4h-2l2.5-4H6zm5 0l2.5-4h2l-2.5 4h2l-2.5 4h-2l2.5-4H11z" fill="white" /></svg>
+                                      <span className="text-xs font-bold text-gray-700">Maya</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-lg border border-teal-100 shadow-sm">
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><rect x="1" y="5" width="22" height="14" rx="3" fill="#6B7280" /><rect x="1" y="8" width="22" height="3" fill="#4B5563" /><rect x="3" y="14" width="6" height="2" rx="1" fill="#D1D5DB" /><rect x="11" y="14" width="3" height="2" rx="1" fill="#D1D5DB" /></svg>
+                                    <span className="text-xs font-bold text-gray-700">Cards</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-lg border border-teal-100 shadow-sm">
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="3" fill="#1a1a2e" /><rect x="5" y="7" width="14" height="3" rx="1" fill="#e94560" /><rect x="5" y="12" width="6" height="2" rx="0.5" fill="#4B5563" /><rect x="5" y="15" width="10" height="1" rx="0.5" fill="#4B5563" /></svg>
+                                    <span className="text-xs font-bold text-gray-700">QR PH</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-lg border border-teal-100 shadow-sm">
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#00B14F" /><path d="M7 10h10l-2 7H9L7 10z" fill="white" opacity="0.9" /><path d="M9 8h6l1 2H8l1-2z" fill="white" /></svg>
+                                    <span className="text-xs font-bold text-gray-700">GrabPay</span>
+                                  </div>
+                                </div>
+                                <p className="text-[10px] text-teal-600 text-center mb-3">Landlord receives ₱{(Math.round(parseFloat(customAmount || 0) * 0.99 * 100) / 100).toLocaleString()} to their e-wallet.</p>
+                                <button
+                                  onClick={handlePayMongoPayment}
+                                  disabled={uploadingProof}
+                                  className="w-full py-3 bg-[#00BFA5] text-white font-bold rounded-xl hover:bg-[#008f7a] shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  Pay ₱{parseFloat(customAmount).toLocaleString()}
+                                </button>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center py-5">
+                                <h4 className="font-bold text-teal-900 mb-4 text-center text-lg">
+                                  Please wait a moment...
+                                </h4>
+                                <style>{`
+                                @keyframes indeterminateSlide {
+                                  0% { transform: translateX(-100%); }
+                                  100% { transform: translateX(200%); }
+                                }
+                                .animate-line-slide {
+                                  animation: indeterminateSlide 1.5s infinite linear;
+                                }
+                              `}</style>
+                                <div className="w-full max-w-xs mx-auto h-2 bg-teal-200 rounded-full overflow-hidden relative mb-4">
+                                  <div className="absolute top-0 bottom-0 left-0 w-1/2 bg-[#00BFA5] rounded-full animate-line-slide"></div>
+                                </div>
+                                <p className="text-xs font-medium text-teal-700 text-center">
+                                  Do not close this window while we verify your payment.
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
+                    </div>
+                  </div>
 
-                    {/* Stripe Content */}
-                    {paymentMethod === 'stripe' && !isBelowMinimum && !exceedsContract && (
-                      <div className="bg-[#f0f2fc] border border-[#e3e8fc] rounded-2xl p-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <StripePaymentForm
-                          amount={parseFloat(customAmount || 0).toFixed(2)}
-                          description={`Payment - ${selectedBill.properties?.title}`}
-                          paymentRequestId={selectedBill.id}
-                          onSuccess={handleStripeSuccess}
-                          onCancel={() => showToast.error('Cancelled')}
-                        />
+                  {/* Bottom Action Buttons — Fixed */}
+                  <div className="sticky bottom-0 bg-gradient-to-t from-[#F5F5F5] via-[#F5F5F5] to-[#F5F5F5]/80 pt-4 pb-6 mt-8 z-10 pointer-events-none">
+                    <div className="pointer-events-auto">
+                      {paymentMethod === 'cash' && !isBelowMinimum && !exceedsContract && minimumPayment > 0 && (
+                        <button
+                          onClick={submitPayment}
+                          disabled={uploadingProof}
+                          className="w-full max-w-lg mx-auto mb-3 block py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all cursor-pointer active:scale-[0.98] text-base disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2.5"
+                        >
+                          {uploadingProof ? (
+                            <>
+                              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Processing...
+                            </>
+                          ) : (
+                            <>Pay ₱{parseFloat(customAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</>
+                          )}
+                        </button>
+                      )}
+                      <div className="text-center">
+                        <button
+                          onClick={() => {
+                            setShowPaymentModal(false)
+                            setSelectedBill(null)
+                            setPaymentMethod('cash')
+                          }}
+                          className="text-gray-400 hover:text-gray-900 text-sm font-semibold cursor-pointer transition-colors"
+                        >
+                          Cancel
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Footer Buttons (Cash or Cancel) */}
-              {((paymentMethod === 'cash' && minimumPayment > 0 && appliedCredit < minimumPayment) || (paymentMethod === 'stripe' && (isBelowMinimum || exceedsContract)) || (paymentMethod === 'paymongo' && (isBelowMinimum || exceedsContract))) && (
-                <div className="flex-none p-5 border-t border-gray-100 bg-gray-50/50 backdrop-blur pb-6">
-                  <div className="flex gap-3">
-                    {paymentMethod === 'cash' && !isBelowMinimum && !exceedsContract && (
-                      <button
-                        onClick={submitPayment}
-                        className="flex-1 py-3.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                      >
-                        Confirm Cash Payment
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setShowPaymentModal(false)
-                        setSelectedBill(null)
-                        setPaymentMethod('cash')
-                      }}
-                      className={`py-3.5 border-2 border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-white hover:border-gray-300 hover:text-black transition-all cursor-pointer ${(paymentMethod === 'cash' && !isBelowMinimum && !exceedsContract) ? 'px-6' : 'w-full'
-                        }`}
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
-              )}
-              {/* Footer for clean Stripe/PayMongo cancel only if not showing their inline forms correctly */}
-              {((paymentMethod !== 'cash' && !isBelowMinimum && !exceedsContract && minimumPayment > 0)) && (
-                <div className="flex-none p-4 text-center">
-                  <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-900 text-sm font-semibold underline cursor-pointer">Cancel Payment</button>
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Bill Receipt Modal */}
@@ -2946,15 +3167,25 @@ export default function PaymentsPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowCashConfirmModal(false)}
-                    className="flex-1 py-3 border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                    disabled={uploadingProof}
+                    className="flex-1 py-3 border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={executePaymentSubmission}
-                    className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all"
+                    disabled={uploadingProof}
+                    className="flex-1 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 shadow-lg hover:shadow-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    Yes, Confirm
+                    {uploadingProof ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Processing...
+                      </>
+                    ) : 'Yes, Confirm'}
                   </button>
                 </div>
               </div>

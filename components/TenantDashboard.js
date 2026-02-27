@@ -1522,7 +1522,7 @@ export default function TenantDashboard({ session, profile }) {
                       onClick={() => router.push('/properties/allProperties')}
                       className="text-[10px] font-bold text-slate-500 hover:text-black hover:underline cursor-pointer uppercase tracking-wider bg-gray-50 px-2 py-1 rounded"
                     >
-                      See More
+                      See More Properties
                     </button>
                   </div>
 

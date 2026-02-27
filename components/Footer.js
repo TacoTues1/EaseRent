@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 export default function Footer() {
   return (
-    <footer className="bg-black text-gray-400 py-6 border-t border-gray-900 mt-10">
+    <footer className="bg-black text-gray-400 py-3 border-t border-gray-900 mt-10">
       <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center sm:justify-start gap-6 lg:gap-8 text-[15px] font-medium">
           {/* Logo Name on Left */}

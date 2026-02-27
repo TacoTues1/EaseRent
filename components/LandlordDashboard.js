@@ -1515,7 +1515,7 @@ export default function LandlordDashboard({ session, profile }) {
           {/* MAIN GRID */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-8">
             {/* Left Col: Billing Schedule */}
-            <div className="lg:col-span-8 xl:col-span-9 space-y-4">
+            <div className="lg:col-span-6 xl:col-span-6 space-y-4">
               <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm h-full">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
@@ -1585,7 +1585,7 @@ export default function LandlordDashboard({ session, profile }) {
             </div>
 
             {/* Right Col: Action Center, Occupied Properties & Scheduled Today */}
-            <div className="lg:col-span-4 xl:col-span-3 space-y-6">
+            <div className="lg:col-span-6 xl:col-span-6 space-y-6">
 
               {/* ACTION CENTER */}
               <div className="bg-white rounded-2xl p-6 border border-gray-200/60 shadow-sm">
@@ -1662,7 +1662,7 @@ export default function LandlordDashboard({ session, profile }) {
                   <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-md shadow-blue-900/10">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="font-black text-lg">Scheduled Today</h3>
+                        <h3 className="font-black text-lg">Booking Scheduled Today</h3>
                         <p className="text-blue-100 text-sm mt-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                       </div>
                       <button onClick={() => router.push('/bookings')} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors backdrop-blur-sm cursor-pointer">
@@ -1672,7 +1672,7 @@ export default function LandlordDashboard({ session, profile }) {
 
                     {scheduledToday.length === 0 ? (
                       <div className="py-6 text-center bg-white/5 rounded-xl border border-white/10 backdrop-blur-sm">
-                        <p className="text-blue-100 text-sm font-medium">No move-ins scheduled today.</p>
+                        <p className="text-blue-100 text-sm font-medium">No Booking scheduled today.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">

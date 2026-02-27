@@ -518,7 +518,7 @@ export default function Navbar() {
                 <div className="absolute -bottom-4 h-[3px] bg-black rounded-t-full" style={{ left: `${underlineStyle.left}px`, width: `${underlineStyle.width}px`, opacity: underlineStyle.width ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
 
                 <Link href="/" className={`nav-link text-sm font-semibold transition-colors ${isActive('/') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Home</Link>
-                <Link href="/about" className={`nav-link text-sm font-semibold transition-colors ${isActive('/about') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>About</Link>
+                <Link href="/about" className={`nav-link text-sm font-semibold transition-colors ${isActive('/about') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>How it works</Link>
                 <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Properties</Link>
               </div>
 
@@ -528,7 +528,7 @@ export default function Navbar() {
               <div className="flex-1 flex items-center justify-end gap-3 pointer-events-auto z-50">
                 <div className="hidden sm:flex items-center gap-4 lg:gap-6">
                   {/* Become a Landlord button with Icon */}
-                  <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-[16px] font-medium text-[#0F172A] hover:text-blue-600 transition-colors cursor-pointer whitespace-nowrap group">
+                  <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] hover:text-gray-400 transition-colors cursor-pointer whitespace-nowrap group">
                     Become a Landlord
                   </button>
 
@@ -560,7 +560,7 @@ export default function Navbar() {
             <div className="lg:hidden mt-2 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto m-4">
               <div className="p-4 grid grid-cols-1 gap-2">
                 <button onClick={() => router.push('/')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Home</button>
-                <button onClick={() => router.push('/about')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">About</button>
+                <button onClick={() => router.push('/about')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">How it works</button>
                 <button onClick={() => router.push('/properties/allProperties')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Properties</button>
                 <div className="h-px bg-gray-200 my-1"></div>
                 <button onClick={() => router.push('/register-landlord')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Become a Landlord</button>

@@ -71,7 +71,7 @@ export default function BookingsPage() {
     if (session && profile) {
       loadBookings()
     }
-  }, [session, profile, filter])
+  }, [session, profile])
 
   async function loadProfile(userId) {
     const { data } = await supabase
@@ -114,14 +114,6 @@ export default function BookingsPage() {
         .in('property_id', propertyIds)
         .order('booking_date', { ascending: false })
 
-      if (filter === 'pending_approval') {
-        query = query.in('status', ['pending', 'pending_approval'])
-      } else if (filter === 'approved') {
-        query = query.in('status', ['approved', 'accepted'])
-      } else if (filter !== 'all') {
-        query = query.eq('status', filter)
-      }
-
       const { data, error } = await query
       if (error) {
         console.error('Error loading bookings:', error)
@@ -139,41 +131,31 @@ export default function BookingsPage() {
         .eq('tenant', session.user.id)
         .order('booking_date', { ascending: false })
 
-      if (filter === 'pending_approval') {
-        query = query.in('status', ['pending', 'pending_approval'])
-      } else if (filter === 'approved') {
-        query = query.in('status', ['approved', 'accepted'])
-      } else if (filter !== 'all' && filter !== 'ready_to_book') {
-        query = query.eq('status', filter)
-      }
-
       const { data: existingBookings, error } = await query
       if (error) console.error('Error loading bookings:', error)
 
       bookingsData = existingBookings || []
 
       // 2. Fetch "Accepted" Applications (Ready to Book)
-      if (filter === 'all' || filter === 'approved') {
-        // FIX: Remove 'created_at' to avoid 400 Bad Request if column doesn't exist
-        const { data: acceptedApps } = await supabase
-          .from('applications')
-          .select('id, property_id, tenant, status, message')
-          .eq('tenant', session.user.id)
-          .eq('status', 'accepted')
+      // FIX: Remove 'created_at' to avoid 400 Bad Request if column doesn't exist
+      const { data: acceptedApps } = await supabase
+        .from('applications')
+        .select('id, property_id, tenant, status, message')
+        .eq('tenant', session.user.id)
+        .eq('status', 'accepted')
 
-        if (acceptedApps && acceptedApps.length > 0) {
-          const appsToBook = acceptedApps.map(app => ({
-            id: app.id,
-            is_application: true,
-            property_id: app.property_id,
-            tenant: app.tenant,
-            booking_date: null,
-            status: 'ready_to_book',
-            notes: app.message
-          }))
+      if (acceptedApps && acceptedApps.length > 0) {
+        const appsToBook = acceptedApps.map(app => ({
+          id: app.id,
+          is_application: true,
+          property_id: app.property_id,
+          tenant: app.tenant,
+          booking_date: null,
+          status: 'ready_to_book',
+          notes: app.message
+        }))
 
-          bookingsData = [...appsToBook, ...bookingsData]
-        }
+        bookingsData = [...appsToBook, ...bookingsData]
       }
     }
 
@@ -851,7 +833,7 @@ export default function BookingsPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !profile) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
         <Lottie
@@ -870,7 +852,16 @@ export default function BookingsPage() {
   const pendingCount = bookings.filter(b => b.status === 'pending' || b.status === 'pending_approval').length
   const approvedCount = bookings.filter(b => b.status === 'approved' || b.status === 'accepted').length
   const rejectedCount = bookings.filter(b => b.status === 'rejected' || b.status === 'cancelled').length
+  const completedCount = bookings.filter(b => b.status === 'completed').length
   const userRoleLower = (profile.role || '').toLowerCase();
+
+  const filteredBookings = bookings.filter(b => {
+    if (filter === 'all') return true;
+    if (filter === 'pending_approval') return b.status === 'pending' || b.status === 'pending_approval';
+    if (filter === 'approved') return b.status === 'approved' || b.status === 'accepted';
+    if (filter === 'rejected') return b.status === 'rejected' || b.status === 'cancelled';
+    return b.status === filter;
+  });
 
   // --- GLOBAL BUTTON STATE ---
   // Check if user has ANY active booking currently displayed
@@ -904,12 +895,12 @@ export default function BookingsPage() {
 
           <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved / Completed</span>
               <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               </div>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{approvedCount}</p>
+            <p className="text-3xl font-bold text-gray-900">{approvedCount + completedCount}</p>
           </div>
 
           <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
@@ -924,28 +915,34 @@ export default function BookingsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto">
-          {['all', 'approved', 'pending_approval', 'rejected'].map(f => (
+        <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto relative">
+          {['all', 'approved', 'pending_approval', 'rejected', 'completed'].map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all uppercase tracking-wide ${filter === f
-                ? 'bg-black text-white'
-                : 'bg-transparent text-gray-500'
+              className={`relative flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all duration-300 ease-in-out uppercase tracking-wide ${filter === f
+                ? 'bg-black text-white shadow-lg transform scale-[1.03]'
+                : 'bg-transparent text-gray-500 hover:bg-gray-100'
                 }`}
             >
               {f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)} ({
                 f === 'all' ? bookings.length :
                   f === 'approved' ? approvedCount :
                     f === 'pending_approval' ? pendingCount :
-                      rejectedCount
+                      f === 'completed' ? completedCount :
+                        rejectedCount
               })
             </button>
           ))}
         </div>
 
         {/* Bookings List */}
-        {bookings.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
+            <Lottie animationData={loadingAnimation} loop={true} className="w-24 h-24 mb-4" />
+            <p className="text-gray-400 font-medium">Loading bookings...</p>
+          </div>
+        ) : filteredBookings.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -955,7 +952,7 @@ export default function BookingsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {bookings.map((booking) => {
+            {filteredBookings.map((booking) => {
               const timeInfo = getTimeSlotInfo(booking.booking_date)
               const bookingDate = new Date(booking.booking_date)
               const isPast = booking.booking_date && bookingDate < new Date()
@@ -1009,7 +1006,7 @@ export default function BookingsPage() {
                           </p>
                           <div className="flex items-center justify-end gap-2 text-sm text-gray-600">
                             <span>{timeInfo.time}</span>
-                            {isPast && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
+                            {isPast && statusLower !== 'completed' && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
                           </div>
                         </div>
                       )}

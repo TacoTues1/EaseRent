@@ -1,4 +1,6 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin'
+import { sendFamilyMemberAddedEmail } from '../../lib/email'
+import { sendFamilyMemberAddedSMS } from '../../lib/sms'
 
 export default async function handler(req, res) {
     if (req.method === 'GET') {
@@ -260,6 +262,61 @@ export default async function handler(req, res) {
 
             if (fmError) {
                 return res.status(500).json({ error: 'Failed to add family member: ' + fmError.message })
+            }
+
+            // === NOTIFY LANDLORD (Email + SMS + In-App) ===
+            try {
+                // Fetch landlord profile, member profile, and property info
+                const [landlordResult, memberResult, propertyResult, motherResult] = await Promise.all([
+                    supabaseAdmin.from('profiles').select('id, first_name, last_name, email, phone').eq('id', parentOccupancy.landlord_id).single(),
+                    supabaseAdmin.from('profiles').select('first_name, middle_name, last_name').eq('id', member_id).single(),
+                    supabaseAdmin.from('properties').select('title').eq('id', parentOccupancy.property_id).single(),
+                    supabaseAdmin.from('profiles').select('first_name, last_name').eq('id', mother_id).single()
+                ])
+
+                const landlord = landlordResult.data
+                const member = memberResult.data
+                const property = propertyResult.data
+                const motherProfile = motherResult.data
+                const tenantName = motherProfile ? `${motherProfile.first_name} ${motherProfile.last_name}` : 'A tenant'
+                const memberName = member ? `${member.first_name}${member.middle_name ? ' ' + member.middle_name : ''} ${member.last_name}` : 'A family member'
+                const propertyTitle = property?.title || 'your property'
+                const landlordName = landlord ? `${landlord.first_name} ${landlord.last_name}` : 'Landlord'
+
+                // Send Email (non-blocking)
+                if (landlord?.email) {
+                    sendFamilyMemberAddedEmail({
+                        to: landlord.email,
+                        landlordName,
+                        tenantName,
+                        memberName,
+                        propertyTitle
+                    }).catch(err => console.error('Family member email failed:', err))
+                }
+
+                // Send SMS (non-blocking)
+                if (landlord?.phone) {
+                    sendFamilyMemberAddedSMS(landlord.phone, {
+                        tenantName,
+                        memberName,
+                        propertyTitle
+                    }).catch(err => console.error('Family member SMS failed:', err))
+                }
+
+                // In-App Notification (non-blocking)
+                if (landlord?.id) {
+                    supabaseAdmin.from('notifications').insert({
+                        recipient: landlord.id,
+                        actor: mother_id,
+                        type: 'family_member_added',
+                        message: `${tenantName} added ${memberName} as a family member at ${propertyTitle}.`,
+                        data: {},
+                        read: false
+                    }).then(() => console.log('Family member in-app notification created'))
+                        .catch(err => console.error('Family member notification failed:', err))
+                }
+            } catch (notifyErr) {
+                console.error('Family member notification error (non-fatal):', notifyErr)
             }
 
             return res.status(200).json({ success: true })
