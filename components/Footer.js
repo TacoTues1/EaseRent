@@ -13,6 +13,7 @@ export default function Footer() {
           <span>© 2026 Abalay</span>
           <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
           <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+          <Link href="/delete-account" className="hover:text-white transition-colors">Delete Account</Link>
         </div>
       </div>
     </footer>
