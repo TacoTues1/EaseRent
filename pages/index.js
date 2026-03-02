@@ -46,6 +46,10 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false)
   const searchRef = useRef(null)
 
+  // Suggested properties (shown on search focus with empty query)
+  const [suggestedProperties, setSuggestedProperties] = useState([])
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
+
   // --- Filter Dropdown State ---
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [showPriceDropdown, setShowPriceDropdown] = useState(false)
@@ -147,6 +151,27 @@ export default function Home() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [filterRef, priceRef, searchRef]);
+
+  // Load suggested properties (for empty-query focus dropdown)
+  const loadSuggestedProperties = async () => {
+    if (suggestionsLoaded) return
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('id, title, city, price, images, status')
+        .eq('is_deleted', false)
+        .eq('status', 'available')
+        .order('created_at', { ascending: false })
+        .limit(6)
+
+      if (data && !error) {
+        setSuggestedProperties(data)
+        setSuggestionsLoaded(true)
+      }
+    } catch (err) {
+      console.error('Error loading suggestions:', err)
+    }
+  }
 
   // Real-time search with debounce
   useEffect(() => {
@@ -547,7 +572,14 @@ export default function Home() {
                   className="w-full bg-white border border-gray-200 rounded-full focus:ring-2 focus:ring-black/20 focus:border-gray-400 font-medium pl-11 pr-10 py-3 text-sm transition-all duration-300 hover:border-gray-300 hover:shadow-md focus:shadow-md placeholder:text-gray-400 shadow-sm"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setShowSearchDropdown(true)}
+                  onFocus={() => {
+                    if (searchQuery.trim() && searchResults.length > 0) {
+                      setShowSearchDropdown(true)
+                    } else if (!searchQuery.trim()) {
+                      loadSuggestedProperties()
+                      setShowSearchDropdown(true)
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && searchQuery.trim()) handleSearch()
                     if (e.key === 'Escape') setShowSearchDropdown(false)
@@ -564,12 +596,65 @@ export default function Home() {
                   </button>
                 )}
 
-                {/* Search Dropdown */}
-                {showSearchDropdown && searchResults.length > 0 && (
+                {/* Search Dropdown - Suggestions (when no query) */}
+                {showSearchDropdown && !searchQuery.trim() && suggestedProperties.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
+                    <div className="p-2">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Suggested Properties</p>
+                      {suggestedProperties.map((property) => (
+                        <div
+                          key={property.id}
+                          onClick={() => {
+                            router.push(`/properties/${property.id}`)
+                            setShowSearchDropdown(false)
+                          }}
+                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 group"
+                        >
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                            {property.images?.[0] ? (
+                              <img src={property.images[0]} alt={property.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-gray-900 truncate group-hover:text-black">{property.title}</p>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <span>{property.city}</span>
+                              <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                              <span className="font-bold text-gray-900">₱{Number(property.price).toLocaleString()}/mo</span>
+                            </div>
+                          </div>
+                          <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700">
+                            {property.status}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-100 p-2">
+                      <button
+                        onClick={() => {
+                          router.push('/properties/allProperties')
+                          setShowSearchDropdown(false)
+                        }}
+                        className="w-full text-center py-2 text-sm font-bold text-gray-900 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
+                      >
+                        Browse all properties
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Dropdown - Results (when query typed) */}
+                {showSearchDropdown && searchQuery.trim() && searchResults.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
                     <div className="p-2">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Search Results</p>
-                      {searchResults.map((property, idx) => (
+                      {searchResults.map((property) => (
                         <div
                           key={property.id}
                           onClick={() => {
