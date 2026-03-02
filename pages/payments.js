@@ -1136,9 +1136,6 @@ export default function PaymentsPage() {
         const requestId = key.replace('paymongo_session_', '');
         const storedSessionId = localStorage.getItem(key);
         if (requestId && storedSessionId) {
-          console.log('Found pending PayMongo session, attempting silent verification:', requestId);
-
-          // Silent check — don't show error toasts, just try to verify
           fetch('/api/payments/process-paymongo-success', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1152,8 +1149,6 @@ export default function PaymentsPage() {
                 showToast.success('A pending PayMongo payment was verified!', { duration: 5000, icon: '🎉' });
                 loadPaymentRequests();
               } else if (data.expired || (data.error || '').includes('expired') || (data.error || '').includes('No such link') || (data.error || '').includes('not found')) {
-                // Stale/expired session — clean up silently
-                console.log('Removing expired PayMongo session:', requestId);
                 localStorage.removeItem(key);
               } else {
                 // Payment not yet completed (400) — leave in localStorage for next visit
