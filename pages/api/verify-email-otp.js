@@ -65,13 +65,13 @@ export default async function handler(req, res) {
             apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
             const sendSmtpEmail = new brevo.SendSmtpEmail();
-            sendSmtpEmail.sender = { name: '𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝', email: 'alfnzperez@gmail.com' };
+            sendSmtpEmail.sender = { name: 'Abalay', email: 'alfnzperez@gmail.com' };
             sendSmtpEmail.to = [{ email: normalizedEmail }];
-            sendSmtpEmail.subject = '𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝 - Email Verification Code';
+            sendSmtpEmail.subject = 'Abalay - Email Verification Code';
             sendSmtpEmail.htmlContent = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 40px 20px;">
           <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝</h1>
+            <h1 style="color: #1a1a1a; font-size: 24px; margin: 0;">Abalay</h1>
             <p style="color: #666; margin-top: 5px;">Landlord Registration</p>
           </div>
           <div style="background: #f8f8f8; border-radius: 16px; padding: 30px; text-align: center;">

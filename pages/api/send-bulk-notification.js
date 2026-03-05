@@ -87,7 +87,7 @@ ${body}
                       </div>
                       
                       <p style="font-size: 12px; color: #9ca3af; margin-top: 32px;">
-                        This message was sent via 𝐓𝐞𝐬𝐬𝐲𝐍𝐓𝐞𝐝. Please do not reply to this email directly.
+                        This message was sent via Abalay. Please do not reply to this email directly.
                       </p>
                     </div>
                   </div>
