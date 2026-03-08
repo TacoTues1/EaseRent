@@ -14,6 +14,7 @@ export default function Navbar() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [bookingCount, setBookingCount] = useState(0)
   const [maintenanceCount, setMaintenanceCount] = useState(0)
+  const [pendingPaymentCount, setPendingPaymentCount] = useState(0)
   const [notifications, setNotifications] = useState([]) // Store fetched notifications
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState('signin')
@@ -92,7 +93,7 @@ export default function Navbar() {
   }, [session])
 
 
-  // Real-time subscription
+  // Real-time subscription for notifications
   useEffect(() => {
     if (!session) return
 
@@ -122,6 +123,33 @@ export default function Navbar() {
       supabase.removeChannel(channel)
     }
   }, [session, showNotifDropdown])
+
+  // Real-time subscription for payment badge updates
+  useEffect(() => {
+    if (!session) return
+
+    const userId = session.user.id
+
+    const paymentChannel = supabase
+      .channel('navbar-payments')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment_requests'
+        },
+        (payload) => {
+          // Refresh payment count when any payment changes
+          loadUnreadCount(userId)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(paymentChannel)
+    }
+  }, [session])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -274,6 +302,14 @@ export default function Navbar() {
           setBookingCount(0)
           setMaintenanceCount(0)
         }
+        // Landlord Payments: Pending confirmation from tenants
+        const { count: pCount } = await supabase
+          .from('payment_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('landlord', userId)
+          .eq('status', 'pending_confirmation')
+        setPendingPaymentCount(pCount || 0)
+
       } else if (role === 'tenant') {
         // Tenant Bookings: Approved Viewings
         const { count: bCount } = await supabase
@@ -287,11 +323,19 @@ export default function Navbar() {
         const { count: mCount } = await supabase
           .from('maintenance_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('tenant', userId) // Changed from user_id to tenant based on maintenance.js schema usage
+          .eq('tenant', userId)
           .neq('status', 'completed')
           .neq('status', 'cancelled')
-          .neq('status', 'closed') // Also exclude closed
+          .neq('status', 'closed')
         setMaintenanceCount(mCount || 0)
+
+        // Tenant Payments: Unpaid bills (pending)
+        const { count: pCount } = await supabase
+          .from('payment_requests')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant', userId)
+          .eq('status', 'pending')
+        setPendingPaymentCount(pCount || 0)
       }
 
     } catch (err) {
@@ -617,7 +661,14 @@ export default function Navbar() {
                       </span>
                     )}
                   </Link>
-                  <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>Payments</Link>
+                  <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                    Payments
+                    {pendingPaymentCount > 0 && (
+                      <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
+                        {pendingPaymentCount > 9 ? '9+' : pendingPaymentCount}
+                      </span>
+                    )}
+                  </Link>
                 </>
               )}
 
@@ -639,7 +690,14 @@ export default function Navbar() {
                       </span>
                     )}
                   </Link>
-                  <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>Payments</Link>
+                  <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                    Payments
+                    {pendingPaymentCount > 0 && (
+                      <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
+                        {pendingPaymentCount > 9 ? '9+' : pendingPaymentCount}
+                      </span>
+                    )}
+                  </Link>
                 </>
               )}
             </div>
@@ -900,8 +958,13 @@ export default function Navbar() {
             </div>
 
             <div className="p-2 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-1">
-              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all ${disabledClass}`}>
+              <Link href="/payments" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all relative ${disabledClass}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
+                {pendingPaymentCount > 0 && (
+                  <span className="absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm bg-red-500 text-white">
+                    {pendingPaymentCount > 9 ? '9+' : pendingPaymentCount}
+                  </span>
+                )}
               </Link>
               <Link href="/settings" onClick={() => setShowMobileMenu(false)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg> Settings
