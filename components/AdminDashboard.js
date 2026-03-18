@@ -4,7 +4,6 @@ import { Button, Input, Badge, Spinner } from './UI'
 import { showToast } from 'nextjs-toast-notify'
 import { useRouter } from 'next/router'
 
-// Helper to fetch data via admin API (bypasses RLS)
 async function adminFetch(table, select = '*', filters = [], order = null) {
   const res = await fetch('/api/admin/list-data', {
     method: 'POST',
@@ -51,17 +50,14 @@ export default function AdminDashboard({ session, profile }) {
     if (!confirm("Are you sure you want to log out?")) return
     try {
       await supabase.auth.signOut()
-      // Manually clear local storage to be sure
       if (typeof window !== 'undefined') {
         localStorage.clear()
         sessionStorage.clear()
       }
       showToast.success("Logged out successfully")
-      // Force reload to ensure all states are reset
       window.location.href = '/'
     } catch (error) {
       console.error("Logout error:", error)
-      // Force logout anyway
       window.location.href = '/'
     }
   }
@@ -137,9 +133,7 @@ export default function AdminDashboard({ session, profile }) {
         </button>
       </div>
 
-      {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col min-h-screen">
-        {/* TOP BAR */}
         <header className="hidden md:flex items-center justify-between px-8 py-5 bg-white/70 backdrop-blur-xl border-b border-gray-200/50 sticky top-0 z-10">
           <div>
             <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
@@ -169,7 +163,6 @@ export default function AdminDashboard({ session, profile }) {
   )
 }
 
-// --- SHARED COMPONENTS ---
 
 function DeleteModal({ isOpen, onClose, onConfirm, title, message }) {
   if (!isOpen) return null;
@@ -213,8 +206,8 @@ function OverviewView() {
   const [stats, setStats] = useState({ users: 0, properties: 0, bookings: 0, revenue: 0 })
   const [recentUsers, setRecentUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [autoSendStatus, setAutoSendStatus] = useState(null) // 'sending', 'sent', 'error', null
-  const [remindersEnabled, setRemindersEnabled] = useState(true) // Default true, fetch from DB ideally
+  const [autoSendStatus, setAutoSendStatus] = useState(null)
+  const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [togglingReminders, setTogglingReminders] = useState(false)
 
   useEffect(() => { loadStats(); checkReminderStatus(); }, [])
@@ -223,7 +216,6 @@ function OverviewView() {
     try {
       const { data, error } = await supabase.from('system_settings').select('value').eq('key', 'reminders_enabled').single()
       if (error) {
-        // Table might not exist yet, default to enabled
         console.warn("Could not fetch reminder status (table may not exist):", error.message)
         setRemindersEnabled(true)
         return
@@ -231,7 +223,7 @@ function OverviewView() {
       if (data) setRemindersEnabled(data.value === true || data.value === 'true')
     } catch (e) {
       console.error("Failed to load settings", e)
-      setRemindersEnabled(true) // Default to enabled on error
+      setRemindersEnabled(true)
     }
   }
 
@@ -259,7 +251,6 @@ function OverviewView() {
     }
   }
 
-  // Auto-send monthly statements on the 30th or last day of month
   useEffect(() => {
     async function checkAndAutoSend() {
       const now = new Date()
@@ -267,25 +258,15 @@ function OverviewView() {
       const month = now.getMonth()
       const year = now.getFullYear()
 
-      // Get the last day of the current month
       const lastDayOfMonth = new Date(year, month + 1, 0).getDate()
 
-      // Check if today is the 30th OR if it's the last day of the month (for months with less than 30 days)
       const isTargetDay = day === 30 || (lastDayOfMonth < 30 && day === lastDayOfMonth)
 
       if (!isTargetDay) return
 
-      // Check if we already sent statements this month (stored in localStorage)
       const sentKey = `statements_sent_${year}_${month}`
       const alreadySent = localStorage.getItem(sentKey)
 
-      if (alreadySent) {
-        console.log('Monthly statements already sent for this month')
-        return
-      }
-
-      // Auto-send statements
-      console.log('🚀 Auto-triggering monthly statements...')
       setAutoSendStatus('sending')
 
       try {
@@ -376,7 +357,7 @@ function OverviewView() {
             <h4 className="font-bold text-gray-900 text-base">Monthly Statements</h4>
             <p className="text-sm text-gray-500 mt-1">Send payment statements to tenants and financial overviews to landlords via email.</p>
             <p className="text-xs text-indigo-600 font-semibold mt-3 bg-indigo-50 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full">
-              📅 Auto-sends on the 30th • Or click to send manually
+              Auto-sends on the 30th • Or click to send manually
             </p>
           </div>
           <button
@@ -467,18 +448,13 @@ function UsersView() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showPassword, setShowPassword] = useState(false)
-
   const [editingUser, setEditingUser] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [deleteId, setDeleteId] = useState(null)
-
-  // Add User state
   const [showAddModal, setShowAddModal] = useState(false)
   const [newUserForm, setNewUserForm] = useState({ first_name: '', middle_name: '', last_name: '', email: '', phone: '', password: '', role: 'tenant', birthday: '', gender: '', avatar_url: '' })
   const [isCreating, setIsCreating] = useState(false)
-
   useEffect(() => { fetchUsers() }, [])
-
   async function fetchUsers() {
     setLoading(true)
     const { data, error } = await supabase.from('profiles').select('*, email').eq('is_deleted', false).order('created_at', { ascending: false })
@@ -486,7 +462,6 @@ function UsersView() {
     else setUsers(data || [])
     setLoading(false)
   }
-
   const filteredUsers = users.filter(user => {
     const term = search.toLowerCase()
     const matchesSearch = user.first_name?.toLowerCase().includes(term) || user.last_name?.toLowerCase().includes(term) || user.email?.toLowerCase().includes(term) || user.phone?.includes(term)

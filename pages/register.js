@@ -24,6 +24,7 @@ export default function Register() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const isVerifyingRef = useRef(false) // Prevent double-triggering auto-verification
   const [useBrevoFallback, setUseBrevoFallback] = useState(false) // Brevo fallback when Supabase email rate limit exceeded
+  const [resendCooldown, setResendCooldown] = useState(0)
   const router = useRouter()
 
   const heroImages = [
@@ -41,6 +42,17 @@ export default function Register() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Timer for cooldown
+  useEffect(() => {
+    let timer
+    if (resendCooldown > 0) {
+      timer = setInterval(() => {
+        setResendCooldown((prev) => prev - 1)
+      }, 1000)
+    }
+    return () => clearInterval(timer)
+  }, [resendCooldown])
 
   // Auto-slide timer
   useEffect(() => {
@@ -174,6 +186,7 @@ export default function Register() {
             return
           }
           setShowOtpInput(true)
+          setResendCooldown(90)
           showToast.success("Verification code sent to your email! (via backup)", { duration: 4000, progress: true, position: 'top-right', transition: 'bounceIn', icon: '', sound: true })
           setLoading(false)
           return
@@ -184,6 +197,7 @@ export default function Register() {
       // If successful, show OTP input
       if (data.user) {
         setShowOtpInput(true)
+        setResendCooldown(90)
         showToast.success("Check your email! We sent you a 6-digit verification code.", {
           duration: 4000,
           progress: true,
@@ -425,6 +439,7 @@ export default function Register() {
         })
         const d = await res.json()
         if (!res.ok) throw new Error(d.error || 'Failed to resend code')
+        setResendCooldown(90)
         showToast.success("Verification code resent! Check your email. (via backup)", {
           duration: 4000,
           progress: true,
@@ -450,6 +465,7 @@ export default function Register() {
             })
             const d = await res.json()
             if (!res.ok) throw new Error(d.error || 'Failed to send code')
+            setResendCooldown(90)
             showToast.success("Verification code resent! Check your email. (via backup)", {
               duration: 4000,
               progress: true,
@@ -462,6 +478,7 @@ export default function Register() {
             throw error
           }
         } else {
+          setResendCooldown(90)
           showToast.success("Verification code resent! Check your email.", {
             duration: 4000,
             progress: true,
@@ -650,10 +667,10 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={handleResendOtp}
-                    disabled={loading}
-                    className="text-sm font-bold text-gray-900 hover:underline cursor-pointer disabled:opacity-50 transition-all"
+                    disabled={loading || resendCooldown > 0}
+                    className="text-sm font-bold text-gray-900 hover:underline cursor-pointer disabled:opacity-50 transition-all disabled:hover:no-underline"
                   >
-                    Resend code
+                    {resendCooldown > 0 ? `Resend code in ${Math.floor(resendCooldown / 60)}:${(resendCooldown % 60).toString().padStart(2, '0')}` : 'Resend code'}
                   </button>
                   <button
                     type="button"

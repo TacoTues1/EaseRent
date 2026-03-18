@@ -35,6 +35,81 @@ export default async function handler(req, res) {
         console.log(`[PayMongo Webhook] Payment Request ID from metadata: ${paymentRequestId}`);
         console.log(`[PayMongo Webhook] Payments count: ${payments.length}`);
 
+        // ─── HANDLE SUBSCRIPTION SLOT PAYMENTS ───
+        // If this is a subscription slot purchase (not a rent payment), process separately
+        if (metadata.type === 'subscription_slot') {
+            const subscriptionPaymentId = metadata.subscription_payment_id;
+            const subscriptionId = metadata.subscription_id;
+            const tenantId = metadata.tenant_id;
+
+            console.log(`[PayMongo Webhook] Processing SUBSCRIPTION SLOT payment for tenant: ${tenantId}`);
+
+            if (!subscriptionPaymentId || !subscriptionId) {
+                console.error('[PayMongo Webhook] Missing subscription payment metadata');
+                return res.status(200).json({ received: true, error: 'Missing subscription metadata' });
+            }
+
+            // Check if already processed
+            const { data: existingPayment } = await supabase
+                .from('subscription_payments')
+                .select('status')
+                .eq('id', subscriptionPaymentId)
+                .single();
+
+            if (existingPayment?.status === 'paid') {
+                console.log('[PayMongo Webhook] Subscription payment already processed, skipping');
+                return res.status(200).json({ received: true, message: 'Already processed' });
+            }
+
+            // Mark subscription payment as paid
+            await supabase
+                .from('subscription_payments')
+                .update({
+                    status: 'paid',
+                    payment_method: 'paymongo_qrph',
+                    paid_at: new Date().toISOString()
+                })
+                .eq('id', subscriptionPaymentId);
+
+            // Upgrade the tenant's subscription (add 1 slot)
+            const { data: sub } = await supabase
+                .from('subscriptions')
+                .select('*')
+                .eq('id', subscriptionId)
+                .single();
+
+            if (sub) {
+                const newPaidSlots = sub.paid_slots + 1;
+                const newTotalSlots = 1 + newPaidSlots; // 1 free + paid
+
+                await supabase
+                    .from('subscriptions')
+                    .update({
+                        paid_slots: newPaidSlots,
+                        total_slots: newTotalSlots,
+                        plan_type: 'paid'
+                    })
+                    .eq('id', subscriptionId);
+
+                console.log(`[PayMongo Webhook] ✅ Subscription upgraded: ${newTotalSlots} total slots for tenant ${tenantId}`);
+            }
+
+            // Send in-app notification to tenant
+            if (tenantId) {
+                await supabase.from('notifications').insert({
+                    recipient: tenantId,
+                    type: 'subscription_upgraded',
+                    message: `Your family member slot has been unlocked! You now have ${sub ? (1 + sub.paid_slots + 1) : 2} slot(s).`,
+                    data: { subscription_id: subscriptionId },
+                    read: false
+                });
+            }
+
+            return res.status(200).json({ received: true, success: true, type: 'subscription_slot' });
+        }
+
+        // ─── HANDLE REGULAR RENT PAYMENTS ───
+
         // Find the successful payment
         let amountPaid = 0;
         let transactionId = '';

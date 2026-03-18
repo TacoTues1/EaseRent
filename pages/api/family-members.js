@@ -236,14 +236,54 @@ export default async function handler(req, res) {
                 return res.status(403).json({ error: 'Only the primary tenant can add family members' })
             }
 
-            // 3. Check max 4 additional members (5 total including mother)
+            // 3. Check subscription slots before allowing add
             const { data: existingMembers } = await supabaseAdmin
                 .from('family_members')
                 .select('id')
                 .eq('parent_occupancy_id', parent_occupancy_id)
 
-            if ((existingMembers || []).length >= 4) {
+            const currentMemberCount = (existingMembers || []).length
+
+            // Hard cap: max 4 family members total
+            if (currentMemberCount >= 4) {
                 return res.status(400).json({ error: 'Maximum 4 family members allowed (5 total including primary tenant)' })
+            }
+
+            // Check tenant's permanent subscription for available slots
+            let { data: subscription } = await supabaseAdmin
+                .from('subscriptions')
+                .select('*')
+                .eq('tenant_id', mother_id)
+                .maybeSingle()
+
+            // Auto-create free subscription if none exists (tied to tenant, not occupancy)
+            if (!subscription) {
+                const { data: newSub } = await supabaseAdmin
+                    .from('subscriptions')
+                    .insert({
+                        tenant_id: mother_id,
+                        plan_type: 'free',
+                        total_slots: 1,
+                        paid_slots: 0,
+                        status: 'active'
+                    })
+                    .select()
+                    .single()
+                subscription = newSub
+            }
+
+            const totalSlots = subscription?.total_slots || 1
+
+            // If tenant has used all available slots, they need to pay for more
+            if (currentMemberCount >= totalSlots) {
+                return res.status(402).json({
+                    error: 'No available family member slots. Purchase an additional slot for ₱50.',
+                    needs_payment: true,
+                    used_slots: currentMemberCount,
+                    total_slots: totalSlots,
+                    slot_price: 1,
+                    occupancy_id: parent_occupancy_id
+                })
             }
 
             // 4. Check if member already has an active occupancy

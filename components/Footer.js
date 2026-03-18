@@ -14,6 +14,7 @@ export default function Footer() {
           <div className="flex items-center gap-3 sm:gap-6 flex-wrap justify-end">
             <span className="hidden sm:inline">© 2026 Abalay</span>
             <span className="sm:hidden">© 2026</span>
+            <Link href="/team" className="hover:text-white transition-colors">Our Team</Link>
             <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
           </div>

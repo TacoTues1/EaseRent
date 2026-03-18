@@ -49,8 +49,8 @@ export default function TenantDashboard({ session, profile }) {
   const [lastPayment, setLastPayment] = useState(null)
   const [tenantBalance, setTenantBalance] = useState(0)
   const [pendingPayments, setPendingPayments] = useState([])
-  const [paymentHistory, setPaymentHistory] = useState([]) // NEW: Payment History State
-  const [familyPaidBills, setFamilyPaidBills] = useState([]) // Full paid bills data for accurate next date calc
+  const [paymentHistory, setPaymentHistory] = useState([])
+  const [familyPaidBills, setFamilyPaidBills] = useState([])
   const [showEndRequestModal, setShowEndRequestModal] = useState(false)
   const [endRequestDate, setEndRequestDate] = useState('')
   const [endRequestReason, setEndRequestReason] = useState('')
@@ -60,7 +60,6 @@ export default function TenantDashboard({ session, profile }) {
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
   const [dontShowReviewAgain, setDontShowReviewAgain] = useState(false)
-
   const [submittingRenewal, setSubmittingRenewal] = useState(false)
   const [cleanlinessRating, setCleanlinessRating] = useState(5)
   const [communicationRating, setCommunicationRating] = useState(5)
@@ -77,8 +76,6 @@ export default function TenantDashboard({ session, profile }) {
   const [daysUntilContractEnd, setDaysUntilContractEnd] = useState(null)
   const [canRenew, setCanRenew] = useState(false)
   const [securityDepositPaid, setSecurityDepositPaid] = useState(false)
-
-  // Family Members
   const [familyMembers, setFamilyMembers] = useState([])
   const [showFamilyModal, setShowFamilyModal] = useState(false)
   const [familySearchQuery, setFamilySearchQuery] = useState('')
@@ -89,22 +86,16 @@ export default function TenantDashboard({ session, profile }) {
   const [confirmRemoveMember, setConfirmRemoveMember] = useState(null)
   const [loadingFamily, setLoadingFamily] = useState(false)
   const [isFamilyMember, setIsFamilyMember] = useState(false)
-
   const maxDisplayItems = 8
   const router = useRouter()
-
-  // Search state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const searchRef = useRef(null)
-
-  // Compute Most Favorite and Top Rated IDs
   const mostFavoriteId = Object.entries(propertyStats).filter(([_, s]) => (s.favorite_count || 0) > 0).sort((a, b) => b[1].favorite_count - a[1].favorite_count)?.[0]?.[0];
   const topRatedId = Object.entries(propertyStats).filter(([_, s]) => (s.review_count || 0) > 0).sort((a, b) => b[1].avg_rating - a[1].avg_rating || b[1].review_count - a[1].review_count)?.[0]?.[0];
 
-  // Mount animation trigger
   const [mounted, setMounted] = useState(false)
 
   function getNextBillDate(startDate) {
@@ -117,13 +108,10 @@ export default function TenantDashboard({ session, profile }) {
     }
     return nextDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   }
-
-  // Mount animation trigger
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Real-time search with debounce
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([])
@@ -152,7 +140,6 @@ export default function TenantDashboard({ session, profile }) {
     return () => clearTimeout(debounceTimer)
   }, [searchQuery])
 
-  // Click outside to close search dropdown
   useEffect(() => {
     function handleClickOutside(event) {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
@@ -168,7 +155,6 @@ export default function TenantDashboard({ session, profile }) {
     router.push(`/properties/allProperties?search=${encodeURIComponent(searchQuery.trim())}`)
   }
 
-  // Auto-slide images for property cards (3 seconds interval - adjust as needed)
   useEffect(() => {
     const allProperties = [...properties, ...guestFavorites, ...topRated]
     if (allProperties.length === 0) return
@@ -184,12 +170,12 @@ export default function TenantDashboard({ session, profile }) {
         })
         return newIndex
       })
-    }, 1450) // Change image every 3 seconds
+    }, 1450)
 
     return () => clearInterval(interval)
   }, [properties, guestFavorites, topRated])
 
-  // Auto-slide images for active property in left panel
+
   useEffect(() => {
     if (!tenantOccupancy?.property?.images || tenantOccupancy.property.images.length <= 1) return
 
@@ -197,7 +183,7 @@ export default function TenantDashboard({ session, profile }) {
       setActivePropertyImageIndex(prev =>
         (prev + 1) % tenantOccupancy.property.images.length
       )
-    }, 3000) // Change image every 3 seconds
+    }, 3000) 
 
     return () => clearInterval(interval)
   }, [tenantOccupancy])
@@ -250,7 +236,6 @@ export default function TenantDashboard({ session, profile }) {
 
     if (diffDays <= 28 && diffDays > 0 && !renewalPendingOrApproved) {
 
-      // Define a window for "Last Month Bill". E.g. Due date is between (EndDate - 35 days) and (EndDate).
       const windowStart = new Date(endDate);
       windowStart.setDate(windowStart.getDate() - 40);
 
@@ -265,7 +250,6 @@ export default function TenantDashboard({ session, profile }) {
         return;
       }
 
-      // NO BILL FOUND. EXECUTE DEPOSIT LOGIC.
       console.log('Executing Last Month Deposit Logic...');
 
       const rentAmount = Number(occupancy.property?.price || 0);
@@ -274,56 +258,46 @@ export default function TenantDashboard({ session, profile }) {
       const availableDeposit = depositTotal - depositUsed;
 
       if (availableDeposit >= rentAmount) {
-        // CASE 1: Deposit covers full rent.
-        // 1. Mark as "Paid" immediately via Deposit
         await supabase.from('payment_requests').insert({
           tenant: session.user.id,
           property_id: occupancy.property_id,
           occupancy_id: occupancy.id,
           rent_amount: rentAmount,
-          status: 'paid', // Directly Paid
-          due_date: new Date().toISOString(), // Due now/today
+          status: 'paid',
+          due_date: new Date().toISOString(),
           bills_description: 'Last Month Rent (Paid via Security Deposit)',
           is_move_in_payment: false
         });
 
-        // 2. Update Deposit Used
         await supabase.from('tenant_occupancies')
           .update({ security_deposit_used: depositUsed + rentAmount })
           .eq('id', occupancy.id);
 
-        // 3. Notify
         showToast.success("Last month rent paid using Security Deposit");
         await createNotification({
           recipient: session.user.id,
-          actor: session.user.id, // System action really
+          actor: session.user.id,
           type: 'payment_paid',
           message: 'Your last month rent has been automatically paid using your Security Deposit.',
           link: '/payments'
         });
 
       } else {
-        // CASE 2: Deposit is INSUFFICIENT (or 0).
-        // 1. Consume remaining deposit (if any)
         if (availableDeposit > 0) {
-          // Record the partial usage? 
-          // The prompt says "send the exact amount of the lack only".
-          // So we just bill the difference. We implicitly "use" the deposit.
           await supabase.from('tenant_occupancies')
-            .update({ security_deposit_used: depositUsed + availableDeposit }) // Use it all
+            .update({ security_deposit_used: depositUsed + availableDeposit })
             .eq('id', occupancy.id);
         }
 
         const lackAmount = rentAmount - availableDeposit;
 
-        // 2. Create "Emergency Bill" for the Lack Amount
         await supabase.from('payment_requests').insert({
           tenant: session.user.id,
           property_id: occupancy.property_id,
           occupancy_id: occupancy.id,
-          rent_amount: lackAmount, // The "Lack"
+          rent_amount: lackAmount,
           status: 'pending',
-          due_date: new Date().toISOString(), // Due immediately
+          due_date: new Date().toISOString(),
           bills_description: `Emergency Bill: Last Month Balance (Deposit Insufficient)`,
           is_move_in_payment: false
         });
@@ -1311,6 +1285,43 @@ export default function TenantDashboard({ session, profile }) {
     return () => clearTimeout(timer)
   }, [familySearchQuery])
 
+  useEffect(() => {
+    if (!showFamilyModal) return
+
+    const originalOverflow = document.body.style.overflow
+
+    document.body.style.overflow = 'hidden'
+
+    function handleFamilyModalKeydown(event) {
+      if (event.key === 'Escape') {
+        setShowFamilyModal(false)
+        setFamilySearchQuery('')
+        setFamilySearchResults([])
+        setFamilySearching(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleFamilyModalKeydown)
+
+    return () => {
+      document.body.style.overflow = originalOverflow
+      document.removeEventListener('keydown', handleFamilyModalKeydown)
+    }
+  }, [showFamilyModal])
+
+  function openFamilyModal() {
+    setFamilySearchQuery('')
+    setFamilySearchResults([])
+    setShowFamilyModal(true)
+  }
+
+  function closeFamilyModal() {
+    setShowFamilyModal(false)
+    setFamilySearchQuery('')
+    setFamilySearchResults([])
+    setFamilySearching(false)
+  }
+
   async function addFamilyMember(memberId) {
     if (!tenantOccupancy || isFamilyMember) return
     setAddingMember(memberId)
@@ -1608,7 +1619,7 @@ export default function TenantDashboard({ session, profile }) {
                     </div>
                     {!isFamilyMember && familyMembers.length < 4 && (
                       <button
-                        onClick={() => setShowFamilyModal(true)}
+                        onClick={openFamilyModal}
                         className="text-[10px] font-bold text-black-600 bg-gray-50 hover:bg-gray-100 px-3 py-1.5 rounded-full transition-colors cursor-pointer border border-gray-200"
                       >
                         + Add Member
@@ -1713,50 +1724,68 @@ export default function TenantDashboard({ session, profile }) {
 
                 {/* Add Family Member Modal */}
                 {showFamilyModal && (
-                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => { setShowFamilyModal(false); setFamilySearchQuery(''); setFamilySearchResults([]) }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} />
-                    <div style={{ position: 'relative', backgroundColor: '#ffffff', borderRadius: '28px', boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', width: '100%', maxWidth: '440px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()} className="animate-in zoom-in-95 duration-200">
+                  <div
+                    className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto px-4 py-5 sm:items-center sm:px-6 sm:py-8"
+                    onClick={closeFamilyModal}
+                  >
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[4px]" />
+                    <div
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="family-member-modal-title"
+                      className="relative isolate my-auto flex w-full max-w-[460px] max-h-[min(720px,calc(100vh-2.5rem))] flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_30px_60px_-12px_rgba(15,23,42,0.35)] animate-in fade-in duration-150"
+                      onClick={e => e.stopPropagation()}
+                    >
                       {/* Modal Header */}
-                      <div className="bg-gray-900" style={{ padding: '24px 28px' }}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center bg-white/20 text-white shadow-sm">
+                      <div className="bg-gray-900 px-5 py-5 sm:px-7 sm:py-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex min-w-0 items-center gap-4">
+                            <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white shadow-sm">
                               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                             </div>
-                            <div className="flex flex-col">
-                              <p className="text-white font-black text-[22px] tracking-tight leading-none mb-1">Add Family Member</p>
-                              <p className="text-white/80 font-medium text-[13px]">{familyMembers.length}/4 slots used</p>
+                            <div className="min-w-0">
+                              <p id="family-member-modal-title" className="text-white font-black text-[22px] tracking-[-0.02em] leading-[1.15]">
+                                Add Family Member
+                              </p>
+                              <p className="mt-1 text-[13px] font-medium text-white/80">{familyMembers.length}/4 slots used</p>
                             </div>
                           </div>
-                          <button type="button" onClick={() => { setShowFamilyModal(false); setFamilySearchQuery(''); setFamilySearchResults([]) }} className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 hover:bg-white/30 transition-all text-white cursor-pointer shadow-sm">
+                          <button
+                            type="button"
+                            onClick={closeFamilyModal}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20 text-white shadow-sm transition-all hover:bg-white/30 cursor-pointer"
+                            aria-label="Close add family member modal"
+                          >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
                         </div>
                       </div>
 
                       {/* Search Input */}
-                      <div className="px-5 pt-6 pb-5 bg-white border-b border-gray-100">
+                      <div className="border-b border-gray-100 bg-white px-5 pb-5 pt-5 sm:px-6 sm:pt-6">
                         <div className="relative mb-3">
-                          <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9ca3af]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                          <input
-                            type="text"
-                            placeholder="Search by name or email..."
-                            value={familySearchQuery}
-                            onChange={e => setFamilySearchQuery(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3.5 bg-white border-[2px] border-gray-200 rounded-[24px] text-[15px] font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-gray-900/10 focus:border-gray-900 transition-all shadow-sm"
-                            autoFocus
-                          />
+                          <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-all focus-within:border-slate-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/10">
+                            <svg className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            <input
+                              type="text"
+                              placeholder="Search by name or email..."
+                              value={familySearchQuery}
+                              onChange={e => setFamilySearchQuery(e.target.value)}
+                              className="h-14 w-full rounded-[24px] border-0 bg-transparent pl-12 pr-12 text-[15px] font-medium text-slate-800 placeholder:text-slate-400 outline-none focus:outline-none focus:ring-0"
+                              autoFocus
+                            />
+                          </div>
                           {familySearching && (
                             <div className="absolute right-5 top-1/2 -translate-y-1/2">
                               <div className="w-5 h-5 border-[3px] border-gray-900/30 border-t-gray-900 rounded-full animate-spin"></div>
                             </div>
                           )}
                         </div>
-                        <p className="text-[12px] font-medium text-[#9ca3af] ml-2">Only tenant accounts will appear in results.</p>
+                        <p className="ml-2 text-[12px] font-medium text-slate-400">Only tenant accounts will appear in results.</p>
                       </div>
 
                       {/* Search Results */}
-                      <div className="flex-1 overflow-y-auto bg-[#fafafa]" style={{ maxHeight: '380px' }}>
+                      <div className="min-h-[240px] flex-1 overflow-y-auto bg-[#fafafa]">
                         {familySearchResults.length > 0 ? (
                           <div className="p-4 space-y-2">
                             {familySearchResults.map(user => (
@@ -1809,8 +1838,8 @@ export default function TenantDashboard({ session, profile }) {
                       </div>
 
                       {/* Footer Note */}
-                      <div className="px-6 py-5 bg-white border-t border-gray-100">
-                        <p className="text-[13px] font-medium text-[#64748b] text-center leading-[1.6]">
+                      <div className="border-t border-gray-100 bg-white px-5 py-4 sm:px-6 sm:py-5">
+                        <p className="text-center text-[13px] font-medium leading-[1.6] text-[#64748b]">
                           Note: Family members will have access to payments and maintenance for this property.
                           They cannot end the contract, renew contract.
                         </p>
@@ -2357,6 +2386,7 @@ export default function TenantDashboard({ session, profile }) {
                 <input
                   type="date"
                   value={endRequestDate}
+                  min={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setEndRequestDate(e.target.value)}
                   className="w-full p-3 border rounded-xl"
                 />
