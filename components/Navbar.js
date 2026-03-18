@@ -559,7 +559,7 @@ export default function Navbar() {
                 <Link href="/" className={`nav-link text-sm font-semibold transition-colors ${isActive('/') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Home</Link>
                 <Link href="/about" className={`nav-link text-sm font-semibold transition-colors ${isActive('/about') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>How it works</Link>
                 <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Properties</Link>
-                <Link href="/team" className={`nav-link text-sm font-semibold transition-colors ${isActive('/team') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Our Team</Link>
+                {/* <Link href="/team" className={`nav-link text-sm font-semibold transition-colors ${isActive('/team') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Our Team</Link> */}
               </div>
 
 
@@ -602,7 +602,7 @@ export default function Navbar() {
                 <button onClick={() => router.push('/')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Home</button>
                 <button onClick={() => router.push('/about')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">How it works</button>
                 <button onClick={() => router.push('/properties/allProperties')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Properties</button>
-                <button onClick={() => router.push('/team')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Our Team</button>
+                {/* <button onClick={() => router.push('/team')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Our Team</button> */}
                 <div className="h-px bg-gray-200 my-1"></div>
                 <button onClick={() => router.push('/register-landlord')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Become a Landlord</button>
                 <button onClick={() => router.push('/login')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Login</button>
