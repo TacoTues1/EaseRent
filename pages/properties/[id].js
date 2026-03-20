@@ -1426,7 +1426,7 @@ export default function PropertyDetail() {
                 {/* Amenities Section */}
                 {property.amenities && property.amenities.length > 0 && (
                   <div className="p-5 rounded-xl">
-                    <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">Amenities</h3>
+                    <h3 className="text-sm font-bold text-gray-900 mb-3 uppercase tracking-wider">What this apartment offers</h3>
                     <div className="flex flex-wrap gap-2">
                       {(showAllAmenities ? property.amenities : property.amenities.slice(0, 6)).map((amenity, index) => (
                         <span
