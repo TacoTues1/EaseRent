@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+﻿import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
@@ -651,7 +651,7 @@ export default function Home() {
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               <span>{property.city}</span>
                               <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                              <span className="font-bold text-gray-900">Γé▒{Number(property.price).toLocaleString()}/mo</span>
+                              <span className="font-bold text-gray-900">₱{Number(property.price).toLocaleString()}/mo</span>
                             </div>
                           </div>
                           <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700">
@@ -710,7 +710,7 @@ export default function Home() {
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               <span>{property.city}</span>
                               <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                              <span className="font-bold text-gray-900">Γé▒{Number(property.price).toLocaleString()}/mo</span>
+                              <span className="font-bold text-gray-900">₱{Number(property.price).toLocaleString()}/mo</span>
                             </div>
                             {/* Matched fields indicator */}
                             {property._matchedFields && property._matchedFields.length > 0 && (
@@ -1323,7 +1323,7 @@ export default function Home() {
 
                   <div className="mb-6 pb-6 border-b-2 border-gray-100 flex items-baseline gap-2">
                     <p className="text-4xl font-black text-black">
-                      Γé▒{Number(selectedProperty.price).toLocaleString()}
+                      ₱{Number(selectedProperty.price).toLocaleString()}
                     </p>
                     <span className="text-gray-500 font-bold text-sm uppercase tracking-wide">/ month</span>
                   </div>
