@@ -576,204 +576,18 @@ export default function Home() {
           {/* Section Header */}
           <div className={`flex flex-col sm:flex-row items-start sm:items-center mb-4 gap-3 ${mounted ? 'animate-fadeInLeft delay-200' : 'opacity-0'}`}>
             <h2 className="text-2xl font-black text-black shrink-0">
-              Available in Dumaguete City
+              𝐀𝐯𝐚𝐢𝐥𝐚𝐛𝐥𝐞 𝐢𝐧 𝐃𝐮𝐦𝐚𝐠𝐮𝐞𝐭𝐞 𝐂𝐢𝐭𝐲
             </h2>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto sm:flex-1 sm:max-w-md lg:max-w-lg">
-              {/* Inline Search Bar */}
-              <div className="relative flex-1" ref={searchRef}>
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
-                  {isSearching ? (
-                    <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
-                  ) : (
-                    <svg className="text-gray-400 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  )}
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search properties, cities..."
-                  className="w-full bg-white border border-gray-200 rounded-full focus:ring-2 focus:ring-black/20 focus:border-gray-400 font-medium pl-11 pr-10 py-3 text-sm transition-all duration-300 hover:border-gray-300 hover:shadow-md focus:shadow-md placeholder:text-gray-400 shadow-sm"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => {
-                    if (searchQuery.trim() && searchResults.length > 0) {
-                      setShowSearchDropdown(true)
-                    } else if (!searchQuery.trim()) {
-                      loadSuggestedProperties()
-                      setShowSearchDropdown(true)
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && searchQuery.trim()) handleSearch()
-                    if (e.key === 'Escape') setShowSearchDropdown(false)
-                  }}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => { setSearchQuery(''); setSearchResults([]); setShowSearchDropdown(false) }}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-900 transition-colors cursor-pointer"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-
-                {/* Search Dropdown - Suggestions (when no query) */}
-                {showSearchDropdown && !searchQuery.trim() && suggestedProperties.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
-                    <div className="p-2">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Suggested Properties</p>
-                      {suggestedProperties.map((property) => (
-                        <div
-                          key={property.id}
-                          onClick={() => {
-                            router.push(`/properties/${property.id}`)
-                            setShowSearchDropdown(false)
-                          }}
-                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 group"
-                        >
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                            {property.images?.[0] ? (
-                              <img src={property.images[0]} alt={property.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-gray-900 truncate group-hover:text-black">{property.title}</p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              <span>{property.city}</span>
-                              <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                              <span className="font-bold text-gray-900">₱{Number(property.price).toLocaleString()}/mo</span>
-                            </div>
-                          </div>
-                          <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700">
-                            {property.status}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="border-t border-gray-100 p-2">
-                      <button
-                        onClick={() => {
-                          router.push('/properties/allProperties')
-                          setShowSearchDropdown(false)
-                        }}
-                        className="w-full text-center py-2 text-sm font-bold text-gray-900 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Browse all properties
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Search Dropdown - Elastic Results (when query typed) */}
-                {showSearchDropdown && searchQuery.trim() && searchResults.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
-                    <div className="p-2">
-                      <div className="flex items-center justify-between px-2 mb-2">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Search Results</p>
-                        {/* <p className="text-[9px] font-medium text-gray-300 flex items-center gap-1">
-                          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                          Smart Search
-                        </p> */}
-                      </div>
-                      {searchResults.map((property) => (
-                        <div
-                          key={property.id}
-                          onClick={() => {
-                            router.push(`/properties/${property.id}`)
-                            setShowSearchDropdown(false)
-                          }}
-                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 group"
-                        >
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                            {property.images?.[0] ? (
-                              <img src={property.images[0]} alt={property.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-gray-900 truncate group-hover:text-black">{property.title}</p>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                              <span>{property.city}</span>
-                              <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                              <span className="font-bold text-gray-900">₱{Number(property.price).toLocaleString()}/mo</span>
-                            </div>
-                            {/* Matched fields indicator */}
-                            {property._matchedFields && property._matchedFields.length > 0 && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                {property._matchedFields.slice(0, 3).map((field) => (
-                                  <span key={field} className="text-[8px] px-1 py-px rounded bg-blue-50 text-blue-500 font-medium capitalize">
-                                    {field === 'property_type' ? 'type' : field === 'building' ? 'building' : field}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${property.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {property.status}
-                            </div>
-                            {/* Relevance indicator */}
-                            {property._score && (
-                              <div className="flex items-center gap-0.5">
-                                {[...Array(Math.min(3, Math.ceil(property._score / 150)))].map((_, i) => (
-                                  <div key={i} className="w-1 h-1 rounded-full bg-emerald-400" />
-                                ))}
-                                {[...Array(Math.max(0, 3 - Math.ceil(property._score / 150)))].map((_, i) => (
-                                  <div key={i} className="w-1 h-1 rounded-full bg-gray-200" />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="border-t border-gray-100 p-2">
-                      <button
-                        onClick={() => {
-                          router.push(`/properties/allProperties?search=${encodeURIComponent(searchQuery)}`)
-                          setShowSearchDropdown(false)
-                        }}
-                        className="w-full text-center py-2 text-sm font-bold text-gray-900 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
-                      >
-                        View all results for "{searchQuery}"
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* No results message */}
-                {showSearchDropdown && searchQuery.trim() && searchResults.length === 0 && !isSearching && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 p-4 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-gray-500">No properties found for "{searchQuery}"</p>
-                      <p className="text-[11px] text-gray-400 mt-1">Try different keywords or check spelling</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* {properties.length > 0 && (
-              <span onClick={handleSeeMore} className="text-sm font-bold text-gray-900 hover:text-gray-600 cursor-pointer flex items-center gap-1 group transition-all duration-300 shrink-0 ml-auto">
-                See More Properties
-                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-              </span>
-            )} */}
+            <button
+              onClick={handleSeeMore}
+              className="ml-auto inline-flex items-center gap-1 text-sm font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-all duration-300 shrink-0"
+            >
+              See more properties
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
 
           {loading ? (
@@ -921,7 +735,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-2xl font-black text-black">Near Valencia</h2>
+                  <h2 className="text-2xl font-black text-black">𝐍𝐞𝐚𝐫 𝐕𝐚𝐥𝐞𝐧𝐜𝐢𝐚</h2>
                 </div>
               </div>
             </div>
@@ -1046,7 +860,7 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-2xl font-black text-black">Top Rated</h2>
+                  <h2 className="text-2xl font-black text-black">𝐓𝐨𝐩 𝐑𝐚𝐭𝐞𝐝</h2>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import AuthModal from './AuthModal'
 import { showToast } from 'nextjs-toast-notify'
-import { goeyToast } from 'goey-toast'
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
 
 export default function Navbar() {
@@ -24,10 +24,21 @@ export default function Navbar() {
   const [showPublicMobileMenu, setShowPublicMobileMenu] = useState(false)
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 })
   const [isDuplicate, setIsDuplicate] = useState(false)
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false)
+  const [navbarSearchQuery, setNavbarSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [suggestedProperties, setSuggestedProperties] = useState([])
+  const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
+  const [isSearchAnimationDone, setIsSearchAnimationDone] = useState(false)
   const disabledClass = isDuplicate ? "opacity-40 pointer-events-none grayscale" : ""
 
   const navRef = useRef(null)
   const notifRef = useRef(null) // Ref for notification dropdown
+  const navbarSearchInputRef = useRef(null)
+  const navbarSearchRef = useRef(null)
+  const searchAnimationTimerRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -182,15 +193,81 @@ export default function Navbar() {
         setShowDropdown(false)
         setShowMobileMenu(false)
         setShowPublicMobileMenu(false)
+        setIsSearchExpanded(false)
+        setIsSearchAnimationDone(false)
+        setShowSearchDropdown(false)
       }
       // Close Notification Dropdown
       if (notifRef.current && !notifRef.current.contains(event.target)) {
         setShowNotifDropdown(false)
       }
+      // Close Search Dropdown
+      if (navbarSearchRef.current && !navbarSearchRef.current.contains(event.target)) {
+        setShowSearchDropdown(false)
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [navRef, notifRef]);
+  }, [navRef, notifRef, navbarSearchRef]);
+
+  const loadSuggestedProperties = async () => {
+    if (suggestionsLoaded) return
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('id, title, city, price, images, status')
+        .eq('is_deleted', false)
+        .eq('status', 'available')
+        .order('created_at', { ascending: false })
+        .limit(6)
+
+      if (data && !error) {
+        setSuggestedProperties(data)
+        setSuggestionsLoaded(true)
+      }
+    } catch (err) {
+      console.error('Error loading navbar search suggestions:', err)
+    }
+  }
+
+  useEffect(() => {
+    if (!isSearchExpanded) return
+
+    if (!navbarSearchQuery.trim()) {
+      setSearchResults([])
+      setIsSearching(false)
+      return
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const response = await fetch(`/api/elastic-search?q=${encodeURIComponent(navbarSearchQuery)}&limit=6`)
+        const data = await response.json()
+
+        if (response.ok && data.results) {
+          setSearchResults(data.results)
+          if (isSearchAnimationDone) {
+            setShowSearchDropdown(true)
+          }
+        }
+      } catch (err) {
+        console.error('Navbar elastic search error:', err)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 250)
+
+    return () => clearTimeout(debounceTimer)
+  }, [navbarSearchQuery, isSearchExpanded, isSearchAnimationDone])
+
+  useEffect(() => {
+    return () => {
+      if (searchAnimationTimerRef.current) {
+        clearTimeout(searchAnimationTimerRef.current)
+      }
+    }
+  }, [])
 
   async function loadProfile(userId, retries = 3) {
     try {
@@ -531,6 +608,226 @@ export default function Navbar() {
 
   const isActive = (path) => router.pathname === path
 
+  const toggleNavbarSearch = () => {
+    setIsSearchExpanded((prev) => {
+      const next = !prev
+      if (next) {
+        loadSuggestedProperties()
+        setIsSearchAnimationDone(false)
+        if (searchAnimationTimerRef.current) {
+          clearTimeout(searchAnimationTimerRef.current)
+        }
+        searchAnimationTimerRef.current = setTimeout(() => {
+          setIsSearchAnimationDone(true)
+          setShowSearchDropdown(true)
+        }, 500)
+        setTimeout(() => navbarSearchInputRef.current?.focus(), 80)
+      }
+      if (!next) {
+        if (searchAnimationTimerRef.current) {
+          clearTimeout(searchAnimationTimerRef.current)
+        }
+        setIsSearchAnimationDone(false)
+        setNavbarSearchQuery('')
+        setSearchResults([])
+        setShowSearchDropdown(false)
+      }
+      return next
+    })
+  }
+
+  const handleNavbarSearchSubmit = (e) => {
+    e.preventDefault()
+    const query = navbarSearchQuery.trim()
+    if (!query) {
+      setIsSearchExpanded(false)
+      return
+    }
+
+    router.push(`/properties/allProperties?search=${encodeURIComponent(query)}`)
+    setIsSearchExpanded(false)
+    setNavbarSearchQuery('')
+    setShowSearchDropdown(false)
+  }
+
+  const renderNavbarSearch = () => (
+    <div ref={navbarSearchRef} className="hidden sm:block relative group">
+      <form
+        onSubmit={handleNavbarSearchSubmit}
+        className={`relative flex items-center h-10 bg-white border rounded-full overflow-hidden will-change-[width,box-shadow,border-color] transition-[width,box-shadow,border-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSearchExpanded ? 'w-[30rem] shadow-lg border-gray-300' : 'w-10 shadow-sm border-gray-200'}`}
+      >
+        <button
+          type="button"
+          onClick={toggleNavbarSearch}
+          className="flex flex-shrink-0 items-center justify-center aspect-square h-full text-gray-600 hover:text-gray-900 transition-colors duration-300 cursor-pointer"
+          aria-label="Toggle search"
+          title="Search"
+        >
+          {isSearching ? (
+            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
+          ) : (
+            <MagnifyingGlassIcon className="w-5 h-5 flex-shrink-0" />
+          )}
+        </button>
+        <input
+          ref={navbarSearchInputRef}
+          type="text"
+          value={navbarSearchQuery}
+          onChange={(e) => setNavbarSearchQuery(e.target.value)}
+          onFocus={() => {
+            if (!isSearchExpanded) return
+            if (!navbarSearchQuery.trim()) {
+              loadSuggestedProperties()
+            }
+            if (isSearchAnimationDone) {
+              setShowSearchDropdown(true)
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsSearchExpanded(false)
+              setNavbarSearchQuery('')
+              setShowSearchDropdown(false)
+            }
+          }}
+          placeholder="Search properties"
+          className={`bg-transparent pr-10 text-sm outline-none will-change-[width,opacity,transform] transition-[width,opacity,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isSearchExpanded ? 'w-full opacity-100 translate-x-0' : 'w-0 opacity-0 -translate-x-2 pointer-events-none'}`}
+        />
+        {isSearchExpanded && navbarSearchQuery && (
+          <button
+            type="button"
+            onClick={() => {
+              setNavbarSearchQuery('')
+              setSearchResults([])
+              setShowSearchDropdown(true)
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-900 cursor-pointer transition-colors duration-200"
+            aria-label="Clear search"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </form>
+
+      {!isSearchExpanded && (
+        <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 rounded-md bg-gray-900 text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-[70]">
+          Search
+        </span>
+      )}
+
+      {isSearchExpanded && isSearchAnimationDone && showSearchDropdown && !navbarSearchQuery.trim() && suggestedProperties.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-[60] animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
+          <div className="p-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Suggested Properties</p>
+            {suggestedProperties.map((property) => (
+              <div
+                key={property.id}
+                onClick={() => {
+                  router.push(`/properties/${property.id}`)
+                  setShowSearchDropdown(false)
+                  setIsSearchExpanded(false)
+                  setNavbarSearchQuery('')
+                }}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 group"
+              >
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                  {property.images?.[0] ? (
+                    <img src={property.images[0]} alt={property.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate group-hover:text-black">{property.title}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>{property.city}</span>
+                    <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                    <span className="font-bold text-gray-900">P{Number(property.price).toLocaleString()}/mo</span>
+                  </div>
+                </div>
+                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700">
+                  {property.status}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isSearchExpanded && showSearchDropdown && navbarSearchQuery.trim() && searchResults.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-[60] animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
+          <div className="p-2">
+            <div className="flex items-center justify-between px-2 mb-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Search Results</p>
+            </div>
+            {searchResults.map((property) => (
+              <div
+                key={property.id}
+                onClick={() => {
+                  router.push(`/properties/${property.id}`)
+                  setShowSearchDropdown(false)
+                  setIsSearchExpanded(false)
+                  setNavbarSearchQuery('')
+                }}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 group"
+              >
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                  {property.images?.[0] ? (
+                    <img src={property.images[0]} alt={property.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-900 truncate group-hover:text-black">{property.title}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>{property.city}</span>
+                    <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                    <span className="font-bold text-gray-900">P{Number(property.price).toLocaleString()}/mo</span>
+                  </div>
+                </div>
+                <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${property.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {property.status}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-gray-100 p-2">
+            <button
+              onClick={() => {
+                router.push(`/properties/allProperties?search=${encodeURIComponent(navbarSearchQuery)}`)
+                setShowSearchDropdown(false)
+                setIsSearchExpanded(false)
+              }}
+              className="w-full text-center py-2 text-sm font-bold text-gray-900 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
+            >
+              View all results for "{navbarSearchQuery}"
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isSearchExpanded && showSearchDropdown && navbarSearchQuery.trim() && searchResults.length === 0 && !isSearching && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-[60] p-4 animate-fadeInUp" style={{ animationDuration: '0.2s' }}>
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-500">No properties found for "{navbarSearchQuery}"</p>
+            <p className="text-[11px] text-gray-400 mt-1">Try different keywords or check spelling</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
   if (profile?.role === 'admin') {
     return null
   }
@@ -552,23 +849,16 @@ export default function Navbar() {
                 </Link>
               </div>
 
-              {/* Center: Links */}
-              <div className="hidden lg:flex relative flex-1 items-center justify-center gap-8 pointer-events-auto z-50">
-                <div className="absolute -bottom-4 h-[3px] bg-black rounded-t-full" style={{ left: `${underlineStyle.left}px`, width: `${underlineStyle.width}px`, opacity: underlineStyle.width ? 1 : 0, transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }} />
-
-                <Link href="/" className={`nav-link text-sm font-semibold transition-colors ${isActive('/') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Home</Link>
-                <Link href="/about" className={`nav-link text-sm font-semibold transition-colors ${isActive('/about') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>How it works</Link>
-                <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Properties</Link>
-                {/* <Link href="/team" className={`nav-link text-sm font-semibold transition-colors ${isActive('/team') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Our Team</Link> */}
-              </div>
 
 
 
               {/* Right Side Sections */}
               <div className="flex-1 flex items-center justify-end gap-3 pointer-events-auto z-50">
+                {renderNavbarSearch()}
+
                 <div className="hidden sm:flex items-center gap-4 lg:gap-6">
                   {/* Become a Landlord button with Icon */}
-                  <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] hover:text-gray-400 transition-colors cursor-pointer whitespace-nowrap group">
+                  <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] cursor-pointer whitespace-nowrap group">
                     Become a Landlord
                   </button>
 
@@ -600,7 +890,6 @@ export default function Navbar() {
             <div className="lg:hidden mt-2 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto m-4">
               <div className="p-4 grid grid-cols-1 gap-2">
                 <button onClick={() => router.push('/')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Home</button>
-                <button onClick={() => router.push('/about')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">How it works</button>
                 <button onClick={() => router.push('/properties/allProperties')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Properties</button>
                 {/* <button onClick={() => router.push('/team')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Our Team</button> */}
                 <div className="h-px bg-gray-200 my-1"></div>
@@ -701,7 +990,6 @@ export default function Navbar() {
             {/* Mobile Center Logo (Clickable) - Removed since moved to left plane */}
 
             <div className="flex-1 flex items-center justify-end gap-3 lg:gap-5 z-50">
-
               {/* Message Icon */}
               <Link href="/messages" className={`hidden md:flex p-1.5 rounded-full items-center justify-center transition-colors relative ${isActive('/messages') ? 'active bg-gray-300 text-gray-900' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'} ${disabledClass}`}>
                 <svg className="w-[22px] h-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>

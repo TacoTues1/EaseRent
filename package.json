@@ -1,17 +1,18 @@
 {
-  "name": "easerent",
+  "name": "abalayrent",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@getbrevo/brevo": "^3.0.1",
     "@google/genai": "^1.30.0",
     "@google/generative-ai": "^0.24.1",
+    "@heroicons/react": "^2.2.0",
     "@paypal/react-paypal-js": "^8.9.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@stripe/react-stripe-js": "^5.6.0",
@@ -48,6 +49,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.16",
     "autoprefixer": "latest",
+    "eslint": "^9.39.4",
     "postcss": "latest",
     "rimraf": "^6.1.2",
     "supabase": "^2.77.0",

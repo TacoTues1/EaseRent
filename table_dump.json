@@ -1,0 +1,1 @@
+{"data":null,"error":{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'public.login_history' in the schema cache"}}

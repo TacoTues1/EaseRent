@@ -76,8 +76,9 @@ function MapCoverageCircle({ center }) {
 
     const points = 64;
     const coords = [];
-    const distanceX = 1 / (111.320 * Math.cos(center.latitude * Math.PI / 180));
-    const distanceY = 1 / 110.574;
+    const radiusKm = 2;
+    const distanceX = radiusKm / (111.320 * Math.cos(center.latitude * Math.PI / 180));
+    const distanceY = radiusKm / 110.574;
 
     for (let i = 0; i < points; i++) {
       let theta = (i / points) * (2 * Math.PI);
@@ -138,7 +139,7 @@ function MapCoverageCircle({ center }) {
     if (!isLoaded || !map || !center) return;
     map.flyTo({
       center: [center.longitude, center.latitude],
-      zoom: 14.5,
+      zoom: 13.5,
       duration: 1200
     });
   }, [map, isLoaded, center]);
@@ -495,7 +496,7 @@ export default function AllProperties() {
           parseFloat(coords.lat),
           parseFloat(coords.lng)
         );
-        return dist <= 1; // within 1km
+        return dist <= 2; // within 2km
       });
     }
 
@@ -610,7 +611,7 @@ export default function AllProperties() {
               <p className="text-[16px] font-bold text-[#111827] leading-none mb-1.5">
                 Find Near Me
               </p>
-              <p className="text-[13px] text-gray-500 font-medium leading-none">Properties within 1km</p>
+              <p className="text-[13px] text-gray-500 font-medium leading-none">Properties within 2km</p>
             </div>
           </div>
           <div className="relative flex-shrink-0 mt-0.5">
@@ -620,7 +621,7 @@ export default function AllProperties() {
               checked={filterNearMe}
               onChange={handleToggleNearMe}
             />
-            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 transition-colors duration-300 ease-in-out after:transition-all after:duration-300 after:ease-in-out peer-checked:bg-emerald-500 shadow-inner"></div>
           </div>
         </label>
         {locationError && <p className="text-[10px] text-red-500 font-medium mt-1.5 ml-1 leading-snug">{locationError}</p>}
@@ -701,7 +702,7 @@ export default function AllProperties() {
               checked={filterMostFavorite}
               onChange={() => setFilterMostFavorite(prev => !prev)}
             />
-            <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-black"></div>
+            <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 transition-colors duration-300 ease-in-out after:transition-all after:duration-300 after:ease-in-out peer-checked:bg-black shadow-inner"></div>
           </div>
           <span className="text-sm font-medium text-gray-700 group-hover:text-black">Most Favorite</span>
         </label>
@@ -1068,37 +1069,50 @@ export default function AllProperties() {
               </div>
             </div>
 
-            {loading ? (
-              <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-                {/* Wrapper for animation + text */}
-                <div className="flex flex-col items-center">
-                  <Lottie
-                    animationData={loadingAnimation}
-                    loop={true}
-                    className="w-64 h-64"
-                  />
-                  <p className="text-gray-500 font-medium text-lg mt-4">
-                    Loading Properties...
-                  </p>
+            {/* Render Content Area */}
+            <div className={`relative transition-opacity duration-300 ${loading ? 'opacity-80' : ''}`}>
+              {/* Overlay Loader for subsequent filter changes */}
+              {loading && properties.length > 0 && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-[1px] rounded-3xl pointer-events-none">
+                  <div className="bg-white/90 p-3 rounded-2xl shadow-xl flex flex-col items-center pointer-events-auto">
+                    <Lottie animationData={loadingAnimation} loop={true} className="w-20 h-20" />
+                    <p className="text-xs font-bold text-gray-700">Updating...</p>
+                  </div>
                 </div>
-              </div>
-            ) : properties.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gray-50 rounded-full flex items-center justify-center">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+              )}
+
+              {loading && properties.length === 0 ? (
+                /* Initial Full Loading State */
+                <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5] rounded-3xl">
+                  <div className="flex flex-col items-center">
+                    <Lottie
+                      animationData={loadingAnimation}
+                      loop={true}
+                      className="w-64 h-64"
+                    />
+                    <p className="text-gray-500 font-medium text-lg mt-4">
+                      Loading Properties...
+                    </p>
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">No properties found</h3>
-                <p className="text-gray-500 mb-6 max-w-sm mx-auto text-sm">
-                  We couldn't find any properties matching your filters.
-                </p>
-                <button onClick={clearFilters} className="px-5 py-2 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
-                  Clear Filters
-                </button>
-              </div>
-            ) : showMapView ? (
-              <div className="w-full h-[70vh] min-h-[500px] rounded-3xl overflow-hidden border border-gray-200 shadow-sm relative z-0">
+              ) : showMapView ? (
+                <div className="w-full h-[70vh] min-h-[500px] rounded-3xl overflow-hidden border border-gray-200 shadow-sm relative z-0">
+                  {/* Empty State Overlay for Map View */}
+                  {properties.length === 0 && !loading && (
+                    <div className="absolute inset-0 z-[60] flex items-center justify-center bg-white/60 backdrop-blur-sm pointer-events-none">
+                      <div className="bg-white p-8 rounded-3xl shadow-xl text-center border border-gray-100 pointer-events-auto">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-gray-50 rounded-full flex items-center justify-center">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">No properties found</h3>
+                        <button onClick={clearFilters} className="px-5 py-2 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors">
+                          Clear Filters
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 <Map
                   key={filterNearMe ? 'nearme' : 'default'}
                   center={userLocation ? [userLocation.longitude, userLocation.latitude] : [122.0, 12.5]}
@@ -1151,28 +1165,47 @@ export default function AllProperties() {
                           <MapMarker key={property.id} longitude={lng} latitude={lat}>
                             <MarkerContent>
                               <div
-                                onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`) }}
-                                className={`px-3 py-1.5 rounded-full font-bold text-xs shadow-lg whitespace-nowrap cursor-pointer hover:scale-110 transition-all border-2 relative ${isSelected ? 'bg-black text-white border-white z-50' : `bg-white text-black border-gray-200 hover:bg-emerald-500 hover:text-white hover:border-emerald-600 ${idx > 0 ? 'z-40' : 'z-30'}`}`}
+                                className="group relative flex flex-col items-center"
+                                onMouseEnter={(e) => {
+                                  const marker = e.currentTarget.closest('.maplibregl-marker') || e.currentTarget.closest('.mapboxgl-marker') || e.currentTarget.parentNode.parentNode;
+                                  if (marker) marker.style.zIndex = 9999;
+                                }}
+                                onMouseLeave={(e) => {
+                                  const marker = e.currentTarget.closest('.maplibregl-marker') || e.currentTarget.closest('.mapboxgl-marker') || e.currentTarget.parentNode.parentNode;
+                                  if (marker) marker.style.zIndex = '';
+                                }}
                               >
-                                ₱{Number(property.price).toLocaleString()}
-                                {idx > 0 && (
-                                  <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-white"></div>
-                                )}
-                              </div>
-                            </MarkerContent>
-                            <MarkerPopup closeButton={true} className={`p-0 overflow-hidden w-48 rounded-xl border-gray-200 shadow-xl z-50`}>
-                              <div className="text-left cursor-pointer bg-white" onClick={() => router.push(`/properties/${property.id}`)}>
-                                <img src={getPropertyImages(property)[0]} alt={property.title} className="w-full h-28 object-cover" />
-                                <div className="p-3">
-                                  <h4 className="font-bold text-sm line-clamp-1 mb-0.5 text-gray-900">{property.title}</h4>
-                                  <p className="text-[10px] text-gray-500 mb-2 truncate">{property.city}</p>
-                                  <div className="flex justify-between items-end">
-                                    <p className="font-black text-emerald-600 drop-shadow-sm text-sm">₱{Number(property.price).toLocaleString()}</p>
-                                    <span className="text-[8px] uppercase tracking-wider font-bold text-gray-400">/mo</span>
+                                {/* Custom CSS Hover Tooltip */}
+                                <div
+                                  onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`) }}
+                                  className="absolute bottom-[calc(100%+8px)] w-48 bg-white rounded-xl shadow-2xl border border-gray-200 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-300 z-[100] text-left origin-bottom translate-y-2 group-hover:translate-y-0 cursor-pointer"
+                                >
+                                  {/* The triangle pointer */}
+                                  <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-b border-r border-gray-200 rotate-45 pointer-events-none rounded-sm"></div>
+                                  
+                                  <img src={getPropertyImages(property)[0]} alt={property.title} className="w-full h-20 object-cover rounded-t-xl relative z-10" />
+                                  <div className="p-2.5 relative z-10 bg-white rounded-b-xl">
+                                    <h4 className="font-bold text-sm line-clamp-1 mb-0.5 text-gray-900">{property.title}</h4>
+                                    <p className="text-[10px] text-gray-500 mb-2 truncate">{property.city}</p>
+                                    <div className="flex justify-between items-end">
+                                      <p className="font-black text-emerald-600 drop-shadow-sm text-sm">₱{Number(property.price).toLocaleString()}</p>
+                                      <span className="text-[8px] uppercase tracking-wider font-bold text-gray-400">/mo</span>
+                                    </div>
                                   </div>
                                 </div>
+
+                                {/* Price Pill */}
+                                <div
+                                  onClick={(e) => { e.stopPropagation(); router.push(`/properties/${property.id}`) }}
+                                  className={`px-3 py-1.5 rounded-full font-bold text-xs shadow-lg whitespace-nowrap cursor-pointer group-hover:scale-110 transition-all border-2 relative ${isSelected ? 'bg-black text-white border-white z-50' : `bg-white text-black border-gray-200 group-hover:bg-emerald-500 group-hover:text-white group-hover:border-emerald-600 ${idx > 0 ? 'z-40' : 'z-30'}`}`}
+                                >
+                                  ₱{Number(property.price).toLocaleString()}
+                                  {idx > 0 && (
+                                    <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-white"></div>
+                                  )}
+                                </div>
                               </div>
-                            </MarkerPopup>
+                            </MarkerContent>
                           </MapMarker>
                         );
                       });
@@ -1180,12 +1213,28 @@ export default function AllProperties() {
                   })()}
                 </Map>
               </div>
+            ) : properties.length === 0 && !loading ? (
+              <div className="text-center py-20 bg-white rounded-3xl shadow-sm border border-gray-100">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-50 rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">No properties found</h3>
+                <p className="text-gray-500 mb-6 max-w-sm mx-auto text-sm">
+                  We couldn't find any properties matching your filters.
+                </p>
+                <button onClick={clearFilters} className="px-5 py-2 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
+                  Clear Filters
+                </button>
+              </div>
             ) : (
               // GRID: 2 Columns Mobile, 3 lg, 4 xl
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-12">
                 {properties.map((property) => renderPropertyCard(property))}
               </div>
             )}
+            </div>
           </main>
         </div>
 

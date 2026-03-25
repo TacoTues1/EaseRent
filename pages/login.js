@@ -94,7 +94,7 @@ export default function Login() {
       // Set session persistence based on "Remember Me" checkbox
       // If rememberMe is true, session persists in localStorage
       // If rememberMe is false, session only lasts until browser/tab closes
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
@@ -106,6 +106,22 @@ export default function Login() {
         localStorage.setItem('rememberedEmail', email)
       } else {
         localStorage.removeItem('rememberedEmail')
+      }
+
+      // Record successful login timestamp for this user.
+      if (data?.user?.id) {
+        const { error: logError } = await supabase
+          .from('user_login_records')
+          .insert({
+            user_id: data.user.id,
+            email: data.user.email,
+            login_at: new Date().toISOString(),
+            provider: 'password'
+          })
+
+        if (logError) {
+          console.error('Failed to record login history:', logError)
+        }
       }
 
      showToast.success(`Login Successful!`, {

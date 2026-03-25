@@ -87,7 +87,7 @@ export default function Footer() {
                 onClick={() => setIsBugModalOpen(true)}
                 className="text-[14px] hover:underline hover:text-black text-left cursor-pointer transition-colors"
               >
-                Report a problem
+                Report a bug
               </button>
 
               {/* Social Icons */}
@@ -114,7 +114,7 @@ export default function Footer() {
             {/* Column 3 */}
             <div className="flex flex-col space-y-3">
               <h3 className="font-bold text-[14px]">Abalay</h3>
-              <a href="#" className="text-[14px] hover:underline hover:text-black">About Us</a>
+              <Link href="/about" className="text-[14px] hover:underline hover:text-black">How it works</Link>
               <Link href="/team" className="text-[14px] hover:underline hover:text-black">Our Team</Link>
             </div>
 

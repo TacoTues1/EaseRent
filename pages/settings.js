@@ -57,6 +57,8 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordLoading, setPasswordLoading] = useState(false)
+  const [loginRecords, setLoginRecords] = useState([])
+  const [loadingLoginRecords, setLoadingLoginRecords] = useState(false)
 
   // Subscription State (Tenant only)
   const [subscriptionPlan, setSubscriptionPlan] = useState(null)
@@ -173,8 +175,38 @@ export default function Settings() {
           setMayaQrUrl(ap.maya.qr_url || '')
         }
       }
+
+      await loadLoginRecords(userId)
     }
     setLoading(false)
+  }
+
+  async function loadLoginRecords(userId) {
+    setLoadingLoginRecords(true)
+
+    const { data, error } = await supabase
+      .from('user_login_records')
+      .select('id, login_at, provider')
+      .eq('user_id', userId)
+      .order('login_at', { ascending: false })
+      .limit(10)
+
+    if (error) {
+      console.error('Failed to load login records:', error)
+      setLoginRecords([])
+    } else {
+      setLoginRecords(data || [])
+    }
+
+    setLoadingLoginRecords(false)
+  }
+
+  function formatLoginTime(value) {
+    try {
+      return new Date(value).toLocaleString()
+    } catch {
+      return value
+    }
   }
 
   async function handleAvatarUpload(event) {
@@ -997,6 +1029,25 @@ export default function Settings() {
                     </button>
                   </div>
                 </form>
+
+                <div className="mt-8 border-t border-gray-100 pt-6">
+                  <h3 className="text-sm font-bold uppercase text-gray-500 mb-3">Login Records</h3>
+
+                  {loadingLoginRecords ? (
+                    <p className="text-sm text-gray-500">Loading login records...</p>
+                  ) : loginRecords.length === 0 ? (
+                    <p className="text-sm text-gray-500">No login records yet.</p>
+                  ) : (
+                    <div className="space-y-2 max-w-md">
+                      {loginRecords.map((record) => (
+                        <div key={record.id} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                          <span className="text-sm font-medium text-gray-700">{formatLoginTime(record.login_at)}</span>
+                          <span className="text-xs font-bold uppercase text-gray-500">{record.provider || 'password'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
