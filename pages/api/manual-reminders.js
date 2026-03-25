@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendContractNearingEndEmail, sendNotificationEmail, sendNewPaymentBillEmail } from '../../lib/email';
 import { sendBookingReminder, sendContractNearingEnd, sendSMS, sendUnreadMessageNotification, sendBillNotification } from '../../lib/sms';
+import { createRequestContext, logApiEvent } from '../../lib/cloudwatch-logger';
 
 // Initialize Admin Client
 const supabaseAdmin = createClient(
@@ -24,6 +25,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  const logContext = createRequestContext(req, 'api/manual-reminders');
+
   // === CRON AUTH: Allow both client-side calls and Supabase pg_cron calls ===
   const cronSecret = req.headers['x-cron-secret'] || req.query.cron_secret;
   const isCronCall = cronSecret === process.env.CRON_SECRET;
@@ -31,12 +34,25 @@ export default async function handler(req, res) {
 
   // If neither a valid cron call nor a client-side call, reject
   if (!isCronCall && !isClientCall) {
+    await logApiEvent(logContext, {
+      level: 'WARN',
+      event: 'manual_reminders_unauthorized',
+      meta: { hasCronSecret: Boolean(cronSecret), hasClientOrigin: Boolean(isClientCall) }
+    });
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const results = { bookings_processed: 0, messages_processed: 0, rent_reminders_sent: 0, wifi_reminders_sent: 0, electricity_reminders_sent: 0, water_reminders_sent: 0, errors: 0, skipped: null }
 
   try {
+    await logApiEvent(logContext, {
+      event: 'manual_reminders_started',
+      meta: {
+        source: isCronCall ? 'cron' : 'client',
+        force: req.query.force === 'true'
+      }
+    });
+
     // ====================================================
     // CHECK IF REMINDERS ARE ENABLED (Admin Toggle)
     // ====================================================
@@ -48,6 +64,14 @@ export default async function handler(req, res) {
 
     // If setting exists and is explicitly false, skip all reminders
     if (reminderSetting && reminderSetting.value === false) {
+      await logApiEvent(logContext, {
+        event: 'manual_reminders_completed',
+        meta: {
+          source: isCronCall ? 'cron' : 'client',
+          skipped: 'reminders_disabled',
+          report: results
+        }
+      });
       return res.status(200).json({
         success: true,
         report: results,
@@ -993,10 +1017,23 @@ export default async function handler(req, res) {
     }
     console.log(`[Maintenance Check] ========================================`);
 
+    await logApiEvent(logContext, {
+      event: 'manual_reminders_completed',
+      meta: {
+        source: isCronCall ? 'cron' : 'client',
+        report: results
+      }
+    });
+
     res.status(200).json({ success: true, report: results })
 
   } catch (error) {
     console.error('Manual Reminder Error:', error)
+    await logApiEvent(logContext, {
+      level: 'ERROR',
+      event: 'manual_reminders_failed',
+      meta: { error: error.message || 'Unknown error' }
+    });
     res.status(500).json({ error: error.message })
   }
 }

@@ -4,11 +4,19 @@
 import { createClient } from '@supabase/supabase-js'
 import { generateStatementPDF, generateLandlordStatementPDF } from '../../../lib/pdf-generator'
 import { sendMonthlyStatementEmail, sendLandlordMonthlyStatementEmail } from '../../../lib/email'
+import { createRequestContext, logApiEvent } from '../../../lib/cloudwatch-logger'
 
 
 
 export default async function handler(req, res) {
+    const logContext = createRequestContext(req, 'api/admin/send-monthly-statements')
+
     if (req.method !== 'POST') {
+        await logApiEvent(logContext, {
+            level: 'WARN',
+            event: 'monthly_statements_method_not_allowed',
+            meta: { method: req.method }
+        })
         return res.status(405).json({ error: 'Method not allowed. Use POST.' })
     }
 
@@ -22,6 +30,11 @@ export default async function handler(req, res) {
         const cronSecret = req.headers['x-cron-secret'] || req.query?.cron_secret
         const isCronTriggered = cronSecret && cronSecret === process.env.CRON_SECRET
         const runSource = isCronTriggered ? 'pg_cron' : 'manual_admin'
+
+        await logApiEvent(logContext, {
+            event: 'monthly_statements_started',
+            meta: { source: runSource }
+        })
 
         // Calculate the period (current month for testing - change to previous month for production)
         const now = new Date()
@@ -53,6 +66,18 @@ export default async function handler(req, res) {
         }
 
         if (!tenants || tenants.length === 0) {
+            await logApiEvent(logContext, {
+                event: 'monthly_statements_completed',
+                meta: {
+                    source: runSource,
+                    tenantCount: 0,
+                    tenantProcessed: 0,
+                    tenantErrors: 0,
+                    landlordProcessed: 0,
+                    landlordErrors: 0,
+                    reason: 'no_tenants'
+                }
+            })
             return res.status(200).json({
                 success: true,
                 message: 'No tenant profiles found',
@@ -365,6 +390,20 @@ export default async function handler(req, res) {
                 { onConflict: 'key' }
             )
 
+        await logApiEvent(logContext, {
+            event: 'monthly_statements_completed',
+            meta: {
+                source: runSource,
+                tenantCount: tenants.length,
+                tenantProcessed: processed,
+                tenantErrors: errors.length,
+                landlordProcessed,
+                landlordErrors: landlordErrors.length,
+                landlordSkippedTenantOverlap,
+                status: (errors.length > 0 || landlordErrors.length > 0) ? 'completed_with_errors' : 'completed'
+            }
+        })
+
         return res.status(200).json({
             success: true,
             source: runSource,
@@ -389,6 +428,11 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error('Monthly statements error:', error)
+        await logApiEvent(logContext, {
+            level: 'ERROR',
+            event: 'monthly_statements_failed',
+            meta: { error: error.message || 'Unknown error' }
+        })
         return res.status(500).json({ error: error.message || 'Internal server error' })
     }
 }

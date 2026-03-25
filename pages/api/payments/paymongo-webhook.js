@@ -1,28 +1,50 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendNotificationEmail, sendOnlinePaymentReceivedEmail } from '@/lib/email';
 import { sendSMS, sendPaymentReceivedNotification } from '@/lib/sms';
+import { createRequestContext, logApiEvent } from '../../../lib/cloudwatch-logger';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 export default async function handler(req, res) {
+    const logContext = createRequestContext(req, 'api/payments/paymongo-webhook');
+
     if (req.method !== 'POST') {
+        await logApiEvent(logContext, {
+            level: 'WARN',
+            event: 'paymongo_webhook_method_not_allowed',
+            meta: { method: req.method }
+        });
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    let eventType = 'unknown';
+    let eventId = null;
+    let paymentRequestId = null;
 
     try {
         const event = req.body;
 
         // PayMongo sends events in this format:
         // { data: { id, type, attributes: { type: 'checkout_session.payment.paid', data: { ... } } } }
-        const eventType = event?.data?.attributes?.type;
+        eventType = event?.data?.attributes?.type;
         const eventData = event?.data?.attributes?.data;
+        eventId = event?.data?.id;
 
         console.log(`[PayMongo Webhook] Received event: ${eventType}`);
         console.log(`[PayMongo Webhook] Event ID: ${event?.data?.id}`);
 
+        await logApiEvent(logContext, {
+            event: 'paymongo_webhook_received',
+            meta: { eventType, eventId }
+        });
+
         // Only process payment success events
         if (eventType !== 'checkout_session.payment.paid' && eventType !== 'link.payment.paid') {
             console.log(`[PayMongo Webhook] Ignoring event type: ${eventType}`);
+            await logApiEvent(logContext, {
+                event: 'paymongo_webhook_ignored',
+                meta: { eventType, eventId }
+            });
             return res.status(200).json({ received: true, ignored: true });
         }
 
@@ -30,7 +52,7 @@ export default async function handler(req, res) {
         const attributes = eventData?.attributes || {};
         const payments = attributes.payments || [];
         const metadata = attributes.metadata || {};
-        const paymentRequestId = metadata.payment_request_id;
+        paymentRequestId = metadata.payment_request_id;
 
         console.log(`[PayMongo Webhook] Payment Request ID from metadata: ${paymentRequestId}`);
         console.log(`[PayMongo Webhook] Payments count: ${payments.length}`);
@@ -46,6 +68,11 @@ export default async function handler(req, res) {
 
             if (!subscriptionPaymentId || !subscriptionId) {
                 console.error('[PayMongo Webhook] Missing subscription payment metadata');
+                await logApiEvent(logContext, {
+                    level: 'WARN',
+                    event: 'paymongo_subscription_missing_metadata',
+                    meta: { eventType, eventId }
+                });
                 return res.status(200).json({ received: true, error: 'Missing subscription metadata' });
             }
 
@@ -58,6 +85,10 @@ export default async function handler(req, res) {
 
             if (existingPayment?.status === 'paid') {
                 console.log('[PayMongo Webhook] Subscription payment already processed, skipping');
+                await logApiEvent(logContext, {
+                    event: 'paymongo_subscription_already_processed',
+                    meta: { eventType, eventId, subscriptionPaymentId }
+                });
                 return res.status(200).json({ received: true, message: 'Already processed' });
             }
 
@@ -104,6 +135,11 @@ export default async function handler(req, res) {
                     read: false
                 });
             }
+
+            await logApiEvent(logContext, {
+                event: 'paymongo_subscription_processed',
+                meta: { eventType, eventId, tenantId, subscriptionId }
+            });
 
             return res.status(200).json({ received: true, success: true, type: 'subscription_slot' });
         }
@@ -417,10 +453,30 @@ export default async function handler(req, res) {
         }
 
         console.log(`[PayMongo Webhook] ✅ Payment processed successfully for ${request.properties?.title}`);
+        await logApiEvent(logContext, {
+            event: 'paymongo_webhook_processed',
+            meta: {
+                eventType,
+                eventId,
+                paymentRequestId,
+                amountPaid,
+                transactionId
+            }
+        });
         return res.status(200).json({ received: true, success: true });
 
     } catch (err) {
         console.error('[PayMongo Webhook] Error:', err);
+        await logApiEvent(logContext, {
+            level: 'ERROR',
+            event: 'paymongo_webhook_failed',
+            meta: {
+                eventType,
+                eventId,
+                paymentRequestId,
+                error: err.message || 'Unknown error'
+            }
+        });
         // IMPORTANT: Return 200 even on error to prevent PayMongo from retrying endlessly
         return res.status(200).json({ received: true, error: err.message });
     }

@@ -9,6 +9,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1016.0",
     "@getbrevo/brevo": "^3.0.1",
     "@google/genai": "^1.30.0",
     "@google/generative-ai": "^0.24.1",
