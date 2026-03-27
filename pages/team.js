@@ -66,6 +66,16 @@ export default function Team() {
             badgeColor: "bg-emerald-100 text-emerald-700",
             facebook: "https://facebook.com/Feighh",
             instagram: "https://www.instagram.com/aljrcck/"
+        },
+        {
+            id: 3,
+            role: "Programmer",
+            name: "Software Development",
+            image: "/teampicture/developer.png",
+            description: "Building and maintaining the platform's core features to keep Abalay reliable, secure, and fast for every user.",
+            badgeColor: "bg-amber-100 text-amber-700",
+            facebook: "https://facebook.com/pahingakamunaaaa",
+            instagram: "https://www.instagram.com/alfonzpereezz/"
         }
     ];
 

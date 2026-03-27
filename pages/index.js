@@ -297,7 +297,7 @@ export default function Home() {
         const searchData = await response.json()
 
         if (response.ok && searchData.results) {
-          let results = searchData.results
+          let results = (searchData.results || []).filter((p) => p?.status === 'available' && p?.is_deleted !== true)
 
           // Apply additional filters client-side
           if (priceRange.min) results = results.filter(p => p.price >= parseInt(priceRange.min))
@@ -329,6 +329,8 @@ export default function Home() {
         *,
         landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)
       `)
+      .eq('is_deleted', false)
+      .eq('status', 'available')
 
     if (priceRange.min) {
       query = query.gte('price', parseInt(priceRange.min))
@@ -437,6 +439,7 @@ export default function Home() {
       .from('properties')
       .select('*')
       .eq('is_deleted', false)
+      .eq('status', 'available')
 
     // 2. Fetch stats
     const { data: stats } = await supabase

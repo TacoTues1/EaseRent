@@ -333,6 +333,7 @@ export default function AllProperties() {
       .from('properties')
       .select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)')
       .eq('is_deleted', false)
+      .eq('status', 'available')
 
     const { data: stats } = await supabase
       .from('property_stats')
@@ -409,18 +410,18 @@ export default function AllProperties() {
         const searchData = await response.json()
 
         if (response.ok && searchData.results) {
-          filteredData = searchData.results
+          filteredData = (searchData.results || []).filter((p) => p?.status === 'available' && p?.is_deleted !== true)
         }
       } catch (err) {
         console.error('Elastic search error, falling back to basic search:', err)
         // Fallback to basic search if elastic search API fails
-        const { data } = await supabase.from('properties').select('*').eq('is_deleted', false)
+        const { data } = await supabase.from('properties').select('*').eq('is_deleted', false).eq('status', 'available')
           .or(`title.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
         filteredData = data || []
       }
     } else {
       // No text query - use standard Supabase query
-      let query = supabase.from('properties').select('*').eq('is_deleted', false)
+      let query = supabase.from('properties').select('*').eq('is_deleted', false).eq('status', 'available')
 
       if (sortBy === 'newest') query = query.order('created_at', { ascending: false })
       else if (sortBy === 'oldest') query = query.order('created_at', { ascending: true })

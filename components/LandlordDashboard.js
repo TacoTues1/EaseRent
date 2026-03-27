@@ -73,7 +73,11 @@ export default function LandlordDashboard({ session, profile }) {
     isOpen: false,
     occupancy: null,
     members: [],
-    loading: false
+    loading: false,
+    internetDueDay: '',
+    waterDueDay: '',
+    electricityDueDay: '',
+    savingDueDates: false
   })
 
   // Renewal Confirmation Modal State
@@ -460,6 +464,8 @@ export default function LandlordDashboard({ session, profile }) {
   const [editingDueDateItemId, setEditingDueDateItemId] = useState(null)
   const [editingDueDateValue, setEditingDueDateValue] = useState('')
   const [savingDueDateItemId, setSavingDueDateItemId] = useState(null)
+  const [billingTenantFilter, setBillingTenantFilter] = useState('')
+  const [billingDateFilter, setBillingDateFilter] = useState('')
   const [autoBillingEnabled, setAutoBillingEnabled] = useState(true)
   const [togglingAutoBilling, setTogglingAutoBilling] = useState(false)
   const [utilityReminderSettings, setUtilityReminderSettings] = useState({ internet: true, water: true, electricity: true })
@@ -1542,25 +1548,99 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   async function openFamilyModal(occupancy) {
-    setFamilyModal({ isOpen: true, occupancy, members: [], loading: true })
-    try {
-      const res = await fetch(`/api/family-members?occupancy_id=${occupancy.id}`)
+    setFamilyModal({
+      isOpen: true,
+      occupancy,
+      members: [],
+      loading: true,
+      internetDueDay: occupancy?.wifi_due_day || 10,
+      waterDueDay: occupancy?.water_due_day || 7,
+      electricityDueDay: occupancy?.electricity_due_day || 7,
+      savingDueDates: false
+    })
+
+    const membersPromise = fetch(`/api/family-members?occupancy_id=${occupancy.id}`).then(async (res) => {
       const data = await res.json()
-      if (res.ok) {
-        setFamilyModal(prev => ({ ...prev, members: data.members || [], loading: false }))
-      } else {
-        showToast.error(data.error || 'Failed to load family members', { duration: 3000, transition: "bounceIn" })
-        setFamilyModal(prev => ({ ...prev, loading: false }))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load family members')
       }
-    } catch (err) {
-      console.error(err)
+      return data.members || []
+    })
+
+    const [membersResult] = await Promise.allSettled([membersPromise])
+
+    let members = []
+
+    if (membersResult.status === 'fulfilled') {
+      members = membersResult.value
+    } else {
+      console.error(membersResult.reason)
       showToast.error('An error occurred fetching family members', { duration: 3000, transition: "bounceIn" })
-      setFamilyModal(prev => ({ ...prev, loading: false }))
     }
+
+    setFamilyModal(prev => ({
+      ...prev,
+      members,
+      loading: false
+    }))
   }
 
   function closeFamilyModal() {
-    setFamilyModal({ isOpen: false, occupancy: null, members: [], loading: false })
+    setFamilyModal({
+      isOpen: false,
+      occupancy: null,
+      members: [],
+      loading: false,
+      internetDueDay: '',
+      waterDueDay: '',
+      electricityDueDay: '',
+      savingDueDates: false
+    })
+  }
+
+  async function updateTenantDueDatesForFamilyModal() {
+    if (!autoBillingEnabled) {
+      showToast.error('Automated billing is disabled. Enable it to edit schedule due dates.', { duration: 3500, transition: 'bounceIn' })
+      return
+    }
+
+    const occupancy = familyModal.occupancy
+    if (!occupancy?.id) return
+
+    const internetDueDay = Number(familyModal.internetDueDay)
+    const waterDueDay = Number(familyModal.waterDueDay)
+    const electricityDueDay = Number(familyModal.electricityDueDay)
+
+    const invalidDay = [internetDueDay, waterDueDay, electricityDueDay].some(day => Number.isNaN(day) || day < 1 || day > 31)
+    if (invalidDay) {
+      showToast.error('Utility due days must be between 1 and 31.', { duration: 3500, transition: 'bounceIn' })
+      return
+    }
+
+    setFamilyModal(prev => ({ ...prev, savingDueDates: true }))
+    try {
+      const { error: occError } = await supabase
+        .from('tenant_occupancies')
+        .update({
+          wifi_due_day: internetDueDay,
+          water_due_day: waterDueDay,
+          electricity_due_day: electricityDueDay
+        })
+        .eq('id', occupancy.id)
+
+      if (occError) {
+        showToast.error('Failed to update utility due dates.', { duration: 3500, transition: 'bounceIn' })
+        return
+      }
+
+      showToast.success('Utility due dates updated.', { duration: 3000, transition: 'bounceIn' })
+      await Promise.all([calculateBillingSchedule(), loadDashboardTasks(), loadOccupancies()])
+    } catch (err) {
+      console.error('Due date update failed:', err)
+      showToast.error('Failed to update due date.', { duration: 3500, transition: 'bounceIn' })
+    } finally {
+      setFamilyModal(prev => ({ ...prev, savingDueDates: false }))
+    }
   }
 
   async function confirmEndContract() {
@@ -1798,6 +1878,27 @@ export default function LandlordDashboard({ session, profile }) {
     loadPendingEndRequests()
   }
 
+  const getDateFilterKey = (dateValue) => {
+    const dateObj = new Date(dateValue)
+    if (Number.isNaN(dateObj.getTime())) return ''
+    const year = dateObj.getFullYear()
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+    const day = String(dateObj.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const normalizedBillingTenantFilter = billingTenantFilter.trim().toLowerCase()
+  const hasBillingFilters = Boolean(billingDateFilter || normalizedBillingTenantFilter)
+
+  const filteredBillingSchedule = billingSchedule.filter((item) => {
+    const dateMatches = !billingDateFilter || getDateFilterKey(item.nextDueDate) === billingDateFilter
+    const tenantMatches = !normalizedBillingTenantFilter || (item.tenantName || '').toLowerCase().includes(normalizedBillingTenantFilter)
+    return dateMatches && tenantMatches
+  })
+
+  const isBillingRowsScrollable = filteredBillingSchedule.length > 8
+  const nonOccupiedProperties = properties.filter((property) => property.status !== 'occupied')
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
@@ -1934,17 +2035,17 @@ export default function LandlordDashboard({ session, profile }) {
                     </button>
                   </div>
 
-                  {properties.length === 0 ? (
+                  {nonOccupiedProperties.length === 0 ? (
                     <div className="text-center py-12 bg-gray-50/50 border border-dashed border-gray-200 rounded-2xl">
                         <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-gray-400">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                         </div>
-                      <p className="text-gray-900 font-bold text-sm">No apartments</p>
-                      <p className="text-gray-500 text-sm mt-1">You haven't uploaded any apartments yet.</p>
+                      <p className="text-gray-900 font-bold text-sm">No available apartments</p>
+                      <p className="text-gray-500 text-sm mt-1">Occupied apartments are hidden from this list.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
-                      {properties.map(property => {
+                      {nonOccupiedProperties.map(property => {
                         const imgs = (property.images && Array.isArray(property.images) && property.images.length > 0) ? property.images : ['/placeholder-property.jpg']
                         const currentIndex = currentImageIndex[property.id] || 0
                         return (
@@ -2000,13 +2101,44 @@ export default function LandlordDashboard({ session, profile }) {
                       <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Billing Schedule</h3>
                       <p className="text-xs sm:text-sm font-medium text-gray-500">Upcoming automated payments & reminders</p>
                     </div>
-                    <button
-                      onClick={toggleAutoBilling}
-                      disabled={togglingAutoBilling}
-                      className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer ${autoBillingEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50`}
-                    >
-                      {togglingAutoBilling ? 'Updating...' : autoBillingEnabled ? 'Auto Billing: ON' : 'Auto Billing: OFF'}
-                    </button>
+                    <div className="w-full sm:w-auto flex flex-col sm:flex-row sm:items-end gap-2 sm:gap-2.5">
+                      <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={billingTenantFilter}
+                          onChange={(e) => setBillingTenantFilter(e.target.value)}
+                          placeholder="Search tenant"
+                          className="w-full sm:w-[180px] border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white"
+                        />
+                        <input
+                          type="date"
+                          value={billingDateFilter}
+                          onChange={(e) => setBillingDateFilter(e.target.value)}
+                          className="w-full sm:w-[170px] border border-gray-300 rounded-xl px-3 py-2 text-xs sm:text-sm bg-white"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={toggleAutoBilling}
+                          disabled={togglingAutoBilling}
+                          className={`px-4 py-2 text-xs sm:text-sm font-bold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${autoBillingEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'} disabled:opacity-50`}
+                        >
+                          {togglingAutoBilling ? 'Updating...' : autoBillingEnabled ? 'Auto Billing: ON' : 'Auto Billing: OFF'}
+                        </button>
+                        {hasBillingFilters && (
+                          <button
+                            onClick={() => {
+                              setBillingDateFilter('')
+                              setBillingTenantFilter('')
+                            }}
+                            className="px-3 py-2 text-xs font-bold border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 cursor-pointer transition-all"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {!autoBillingEnabled && (
@@ -2034,114 +2166,215 @@ export default function LandlordDashboard({ session, profile }) {
                         </button>
                       )
                     })}
+                    <span className="ml-auto text-xs font-semibold text-gray-500">
+                      {filteredBillingSchedule.length} row{filteredBillingSchedule.length === 1 ? '' : 's'}
+                    </span>
                   </div>
 
-                  <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
-                    {billingSchedule.length === 0 ? (
-                      <div className="text-center py-12 px-4 rounded-2xl bg-gray-50/50 border border-dashed border-gray-200">
-                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-gray-400">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        </div>
-                        <p className="text-gray-900 font-bold text-sm">No upcoming bills</p>
-                        <p className="text-gray-500 text-sm mt-1">Everything is up to date.</p>
+                  {filteredBillingSchedule.length === 0 ? (
+                    <div className="text-center py-12 px-4 rounded-2xl bg-gray-50/50 border border-dashed border-gray-200">
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-gray-400">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       </div>
-                    ) : (
-                      <table className="w-full text-left">
-                        <thead className="text-[11px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
-                          <tr>
-                            <th className="py-4 pl-2">Tenant & Property</th>
-                            <th className="py-4">Bill Type</th>
-                            <th className="py-4">Auto-Send</th>
-                            <th className="py-4">Due Date</th>
-                            <th className="py-4">Status</th>
-                            <th className="py-4 text-right pr-2">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="text-sm divide-y divide-gray-50">
-                          {billingSchedule.slice(0, 12).map(item => {
-                            const autoSendDate = new Date(item.nextDueDate);
-                            autoSendDate.setDate(autoSendDate.getDate() - 3);
-                            const isEditing = editingDueDateItemId === item.id;
-                            return (
-                              <tr key={item.id} className="hover:bg-gray-50/50 transition-colors group">
-                                <td className="py-4 pl-2">
-                                  <p className="font-bold text-gray-900 group-hover:text-black transition-colors">{item.tenantName}</p>
-                                  <p className="text-xs font-medium text-gray-500 mt-0.5">{item.propertyTitle}</p>
-                                </td>
-                                <td className="py-4 text-gray-800 text-xs font-bold">{item.billLabel}</td>
-                                <td className="py-4 text-gray-500 font-medium text-xs">
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                    {autoSendDate.toLocaleDateString()}
-                                  </span>
-                                </td>
-                                <td className="py-4 text-gray-900 text-xs font-bold">
+                      <p className="text-gray-900 font-bold text-sm">{hasBillingFilters ? 'No bills match your search' : 'No upcoming bills'}</p>
+                      <p className="text-gray-500 text-sm mt-1">{hasBillingFilters ? 'Try another tenant/date or clear the filters.' : 'Everything is up to date.'}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className={`sm:hidden space-y-3 ${isBillingRowsScrollable ? 'max-h-[560px] overflow-y-auto pr-1 my-scrollbar' : ''}`}>
+                        {filteredBillingSchedule.map(item => {
+                          const autoSendDate = new Date(item.nextDueDate)
+                          autoSendDate.setDate(autoSendDate.getDate() - 3)
+                          const isEditing = editingDueDateItemId === item.id
+                          return (
+                            <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate">{item.tenantName}</p>
+                                  <p className="text-xs text-gray-500 truncate">{item.propertyTitle}</p>
+                                </div>
+                                <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider bg-gray-100 text-gray-700 border border-gray-200">
+                                  {item.billLabel}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <p className="text-gray-400 uppercase tracking-wider">Auto-Send</p>
+                                  <p className="font-semibold text-gray-700">{autoSendDate.toLocaleDateString()}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 uppercase tracking-wider">Due Date</p>
                                   {isEditing ? (
                                     <input
                                       type="date"
-                                      className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                                      className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
                                       value={editingDueDateValue}
                                       min={new Date().toISOString().split('T')[0]}
                                       onChange={(e) => setEditingDueDateValue(e.target.value)}
                                     />
                                   ) : (
-                                    item.nextDueDate.toLocaleDateString()
+                                    <p className="font-semibold text-gray-900">{new Date(item.nextDueDate).toLocaleDateString()}</p>
                                   )}
-                                </td>
-                                <td className="py-4">
-                                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' : item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : item.status === 'Reminder Scheduled' ? 'bg-violet-50 text-violet-700 border border-violet-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
-                                    {item.status}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' : item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : item.status === 'Reminder Scheduled' ? 'bg-violet-50 text-violet-700 border border-violet-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                                  {item.status}
+                                </span>
+                                {item.billType !== 'rent' && item.isEnabled === false && (
+                                  <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                                    Disabled
                                   </span>
-                                  {item.billType !== 'rent' && item.isEnabled === false && (
-                                    <span className="ml-2 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
-                                      Disabled
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="py-4 text-right pr-2">
-                                  {isEditing ? (
-                                    <div className="flex items-center justify-end gap-2">
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      onClick={() => cancelEditIncomingDueDate()}
+                                      className="text-[11px] font-bold border border-gray-300 text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => saveIncomingDueDate(item)}
+                                      disabled={savingDueDateItemId === item.id}
+                                      className="text-[11px] font-bold bg-black text-white px-3 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                                    >
+                                      {savingDueDateItemId === item.id ? 'Saving...' : 'Save'}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {item.canEditDueDate && (
                                       <button
-                                        onClick={() => cancelEditIncomingDueDate()}
+                                        onClick={() => startEditIncomingDueDate(item)}
+                                        disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false)}
                                         className="text-[11px] font-bold border border-gray-300 text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
                                       >
-                                        Cancel
+                                        Edit Due Date
                                       </button>
+                                    )}
+                                    {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
                                       <button
-                                        onClick={() => saveIncomingDueDate(item)}
-                                        disabled={savingDueDateItemId === item.id}
-                                        className="text-[11px] font-bold bg-black text-white px-3 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                                        onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)}
+                                        disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false) || sendingBillId === `${item.tenantId}-${item.billType}`}
+                                        className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
                                       >
-                                        {savingDueDateItemId === item.id ? 'Saving...' : 'Save'}
+                                        Send Now
                                       </button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-end gap-2">
-                                      {item.canEditDueDate && (
-                                        <button
-                                          onClick={() => startEditIncomingDueDate(item)}
-                                          disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false)}
-                                          className="text-[11px] font-bold border border-gray-300 text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
-                                        >
-                                          Edit Due Date
-                                        </button>
-                                      )}
-                                      {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
-                                        <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)} disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false) || sendingBillId === `${item.tenantId}-${item.billType}`}
-                                          className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
-                                          Send Now
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div className="hidden sm:block overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
+                        <div className={isBillingRowsScrollable ? 'max-h-[520px] overflow-y-auto pr-1 my-scrollbar' : ''}>
+                          <table className="w-full text-left">
+                            <thead className="text-[11px] text-gray-400 uppercase tracking-widest font-bold border-b border-gray-100">
+                              <tr>
+                                <th className="py-4 pl-2 sticky top-0 bg-white">Tenant & Property</th>
+                                <th className="py-4 sticky top-0 bg-white">Bill Type</th>
+                                <th className="py-4 sticky top-0 bg-white">Auto-Send</th>
+                                <th className="py-4 sticky top-0 bg-white">Due Date</th>
+                                <th className="py-4 sticky top-0 bg-white">Status</th>
+                                <th className="py-4 text-right pr-2 sticky top-0 bg-white">Action</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
+                            </thead>
+                            <tbody className="text-sm divide-y divide-gray-50">
+                              {filteredBillingSchedule.map(item => {
+                                const autoSendDate = new Date(item.nextDueDate)
+                                autoSendDate.setDate(autoSendDate.getDate() - 3)
+                                const isEditing = editingDueDateItemId === item.id
+                                return (
+                                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors group">
+                                    <td className="py-4 pl-2">
+                                      <p className="font-bold text-gray-900 group-hover:text-black transition-colors">{item.tenantName}</p>
+                                      <p className="text-xs font-medium text-gray-500 mt-0.5">{item.propertyTitle}</p>
+                                    </td>
+                                    <td className="py-4 text-gray-800 text-xs font-bold">{item.billLabel}</td>
+                                    <td className="py-4 text-gray-500 font-medium text-xs">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                        {autoSendDate.toLocaleDateString()}
+                                      </span>
+                                    </td>
+                                    <td className="py-4 text-gray-900 text-xs font-bold">
+                                      {isEditing ? (
+                                        <input
+                                          type="date"
+                                          className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                                          value={editingDueDateValue}
+                                          min={new Date().toISOString().split('T')[0]}
+                                          onChange={(e) => setEditingDueDateValue(e.target.value)}
+                                        />
+                                      ) : (
+                                        item.nextDueDate.toLocaleDateString()
+                                      )}
+                                    </td>
+                                    <td className="py-4">
+                                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${item.status === 'Overdue' ? 'bg-red-50 text-red-600 border border-red-100' : item.status === 'Confirming' ? 'bg-blue-50 text-blue-600 border border-blue-100' : item.status === 'Reminder Scheduled' ? 'bg-violet-50 text-violet-700 border border-violet-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                                        {item.status}
+                                      </span>
+                                      {item.billType !== 'rent' && item.isEnabled === false && (
+                                        <span className="ml-2 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                                          Disabled
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-4 text-right pr-2">
+                                      {isEditing ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={() => cancelEditIncomingDueDate()}
+                                            className="text-[11px] font-bold border border-gray-300 text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            onClick={() => saveIncomingDueDate(item)}
+                                            disabled={savingDueDateItemId === item.id}
+                                            className="text-[11px] font-bold bg-black text-white px-3 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                                          >
+                                            {savingDueDateItemId === item.id ? 'Saving...' : 'Save'}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center justify-end gap-2">
+                                          {item.canEditDueDate && (
+                                            <button
+                                              onClick={() => startEditIncomingDueDate(item)}
+                                              disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false)}
+                                              className="text-[11px] font-bold border border-gray-300 text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-50 transition-all cursor-pointer"
+                                            >
+                                              Edit Due Date
+                                            </button>
+                                          )}
+                                          {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
+                                            <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)} disabled={!autoBillingEnabled || (item.billType !== 'rent' && item.isEnabled === false) || sendingBillId === `${item.tenantId}-${item.billType}`}
+                                              className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
+                                              Send Now
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -2172,7 +2405,7 @@ export default function LandlordDashboard({ session, profile }) {
                           </div>
                           <button onClick={(e) => { e.stopPropagation(); openFamilyModal(occ) }}
                             className="text-xs text-white font-bold text-blue-600 bg-blue-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                            Show Family
+                            Show Details
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
                             className="text-xs text-white font-bold text-red-600 bg-red-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
@@ -2990,11 +3223,11 @@ export default function LandlordDashboard({ session, profile }) {
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/80 backdrop-blur-md">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex flex-col items-center justify-center text-blue-600 shadow-sm border border-blue-200">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex flex-col items-center justify-center text-gray-600 shadow-sm border border-gray-200">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                   </div>
                   <div>
-                    <h2 className="text-xl font-black text-gray-900 tracking-tight">Family Details</h2>
+                    <h2 className="text-xl font-black text-gray-900 tracking-tight">Tenant Details</h2>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{familyModal.occupancy?.property?.title}</p>
                   </div>
                 </div>
@@ -3006,27 +3239,116 @@ export default function LandlordDashboard({ session, profile }) {
               {/* Body */}
               <div className="flex-1 overflow-y-auto p-6 bg-white my-scrollbar space-y-6">
 
-                {/* Primary Tenant Info */}
+                {/* Tenant Details + Due Dates */}
                 <div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 pl-1">Primary Tenant</h3>
-                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100/50 shadow-sm">
-                    <img
-                      src={familyModal.occupancy?.tenant?.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}
-                      alt="Primary Tenant"
-                      className="w-14 h-14 rounded-full border-2 border-white shadow-md object-cover flex-shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-base font-black text-gray-900 tracking-tight truncate">
-                        {familyModal.occupancy?.tenant?.first_name} {familyModal.occupancy?.tenant?.last_name}
+                  <div className="flex items-center justify-between mb-3 pl-1 gap-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Rented Tenant</h3>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-300 bg-gray-50 shadow-sm overflow-hidden">
+                    <div className="px-4 py-4 border-b border-gray-200 bg-gray-100">
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={familyModal.occupancy?.tenant?.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}
+                          alt="Tenant"
+                          className="w-12 h-12 rounded-xl border border-gray-300 object-cover flex-shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">Current Tenant</p>
+                          <p className="text-[19px] leading-tight font-black text-gray-900 truncate mt-0.5">
+                            {familyModal.occupancy?.tenant?.first_name} {familyModal.occupancy?.tenant?.last_name}
+                          </p>
+                          <p className="text-xs text-gray-700 truncate mt-1">{familyModal.occupancy?.tenant?.email || 'No email provided'}</p>
+                          <p className="text-xs text-gray-500 truncate">{familyModal.occupancy?.tenant?.phone || 'No phone provided'}</p>
+                        </div>
+                        <div className="text-right rounded-xl px-3 py-2 min-w-[112px] border border-gray-800 bg-gray-900 text-white">
+                          <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-white/70">Property Price</p>
+                          <p className="text-base font-black leading-tight">₱{Number(familyModal.occupancy?.property?.price || 0).toLocaleString()}</p>
+                          <p className="text-[10px] text-white/70">monthly</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-gray-200 flex items-start justify-between gap-3">
+                        <p className="text-xs font-semibold text-gray-600">Rented Unit</p>
+                        <p className="text-xs font-bold text-gray-900 text-right">{familyModal.occupancy?.property?.title || 'Untitled Property'}</p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-white">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-gray-500 font-bold">Utility Due Date Schedule</p>
+                        <span className="text-[10px] text-gray-400">Set day in month</span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">Internet</p>
+                            <p className="text-[11px] text-gray-600">Wifi reminder due day</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              className="w-16 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right bg-white"
+                              value={familyModal.internetDueDay}
+                              onChange={(e) => setFamilyModal(prev => ({ ...prev, internetDueDay: e.target.value }))}
+                            />
+                            <span className="text-[11px] text-gray-500 font-semibold">day</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">Water</p>
+                            <p className="text-[11px] text-gray-600">Water reminder due day</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              className="w-16 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right bg-white"
+                              value={familyModal.waterDueDay}
+                              onChange={(e) => setFamilyModal(prev => ({ ...prev, waterDueDay: e.target.value }))}
+                            />
+                            <span className="text-[11px] text-gray-500 font-semibold">day</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-400"></span>
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">Electricity</p>
+                            <p className="text-[11px] text-gray-600">Electric reminder due day</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              className="w-16 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right bg-white"
+                              value={familyModal.electricityDueDay}
+                              onChange={(e) => setFamilyModal(prev => ({ ...prev, electricityDueDay: e.target.value }))}
+                            />
+                            <span className="text-[11px] text-gray-500 font-semibold">day</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={updateTenantDueDatesForFamilyModal}
+                        disabled={familyModal.savingDueDates}
+                        className="mt-3 text-xs font-bold px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {familyModal.savingDueDates ? 'Saving...' : 'Save'}
+                      </button>
+
+                      <p className="text-[11px] text-gray-500 mt-2">
+                        Saves the monthly due day for internet, water, and electricity reminders.
                       </p>
-                      <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-600 font-medium">
-                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                        <span className="truncate">{familyModal.occupancy?.tenant?.email || 'No email provided'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-sm text-gray-600 font-medium">
-                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                        <span className="truncate">{familyModal.occupancy?.tenant?.phone || 'No phone provided'}</span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -3039,7 +3361,7 @@ export default function LandlordDashboard({ session, profile }) {
 
                   {familyModal.loading ? (
                     <div className="flex flex-col items-center justify-center py-12 px-4 rounded-2xl bg-gray-50 border border-dashed border-gray-200">
-                      <svg className="w-8 h-8 text-blue-500 animate-spin mb-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <svg className="w-8 h-8 text-gray-500 animate-spin mb-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                       <p className="text-sm font-bold text-gray-500">Loading members...</p>
                     </div>
                   ) : familyModal.members.length === 0 ? (

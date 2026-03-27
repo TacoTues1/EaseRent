@@ -127,6 +127,7 @@ export default function TenantDashboard({ session, profile }) {
           .from('properties')
           .select('id, title, city, price, images, status')
           .eq('is_deleted', false)
+          .eq('status', 'available')
           .or(`title.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
           .limit(6)
         if (data && !error) {
@@ -992,6 +993,7 @@ export default function TenantDashboard({ session, profile }) {
       .from('properties')
       .select('*, landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)')
       .eq('is_deleted', false)
+      .eq('status', 'available')
     const { data, error } = await query
     if (error) console.error('Error loading properties:', error)
     const randomized = [...(data || [])].sort(() => Math.random() - 0.5)
@@ -1230,7 +1232,7 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   async function loadFeaturedSections(locationCityOverride = '', locationPermissionOverride = locationPermission) {
-    const { data: allProps } = await supabase.from('properties').select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)').eq('is_deleted', false)
+    const { data: allProps } = await supabase.from('properties').select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)').eq('is_deleted', false).eq('status', 'available')
     const { data: stats } = await supabase.from('property_stats').select('*')
 
     if (allProps && stats) {
