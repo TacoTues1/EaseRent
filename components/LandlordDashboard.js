@@ -1987,6 +1987,74 @@ export default function LandlordDashboard({ session, profile }) {
   const isBillingRowsScrollable = filteredBillingSchedule.length > 10
   const nonOccupiedProperties = properties.filter((property) => property.status !== 'occupied')
 
+  if (loading && !statsLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
+        <div className="max-w-[1800px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 relative z-10 flex-1 w-full">
+          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8 pb-24 items-start">
+            <div className="lg:w-72 flex-shrink-0 w-full flex flex-col gap-4 sm:gap-6 lg:sticky lg:top-8 z-10">
+              <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-7 shadow-sm border border-gray-200">
+                <div className="space-y-4">
+                  <div className="h-3 w-20 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-7 w-40 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200/60 shadow-sm p-3 sm:p-5">
+                <div className="h-3 w-28 rounded bg-slate-200 skeleton-shimmer mb-4" />
+                <div className="flex flex-row flex-wrap lg:flex-col lg:flex-nowrap gap-2">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <div key={`nav-skeleton-${idx}`} className="h-11 w-32 sm:w-40 lg:w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0 w-full space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-4 md:gap-6">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={`metric-skeleton-${idx}`} className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm">
+                    <div className="h-10 w-10 rounded-xl bg-slate-200 skeleton-shimmer mb-4" />
+                    <div className="h-8 w-20 rounded bg-slate-200 skeleton-shimmer mb-2" />
+                    <div className="h-3 w-28 rounded bg-slate-200 skeleton-shimmer" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200/60 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="space-y-2">
+                    <div className="h-6 w-40 rounded bg-slate-200 skeleton-shimmer" />
+                    <div className="h-4 w-56 rounded bg-slate-200 skeleton-shimmer" />
+                  </div>
+                  <div className="h-10 w-full sm:w-44 rounded-xl bg-slate-200 skeleton-shimmer" />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={`property-skeleton-${idx}`} className="rounded-xl sm:rounded-2xl border border-gray-200/70 overflow-hidden bg-white">
+                      <div className="aspect-[4/3] bg-slate-200 skeleton-shimmer" />
+                      <div className="p-3 sm:p-5 space-y-3">
+                        <div className="h-5 w-3/4 rounded bg-slate-200 skeleton-shimmer" />
+                        <div className="h-4 w-2/3 rounded bg-slate-200 skeleton-shimmer" />
+                        <div className="h-4 w-1/2 rounded bg-slate-200 skeleton-shimmer" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer>
+          <Footer />
+        </footer>
+      </div>
+    )
+  }
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">

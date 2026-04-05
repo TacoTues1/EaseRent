@@ -7,10 +7,11 @@ import { showToast } from 'nextjs-toast-notify'
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
 
-export default function Navbar() {
+export default function Navbar({ isHomeLoading = false }) {
   const router = useRouter()
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [resolvedRole, setResolvedRole] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [unreadMessageCount, setUnreadMessageCount] = useState(0)
   const [bookingCount, setBookingCount] = useState(0)
@@ -41,11 +42,34 @@ export default function Navbar() {
   const navbarSearchRef = useRef(null)
   const searchAnimationTimerRef = useRef(null)
 
+  const normalizeRole = (role) => {
+    if (typeof role !== 'string') return null
+    const normalized = role.trim().toLowerCase()
+    return normalized || null
+  }
+
+  const getRoleCacheKey = (userId) => `navbarRole:${userId}`
+
+  const getCachedRole = (userId) => {
+    if (!userId || typeof window === 'undefined') return null
+    return normalizeRole(localStorage.getItem(getRoleCacheKey(userId)))
+  }
+
+  const cacheRole = (userId, role) => {
+    if (!userId || typeof window === 'undefined') return
+    const normalized = normalizeRole(role)
+    if (!normalized) return
+    localStorage.setItem(getRoleCacheKey(userId), normalized)
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
         setSession(result.data.session)
+        const cachedRole = getCachedRole(result.data.session.user.id)
+        if (cachedRole) setResolvedRole(cachedRole)
         loadProfile(result.data.session.user.id)
+        loadRole(result.data.session.user.id)
         loadUnreadCount(result.data.session.user.id)
       }
     })
@@ -53,8 +77,14 @@ export default function Navbar() {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       if (session) {
+        const cachedRole = getCachedRole(session.user.id)
+        if (cachedRole) setResolvedRole(cachedRole)
         loadProfile(session.user.id)
+        loadRole(session.user.id)
         loadUnreadCount(session.user.id)
+      } else {
+        setProfile(null)
+        setResolvedRole(null)
       }
     })
 
@@ -327,6 +357,9 @@ export default function Navbar() {
 
       if (data) {
         setProfile(data)
+        const normalizedRole = normalizeRole(data.role)
+        setResolvedRole(normalizedRole)
+        cacheRole(userId, normalizedRole)
 
         // Check for duplicate phone numbers (your existing logic)
         if (data.phone) {
@@ -366,6 +399,8 @@ export default function Navbar() {
           })
 
           if (!insertError) {
+            setResolvedRole('tenant')
+            cacheRole(userId, 'tenant')
             // Profile created! Load it immediately to update the UI
             loadProfile(userId, 0)
           } else {
@@ -378,6 +413,29 @@ export default function Navbar() {
       }
     }
     catch (err) { console.error("loadProfile error:", err) }
+  }
+
+  async function loadRole(userId, retries = 3) {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .maybeSingle()
+
+      const normalizedRole = normalizeRole(data?.role)
+      if (normalizedRole) {
+        setResolvedRole(normalizedRole)
+        cacheRole(userId, normalizedRole)
+      } else if (retries > 0) {
+        setTimeout(() => loadRole(userId, retries - 1), 400)
+      }
+    } catch (err) {
+      console.error('loadRole error:', err)
+      if (retries > 0) {
+        setTimeout(() => loadRole(userId, retries - 1), 400)
+      }
+    }
   }
 
   async function loadUnreadCount(userId) {
@@ -399,10 +457,14 @@ export default function Navbar() {
       setUnreadMessageCount(msgCount || 0)
 
       // 3. Determine Role (if not in state yet)
-      let role = profile?.role
+      let role = normalizeRole(profile?.role) || normalizeRole(resolvedRole)
       if (!role) {
         const { data } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
-        role = data?.role
+        role = normalizeRole(data?.role)
+        if (role) {
+          setResolvedRole(role)
+          cacheRole(userId, role)
+        }
       }
 
       if (!role) return
@@ -623,11 +685,17 @@ export default function Navbar() {
 
   async function handleSignOut() {
     try {
+      const currentUserId = session?.user?.id
 
       await supabase.auth.signOut({ scope: 'global' })
 
       setSession(null)
       setProfile(null)
+      setResolvedRole(null)
+
+      if (typeof window !== 'undefined' && currentUserId) {
+        localStorage.removeItem(getRoleCacheKey(currentUserId))
+      }
 
       if (typeof window !== 'undefined') {
         Object.keys(localStorage).forEach((key) => {
@@ -653,8 +721,14 @@ export default function Navbar() {
     } catch (error) {
       console.error('Sign out error:', error)
       // Force clear session even if signOut fails
+      const currentUserId = session?.user?.id
       setSession(null)
       setProfile(null)
+      setResolvedRole(null)
+
+      if (typeof window !== 'undefined' && currentUserId) {
+        localStorage.removeItem(getRoleCacheKey(currentUserId))
+      }
 
       // Apply the same manual cleanup in the catch block
       if (typeof window !== 'undefined') {
@@ -669,11 +743,13 @@ export default function Navbar() {
     }
   }
 
+  const effectiveRole = normalizeRole(profile?.role) || normalizeRole(resolvedRole) || normalizeRole(session?.user?.user_metadata?.role) || null
+
   useEffect(() => {
-    if (profile?.role === 'admin' && router.pathname !== '/dashboard') {
+    if (effectiveRole === 'admin' && router.pathname !== '/dashboard') {
       router.push('/dashboard')
     }
-  }, [profile, router.pathname])
+  }, [effectiveRole, router.pathname])
 
   const isActive = (path) => router.pathname === path
 
@@ -897,7 +973,7 @@ export default function Navbar() {
     </div>
   )
 
-  if (profile?.role === 'admin') {
+  if (effectiveRole === 'admin') {
     return null
   }
 
@@ -923,34 +999,51 @@ export default function Navbar() {
 
               {/* Right Side Sections */}
               <div className="flex-1 flex items-center justify-end gap-3 pointer-events-auto z-50">
-                {renderNavbarSearch()}
+                {isHomeLoading && router.pathname === '/' ? (
+                  <>
+                    <div className="hidden sm:flex items-center gap-4 lg:gap-6">
+                      <div className="h-10 w-44 rounded-full bg-slate-200 skeleton-shimmer" />
+                      <div className="w-px h-7 bg-gray-200"></div>
+                      <div className="h-5 w-14 rounded bg-slate-200 skeleton-shimmer" />
+                      <div className="h-11 w-28 rounded-full bg-slate-200 skeleton-shimmer" />
+                    </div>
 
-                <div className="hidden sm:flex items-center gap-4 lg:gap-6">
-                  {/* Become a Landlord button with Icon */}
-                  <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] cursor-pointer whitespace-nowrap group">
-                    Become a Landlord
-                  </button>
+                    <div className="lg:hidden flex items-center">
+                      <div className="h-10 w-10 rounded-xl border border-gray-200 bg-slate-200 skeleton-shimmer" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {renderNavbarSearch()}
 
-                  <div className="w-px h-7 bg-gray-200"></div>
+                    <div className="hidden sm:flex items-center gap-4 lg:gap-6">
+                      {/* Become a Landlord button with Icon */}
+                      <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] cursor-pointer whitespace-nowrap group">
+                        Become a Landlord
+                      </button>
 
-                  <button onClick={() => router.push('/login')} className="text-[16px] font-medium text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer px-2 whitespace-nowrap">Log in</button>
-                  <button onClick={() => router.push('/register')} className="px-6 py-3 flex items-center gap-2 text-[15px] font-medium bg-[#0F172A] text-white hover:bg-[#1E293B] rounded-[99px] transition-all cursor-pointer shadow-md">
-                    Register
-                    <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"></path>
-                      <path d="M12 5l7 7-7 7"></path>
-                    </svg>
-                  </button>
-                </div>
+                      <div className="w-px h-7 bg-gray-200"></div>
 
-                {/* Mobile Menu Button */}
-                <div className="lg:hidden flex items-center">
-                  <button onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)} className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto cursor-pointer">
-                    <svg className={`w-5 h-5 transition-transform duration-300 ${showPublicMobileMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {showPublicMobileMenu ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
-                    </svg>
-                  </button>
-                </div>
+                      <button onClick={() => router.push('/login')} className="text-[16px] font-medium text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer px-2 whitespace-nowrap">Log in</button>
+                      <button onClick={() => router.push('/register')} className="px-6 py-3 flex items-center gap-2 text-[15px] font-medium bg-[#0F172A] text-white hover:bg-[#1E293B] rounded-[99px] transition-all cursor-pointer shadow-md">
+                        Register
+                        <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14"></path>
+                          <path d="M12 5l7 7-7 7"></path>
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* Mobile Menu Button */}
+                    <div className="lg:hidden flex items-center">
+                      <button onClick={() => setShowPublicMobileMenu(!showPublicMobileMenu)} className="p-2 rounded-xl text-black hover:bg-gray-100 transition-colors border border-gray-200 pointer-events-auto cursor-pointer">
+                        <svg className={`w-5 h-5 transition-transform duration-300 ${showPublicMobileMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {showPublicMobileMenu ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </nav>
@@ -998,7 +1091,7 @@ export default function Navbar() {
 
               <Link href="/dashboard" className={`nav-link text-sm font-semibold transition-colors ${isActive('/dashboard') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}>Home</Link>
 
-              {profile?.role === 'landlord' && (
+              {effectiveRole === 'landlord' && (
                 <>
                   <Link href="/bookings" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/bookings') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
                     Tenants Bookings
@@ -1027,7 +1120,7 @@ export default function Navbar() {
                 </>
               )}
 
-              {profile?.role === 'tenant' && (
+              {effectiveRole === 'tenant' && (
                 <>
                   <Link href="/bookings" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/bookings') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
                     My Bookings
@@ -1237,14 +1330,14 @@ export default function Navbar() {
                       <div className="font-bold text-black text-base">{profile?.first_name} {profile?.last_name}</div>
                       <div className="text-xs text-gray-500 mt-0.5 truncate">{session?.user?.email}</div>
                       <div className="mt-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
-                          {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${effectiveRole === 'landlord' ? 'bg-black text-white' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                          {effectiveRole === 'landlord' ? 'Landlord' : 'Tenant'}
                         </span>
                       </div>
                     </div>
 
                     <div className="p-2 space-y-1">
-                      {profile?.role === 'landlord' && (
+                      {effectiveRole === 'landlord' && (
                         <>
                           <Link href="/properties/allProperties" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
                             <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> All Properties
@@ -1284,15 +1377,15 @@ export default function Navbar() {
                 <div className="font-bold text-gray-900 text-sm">{profile?.first_name} {profile?.last_name}</div>
                 <div className="text-xs text-gray-500 truncate max-w-[180px]">{session?.user?.email}</div>
               </div>
-              <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${profile?.role === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
-                {profile?.role === 'landlord' ? 'Landlord' : 'Tenant'}
+              <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${effectiveRole === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
+                {effectiveRole === 'landlord' ? 'Landlord' : 'Tenant'}
               </span>
             </div>
 
             <div className="p-2 grid grid-cols-2 gap-1">
               <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/dashboard') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>Home</Link>
 
-              {profile?.role === 'landlord' && (
+              {effectiveRole === 'landlord' && (
                 <>
                   <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/allProperties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>All Properties</Link>
                   <Link href="/properties/my-properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/my-properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Properties</Link>
@@ -1310,7 +1403,7 @@ export default function Navbar() {
                 </>
               )}
 
-              {profile?.role === 'tenant' && (
+              {effectiveRole === 'tenant' && (
                 <>
                   <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
                     My Bookings

@@ -170,28 +170,6 @@ export default function Login() {
     }
   }
 
-  const handleFacebookLogin = async () => {
-    try {
-      const nextPath = router.query.redirect || '/dashboard'
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'facebook',
-        options: {
-          redirectTo: `${window.location.origin}${nextPath}`
-        }
-      })
-      if (error) throw error
-    } catch (error) {
-      showToast.error("Login Failed, Please Try again!", {
-        duration: 4000,
-        progress: true,
-        position: "top-center",
-        transition: "bounceInDown",
-        icon: '',
-        sound: true,
-      });
-    }
-  }
-
   return (
     <div className="h-screen overflow-hidden bg-[#F3F4F5] font-sans text-black flex">
       {/* Custom animations */}
@@ -416,7 +394,7 @@ export default function Login() {
               </div>
 
               {/* Social Login */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <button
                   type="button"
                   onClick={handleGoogleLogin}
@@ -429,17 +407,6 @@ export default function Login() {
                     <path fill="#34A853" d="M24 48c5.45 0 10.25-1.8 13.65-4.9l-7.2-5.55c-2 1.35-4.55 2.15-6.45 2.15-6.75 0-12.5-4.55-14.25-10.65l-7.05 4.95C6.6 42.65 14.65 48 24 48z" />
                   </svg>
                   Google
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleFacebookLogin}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl shadow-sm text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-300 hover:shadow-md transition-all duration-300 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
-                >
-                  <svg className="h-5 w-5" aria-hidden="true" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" fill="#1877F2" />
-                  </svg>
-                  Facebook
                 </button>
               </div>
             </form>

@@ -222,6 +222,36 @@ export default function NotificationsPage() {
 
   const unreadCount = notifications.filter(n => !n.read).length
   const readCount = notifications.length - unreadCount
+  const skeletonNotificationIndices = Array.from({ length: 6 }, (_, index) => index)
+
+  const renderNotificationSkeletonList = () => (
+    skeletonNotificationIndices.map((index) => (
+      <div
+        key={`notification-skeleton-${index}`}
+        className="relative p-5 rounded-xl border bg-white border-gray-200"
+      >
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-slate-200 skeleton-shimmer" />
+              <div className="h-5 w-24 rounded border border-gray-200 bg-slate-200 skeleton-shimmer" />
+              <div className="h-4 w-28 rounded bg-slate-200 skeleton-shimmer" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-4 w-11/12 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-4 w-4/5 rounded bg-slate-200 skeleton-shimmer" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <div className="h-9 w-9 rounded-lg bg-slate-200 skeleton-shimmer" />
+            <div className="h-9 w-9 rounded-lg bg-slate-200 skeleton-shimmer" />
+          </div>
+        </div>
+      </div>
+    ))
+  )
 
   return (
     <div className="min-h-screen bg-white">
@@ -260,9 +290,7 @@ export default function NotificationsPage() {
       <div className="max-w-4xl mx-auto px-6 py-6">
         <div className="flex flex-col gap-3">
           {loading ? (
-            <div className="flex justify-center py-10">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-black"></div>
-            </div>
+            renderNotificationSkeletonList()
           ) : notifications.length === 0 ? (
             <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-xl">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">

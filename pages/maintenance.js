@@ -3,8 +3,6 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { createNotification, NotificationTemplates } from '../lib/notifications'
 import { showToast } from 'nextjs-toast-notify'
-import Lottie from "lottie-react"
-import loadingAnimation from "../assets/loading.json"
 
 const MAX_ACTIVE_MAINTENANCE_REQUESTS = 2
 const ACTIVE_MAINTENANCE_STATUSES = ['pending', 'scheduled', 'in_progress']
@@ -1145,6 +1143,58 @@ export default function MaintenancePage() {
 
   const maintenanceCostValue = parseFloat(maintenanceCost) || 0
   const canDeductExactForEnteredCost = maintenanceCostValue > 0 && !!depositOccupancyId && depositAvailableAmount >= maintenanceCostValue
+  const skeletonRequestIndices = Array.from({ length: MAINTENANCE_REQUESTS_PER_PAGE }, (_, i) => i)
+
+  const renderMaintenanceSkeletonList = () => (
+    <div className="space-y-4">
+      {skeletonRequestIndices.map((index) => (
+        <div key={`maintenance-skeleton-${index}`} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="h-6 w-24 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-6 w-20 rounded-full bg-slate-200 skeleton-shimmer" />
+            </div>
+            <div className="h-4 w-36 rounded bg-slate-200 skeleton-shimmer" />
+          </div>
+
+          <div className="p-6">
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex-1">
+                <div className="h-7 w-2/3 rounded bg-slate-200 skeleton-shimmer mb-3" />
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <div className="h-5 w-40 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-5 w-32 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-5 w-28 rounded bg-slate-200 skeleton-shimmer" />
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-4 space-y-2">
+                  <div className="h-4 w-full rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-4 w-11/12 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-4 w-4/5 rounded bg-slate-200 skeleton-shimmer" />
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
+                  <div className="h-9 w-28 rounded-lg bg-slate-200 skeleton-shimmer" />
+                  <div className="h-9 w-28 rounded-lg bg-slate-200 skeleton-shimmer" />
+                  <div className="h-9 w-24 rounded-lg bg-slate-200 skeleton-shimmer" />
+                </div>
+              </div>
+
+              <div className="w-full md:w-72 flex-shrink-0">
+                <div className="h-4 w-24 rounded bg-slate-200 skeleton-shimmer mb-3" />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="h-20 rounded-lg bg-slate-200 skeleton-shimmer" />
+                  <div className="h-20 rounded-lg bg-slate-200 skeleton-shimmer" />
+                  <div className="h-20 rounded-lg bg-slate-200 skeleton-shimmer" />
+                  <div className="h-20 rounded-lg bg-slate-200 skeleton-shimmer" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-[#F3F4F5] p-4 sm:p-8 font-sans text-black">
@@ -1224,16 +1274,7 @@ export default function MaintenancePage() {
         {/* Requests List */}
         <div className="space-y-4">
           {loading && filteredRequests.length === 0 ? (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-              <Lottie
-                animationData={loadingAnimation}
-                loop={true}
-                className="w-64 h-64"
-              />
-              <p className="text-gray-500 font-medium text-lg mt-4">
-                Loading Maintenance list...
-              </p>
-            </div>
+            renderMaintenanceSkeletonList()
           ) : filteredRequests.length === 0 ? (
           <div className="min-h-screen flex items-start justify-center bg-[#F5F5F5] px-4 pt-20">
     <div className="w-full max-w-md rounded-[28px] border border-gray-200/80 bg-white/90 p-8 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)] backdrop-blur-sm">

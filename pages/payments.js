@@ -1,10 +1,8 @@
-import Lottie from "lottie-react"
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useRef, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import loadingAnimation from "../assets/loading.json"
 import StripePaymentForm from '../components/StripePaymentForm'
 import { supabase } from '../lib/supabaseClient'
 
@@ -1765,13 +1763,84 @@ export default function PaymentsPage() {
     setCurrentPage(nextPage)
   }
 
+  const skeletonPaymentIndices = Array.from({ length: Math.min(PAYMENT_REQUESTS_PER_PAGE, 6) }, (_, index) => index)
+
+  const renderPaymentListSkeleton = () => (
+    <>
+      <div className="sm:hidden divide-y divide-gray-100">
+        {skeletonPaymentIndices.map((index) => (
+          <div key={`payment-mobile-skeleton-${index}`} className="p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div className="space-y-2">
+                <div className="h-4 w-40 rounded bg-slate-200 skeleton-shimmer" />
+                <div className="h-3 w-36 rounded bg-slate-200 skeleton-shimmer" />
+                <div className="h-4 w-20 rounded bg-slate-200 skeleton-shimmer" />
+              </div>
+              <div className="h-6 w-20 rounded-full bg-slate-200 skeleton-shimmer" />
+            </div>
+
+            <div className="flex items-center justify-between mb-3">
+              <div className="h-6 w-28 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-3 w-20 rounded bg-slate-200 skeleton-shimmer" />
+            </div>
+
+            <div className="flex gap-2">
+              <div className="h-8 w-24 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-8 w-20 rounded bg-slate-200 skeleton-shimmer" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden sm:block overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+              <th className="px-3 py-2"><div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" /></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {skeletonPaymentIndices.map((index) => (
+              <tr key={`payment-desktop-skeleton-${index}`}>
+                <td className="px-3 py-2.5"><div className="h-4 w-28 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-4 w-24 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-5 w-16 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-4 w-20 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-4 w-20 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-4 w-20 rounded bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-5 w-16 rounded-full bg-slate-200 skeleton-shimmer" /></td>
+                <td className="px-3 py-2.5"><div className="h-7 w-24 rounded bg-slate-200 skeleton-shimmer" /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+
   return (
     <div className="min-h-screen bg-[#F3F4F5] p-3 sm:p-6">
       <div className="max-w-[95%] mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Payments</h1>
-            <p className="text-sm text-gray-500 mt-1">Manage bills and income</p>
+            {loading ? (
+              <div className="space-y-2">
+                <div className="h-10 w-44 rounded bg-slate-200 skeleton-shimmer" />
+                <div className="h-5 w-52 rounded bg-slate-200 skeleton-shimmer" />
+              </div>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold tracking-tight">Payments</h1>
+                <p className="text-sm text-gray-500 mt-1">Manage bills and income</p>
+              </>
+            )}
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             {userRole === 'landlord' && (
@@ -2036,24 +2105,16 @@ export default function PaymentsPage() {
         {/* Payment Requests / Bills Section */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-            <h2 className="text-lg font-black text-gray-900">
-              {userRole === 'landlord' ? 'Sent Bills' : 'Your Bills'}
-            </h2>
+            {loading ? (
+              <div className="h-7 w-28 rounded bg-slate-200 skeleton-shimmer" />
+            ) : (
+              <h2 className="text-lg font-black text-gray-900">
+                {userRole === 'landlord' ? 'Sent Bills' : 'Your Bills'}
+              </h2>
+            )}
           </div>
           {loading ? (
-            <div className="min-h-screen flex items-center justify-center bg-white">
-              {/* Wrapper for animation + text */}
-              <div className="flex flex-col items-center">
-                <Lottie
-                  animationData={loadingAnimation}
-                  loop={true}
-                  className="w-64 h-64"
-                />
-                <p className="text-gray-500 font-medium text-lg mt-4">
-                  Loading Payment...
-                </p>
-              </div>
-            </div>
+            renderPaymentListSkeleton()
           ) : paymentRequests.length === 0 ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">

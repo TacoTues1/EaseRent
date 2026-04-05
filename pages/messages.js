@@ -1130,6 +1130,24 @@ export default function Messages() {
   // Helper to get shared media
   const sharedImages = messages.filter(m => m.file_type?.startsWith('image/') && m.file_url)
   const sharedFiles = messages.filter(m => m.file_url && !m.file_type?.startsWith('image/'))
+  const conversationSkeletonIndices = Array.from({ length: 8 }, (_, index) => index)
+
+  const renderConversationListSkeleton = () => (
+    <div className="flex-1 overflow-y-auto">
+      {conversationSkeletonIndices.map((index) => (
+        <div key={`conversation-skeleton-${index}`} className="p-4 border-b border-gray-100 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-slate-200 skeleton-shimmer flex-shrink-0" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-4 w-28 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-3 w-36 rounded bg-slate-200 skeleton-shimmer" />
+            </div>
+            <div className="h-5 w-6 rounded-full bg-slate-200 skeleton-shimmer" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   if (!session || !profile) {
     return (
@@ -1203,10 +1221,7 @@ export default function Messages() {
             )}
 
             {loading ? (
-              <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-black mb-4"></div>
-                <p className="text-gray-500 font-medium">Loading conversations...</p>
-              </div>
+              renderConversationListSkeleton()
             ) : showNewConversation ? (
               <div className="flex-1 overflow-y-auto">
                 {filteredUsers.length === 0 ? (

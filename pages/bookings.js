@@ -1,8 +1,6 @@
-import Lottie from "lottie-react"
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useState } from 'react'
-import loadingAnimation from "../assets/loading.json"
 import { createNotification } from '../lib/notifications'
 import { supabase } from '../lib/supabaseClient'
 
@@ -27,6 +25,7 @@ export default function BookingsPage() {
   const [processingAction, setProcessingAction] = useState(null) // tracks which booking.id + action is in progress
   const [hasActiveOccupancy, setHasActiveOccupancy] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const skeletonBookingIndices = Array.from({ length: BOOKINGS_PER_PAGE }, (_, index) => index)
 
   // Assign Tenant Modal States
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -966,29 +965,62 @@ export default function BookingsPage() {
     return 'U'
   }
 
-  if (loading && !profile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F5F5F5]">
-        <Lottie
-          animationData={loadingAnimation}
-          loop={true}
-          className="w-64 h-64"
-        />
-        <p className="text-gray-500 font-medium text-lg mt-4">
-          Loading bookings list...
-        </p>
-      </div>
-    )
-  }
-  if (!profile) return null
+  const renderBookingSkeletonList = () => (
+    <div className="space-y-4">
+      {skeletonBookingIndices.map((item) => (
+        <div key={item} className="bg-white border border-gray-100 p-5 md:p-6 rounded-2xl shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-start gap-6">
+            <div className="flex-1 min-w-0 space-y-3">
+              <div className="h-6 w-56 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-4 w-72 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-4 w-48 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-12 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+            </div>
+            <div className="min-w-[200px] space-y-3">
+              <div className="h-16 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+              <div className="h-10 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  const renderLandlordBookingSkeletonList = () => (
+    <div className="space-y-4">
+      {skeletonBookingIndices.map((item) => (
+        <div key={`landlord-booking-skeleton-${item}`} className="bg-white border border-gray-100 p-5 md:p-6 rounded-2xl shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-start gap-6">
+            <div className="flex-1 min-w-0 space-y-3">
+              <div className="h-6 w-52 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-4 w-72 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-4 w-64 bg-gray-200 rounded skeleton-shimmer"></div>
+              <div className="h-12 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+            </div>
+            <div className="min-w-[220px] space-y-3">
+              <div className="h-16 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="h-10 w-full bg-gray-200 rounded-lg skeleton-shimmer"></div>
+                <div className="h-10 w-full bg-gray-200 rounded-lg skeleton-shimmer"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   const pendingCount = bookings.filter(b => b.status === 'pending' || b.status === 'pending_approval').length
   const approvedCount = bookings.filter(b => b.status === 'approved' || b.status === 'accepted').length
   const rejectedCount = bookings.filter(b => b.status === 'rejected' || b.status === 'cancelled').length
   const completedCount = bookings.filter(b => b.status === 'completed').length
-  const userRoleLower = (profile.role || '').toLowerCase();
+  const userRoleLower = (profile?.role || '').toLowerCase();
 
   const filteredBookings = bookings
+  const isProfileLoading = loading && !profile
+  const isListLoading = isProfileLoading || (loading && filteredBookings.length === 0)
+
+  if (!profile && !loading) return null
   const totalPages = Math.max(1, Math.ceil(totalBookingCount / BOOKINGS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
   const paginatedBookings = filteredBookings
@@ -1017,76 +1049,75 @@ export default function BookingsPage() {
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#F3F4F5] p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Viewing Bookings</h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {userRoleLower === 'landlord' ? 'Manage viewing requests from prospective tenants.' : 'Manage your viewing appointments.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Pending</span>
-              <div className="w-8 h-8 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              </div>
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Viewing Bookings</h1>
+              <p className="text-gray-500 text-sm mt-1">
+                {userRoleLower === 'landlord' ? 'Manage viewing requests from prospective tenants.' : 'Manage your viewing appointments.'}
+              </p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved / Completed</span>
-              <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Pending</span>
+                <div className="w-8 h-8 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
               </div>
+              <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{approvedCount + completedCount}</p>
-          </div>
 
-          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Rejected/Cancelled</span>
-              <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-red-600">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved / Completed</span>
+                <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
               </div>
+              <p className="text-3xl font-bold text-gray-900">{approvedCount + completedCount}</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{rejectedCount}</p>
-          </div>
-        </div>
 
-        {/* Filter Tabs */}
-        <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto relative">
-          {['all', 'approved', 'pending_approval', 'rejected', 'completed'].map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`relative flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all duration-300 ease-in-out uppercase tracking-wide ${filter === f
-                ? 'bg-black text-white shadow-lg transform scale-[1.03]'
-                : 'bg-transparent text-gray-500 hover:bg-gray-100'
-                }`}
-            >
-              {f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)} ({
-                f === 'all' ? totalBookingCount :
-                  f === 'approved' ? approvedCount :
-                    f === 'pending_approval' ? pendingCount :
-                      f === 'completed' ? completedCount :
-                        rejectedCount
-              })
-            </button>
-          ))}
-        </div>
+            <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Rejected/Cancelled</span>
+                <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </div>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">{rejectedCount}</p>
+            </div>
+          </div>
+
+          {/* Filter Tabs */}
+          <div className="bg-white border-2 border-black mb-8 p-1.5 rounded-xl inline-flex flex-wrap gap-2 w-full md:w-auto relative">
+            {['all', 'approved', 'pending_approval', 'rejected', 'completed'].map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`relative flex-1 md:flex-none px-6 py-2.5 text-sm font-bold rounded-lg cursor-pointer transition-all duration-300 ease-in-out uppercase tracking-wide ${filter === f
+                  ? 'bg-black text-white shadow-lg transform scale-[1.03]'
+                  : 'bg-transparent text-gray-500 hover:bg-gray-100'
+                  }`}
+              >
+                {f === 'pending_approval' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1)} ({
+                  f === 'all' ? totalBookingCount :
+                    f === 'approved' ? approvedCount :
+                      f === 'pending_approval' ? pendingCount :
+                        f === 'completed' ? completedCount :
+                          rejectedCount
+                })
+              </button>
+            ))}
+          </div>
+        </>
 
         {/* Bookings List */}
-        {loading && filteredBookings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
-            <Lottie animationData={loadingAnimation} loop={true} className="w-24 h-24 mb-4" />
-            <p className="text-gray-400 font-medium">Loading bookings...</p>
-          </div>
+        {isListLoading ? (
+          userRoleLower === 'landlord' ? renderLandlordBookingSkeletonList() : renderBookingSkeletonList()
         ) : filteredBookings.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 border-dashed">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">

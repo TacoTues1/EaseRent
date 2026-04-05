@@ -14,6 +14,7 @@ function MyApp({ Component, pageProps }) {
   const router = useRouter()
   const [authReady, setAuthReady] = useState(false)
   const [session, setSession] = useState(null)
+  const [homeNavbarLoading, setHomeNavbarLoading] = useState(false)
 
   const publicPaths = new Set([
     '/',
@@ -61,16 +62,28 @@ function MyApp({ Component, pageProps }) {
     router.replace('/')
   }, [authReady, session, router.pathname])
 
+  useEffect(() => {
+    if (router.pathname !== '/') {
+      setHomeNavbarLoading(false)
+    }
+  }, [router.pathname])
+
   const hideNavbarPaths = ['/login', '/register', '/register-landlord', '/forgotPassword', '/updatePassword', '/getDirections', '/assign-tenant', '/properties/new']
 
   return (
     <>
       <Meta />
 
-      {!hideNavbarPaths.includes(router.pathname) && <Navbar />}
+      {!hideNavbarPaths.includes(router.pathname) && (
+        <Navbar isHomeLoading={router.pathname === '/' && !session && homeNavbarLoading} />
+      )}
       <NotificationToast />
       <GoeyToaster position="top-right" richColors />
-      <Component {...pageProps} supabase={supabase} />
+      <Component
+        {...pageProps}
+        supabase={supabase}
+        setHomeNavbarLoading={setHomeNavbarLoading}
+      />
       <Analytics />
       <SpeedInsights />
     </>

@@ -1,9 +1,7 @@
-import Lottie from "lottie-react"
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import loadingAnimation from "../assets/loading.json"
 import { createNotification } from '../lib/notifications'
 import { supabase } from '../lib/supabaseClient'
 import Footer from './Footer'
@@ -1693,20 +1691,81 @@ export default function TenantDashboard({ session, profile }) {
   )
 
   const carouselItemClass = "pl-2 basis-1/2 md:basis-1/4 lg:basis-[16.66%]"
+  const skeletonSectionIndices = Array.from({ length: 3 }, (_, index) => index)
+  const skeletonCardIndices = Array.from({ length: 6 }, (_, index) => index)
 
   if (loading) {
+    if (tenantOccupancy) {
+      return (
+        <div className="min-h-screen bg-[#F5F5F5] flex flex-col scroll-smooth">
+          <div className="max-w-[1800px] w-full mx-auto mt-0 px-4 sm:px-6 lg:px-8 pt-2 relative z-10 flex-1">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start mt-4">
+              <div className="lg:col-span-4">
+                <div className="bg-white rounded-3xl p-5 border border-gray-200 shadow-sm space-y-4">
+                  <div className="h-5 w-40 bg-gray-200 rounded skeleton-shimmer"></div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-[85px] h-[85px] rounded-2xl bg-gray-200 skeleton-shimmer"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 bg-gray-200 rounded skeleton-shimmer"></div>
+                      <div className="h-3 w-2/3 bg-gray-200 rounded skeleton-shimmer"></div>
+                      <div className="h-5 w-24 bg-gray-200 rounded-md skeleton-shimmer"></div>
+                    </div>
+                  </div>
+                  <div className="h-16 w-full bg-gray-200 rounded-xl skeleton-shimmer"></div>
+                </div>
+              </div>
+              <div className="lg:col-span-8">
+                <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
+                  <div className="h-5 w-44 bg-gray-200 rounded skeleton-shimmer"></div>
+                  <div className="h-20 w-full bg-gray-200 rounded-2xl skeleton-shimmer"></div>
+                  <div className="h-20 w-full bg-gray-200 rounded-2xl skeleton-shimmer"></div>
+                  <div className="h-24 w-full bg-gray-200 rounded-2xl skeleton-shimmer"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-        {/* Wrapper for animation + text */}
-        <div className="flex flex-col items-center">
-          <Lottie
-            animationData={loadingAnimation}
-            loop={true}
-            className="w-64 h-64"
-          />
-          <p className="text-gray-500 font-medium text-lg mt-4">
-            Loading Properties...
-          </p>
+      <div className="min-h-screen bg-[#F5F5F5] flex flex-col scroll-smooth">
+        <div className="max-w-[1800px] w-full mx-auto mt-0 px-4 sm:px-6 lg:px-8 pt-2 relative z-10 flex-1">
+          <div className="space-y-8 mt-4">
+            {skeletonSectionIndices.map((section) => (
+              <div key={section} className="space-y-3">
+                {section === 0 ? (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <div className="h-6 w-56 bg-gray-200 rounded skeleton-shimmer"></div>
+                    <div className="w-full sm:flex-1 sm:max-w-md lg:max-w-lg h-11 bg-gray-200 rounded-full skeleton-shimmer"></div>
+                    <div className="h-4 w-32 sm:ml-auto bg-gray-200 rounded skeleton-shimmer"></div>
+                  </div>
+                ) : (
+                  <div
+                    className={`h-6 bg-gray-200 rounded skeleton-shimmer ${
+                      section === 1 ? 'w-44' : 'w-28'
+                    }`}
+                  ></div>
+                )}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {skeletonCardIndices.map((item) => (
+                    <div key={`${section}-${item}`} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                      <div className="aspect-[4/3] bg-gray-200 skeleton-shimmer"></div>
+                      <div className="p-2 sm:p-3 space-y-2">
+                        <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4 skeleton-shimmer"></div>
+                        <div className="h-2.5 bg-gray-200 rounded w-1/2 skeleton-shimmer"></div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <div className="h-2.5 bg-gray-200 rounded w-8 skeleton-shimmer"></div>
+                          <div className="h-2.5 bg-gray-200 rounded w-8 skeleton-shimmer"></div>
+                          <div className="h-2.5 bg-gray-200 rounded w-10 skeleton-shimmer"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     )

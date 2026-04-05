@@ -11,10 +11,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '../components/ui/carousel'
-import Lottie from "lottie-react"
-import loadingAnimation from "../assets/loading.json"
 
-export default function Home() {
+export default function Home({ setHomeNavbarLoading }) {
   const router = useRouter()
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -145,6 +143,11 @@ export default function Home() {
 
     initializeHome()
   }, [router.query.view])
+
+  useEffect(() => {
+    if (typeof setHomeNavbarLoading !== 'function') return
+    setHomeNavbarLoading(loading)
+  }, [loading, setHomeNavbarLoading])
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -649,6 +652,8 @@ export default function Home() {
   ]
 
   const carouselItemClass = "pl-2 basis-1/2 md:basis-1/4 lg:basis-[16.66%]"
+  const skeletonSectionIndices = Array.from({ length: 3 }, (_, index) => index)
+  const skeletonCardIndices = Array.from({ length: 6 }, (_, index) => index)
 
   const mostFavoriteId = Object.entries(propertyStats).filter(([_, s]) => (s.favorite_count || 0) > 0).sort((a, b) => b[1].favorite_count - a[1].favorite_count)?.[0]?.[0];
   const topRatedId = Object.entries(propertyStats).filter(([_, s]) => (s.review_count || 0) > 0).sort((a, b) => b[1].avg_rating - a[1].avg_rating || b[1].review_count - a[1].review_count)?.[0]?.[0];
@@ -689,17 +694,33 @@ export default function Home() {
           )}
 
           {loading ? (
-            <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-              {/* Wrapper for animation + text */}
-              <div className="flex flex-col items-center">
-                <Lottie
-                  animationData={loadingAnimation}
-                  loop={true}
-                  className="w-64 h-64"
-                />
-                <p className="text-gray-500 font-medium text-lg mt-4">
-                  Loading Properties...
-                </p>
+            <div className="w-full">
+              <div className="space-y-4">
+                {skeletonSectionIndices.map((section) => (
+                  <div key={section} className="space-y-3">
+                    <div
+                      className={`h-6 bg-gray-200 rounded skeleton-shimmer ${
+                        section === 0 ? 'w-56' : section === 1 ? 'w-48' : 'w-28'
+                      }`}
+                    ></div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                      {skeletonCardIndices.map((item) => (
+                        <div key={`${section}-${item}`} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                          <div className="aspect-[4/3] bg-gray-200 skeleton-shimmer"></div>
+                          <div className="p-2 sm:p-3 space-y-2">
+                            <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4 skeleton-shimmer"></div>
+                            <div className="h-2.5 bg-gray-200 rounded w-1/2 skeleton-shimmer"></div>
+                            <div className="flex items-center gap-2 pt-1">
+                              <div className="h-2.5 bg-gray-200 rounded w-8 skeleton-shimmer"></div>
+                              <div className="h-2.5 bg-gray-200 rounded w-8 skeleton-shimmer"></div>
+                              <div className="h-2.5 bg-gray-200 rounded w-10 skeleton-shimmer"></div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : properties.length === 0 ? (
@@ -828,7 +849,7 @@ export default function Home() {
         </div>
 
         {/* Guest Favorites Section - Carousel */}
-        {locationPermission === 'granted' && userLocationCity && guestFavorites.length > 0 && (
+        {!loading && locationPermission === 'granted' && userLocationCity && guestFavorites.length > 0 && (
           <div className={`mb-2 mt-4 ${mounted ? 'animate-fadeInUp delay-300' : 'opacity-0'}`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
               <div>
@@ -953,7 +974,7 @@ export default function Home() {
         )}
 
         {/* Top Rated Section - Carousel */}
-        {topRated.length > 0 && (
+        {!loading && topRated.length > 0 && (
           <div className={`mb-2 mt-4 ${mounted ? 'animate-fadeInUp delay-400' : 'opacity-0'}`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
               <div>

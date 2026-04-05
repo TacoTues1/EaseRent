@@ -3,8 +3,6 @@ import { supabase } from '../lib/supabaseClient'
 import { normalizeImageForUpload } from '../lib/imageCompression'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
-import Lottie from "lottie-react"
-import loadingAnimation from "../assets/loading.json"
 
 export default function Settings() {
   const router = useRouter()
@@ -719,13 +717,68 @@ export default function Settings() {
     }
   ]
 
-  if (!session || loading) {
+  const profileSkeletonFieldIndices = Array.from({ length: 6 }, (_, index) => index)
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5]">
-        <div className="flex flex-col items-center">
-          <Lottie animationData={loadingAnimation} loop={true} className="w-64 h-64" />
-          <p className="text-gray-500 font-medium text-lg mt-4">Loading Settings...</p>
+      <div className="min-h-screen bg-[#F3F4F5] font-sans text-gray-900">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="mb-8 space-y-2">
+            <div className="h-10 w-64 rounded bg-slate-200 skeleton-shimmer" />
+            <div className="h-5 w-96 max-w-[90vw] rounded bg-slate-200 skeleton-shimmer" />
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            <div className="w-full md:w-64 flex-shrink-0">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-2 space-y-2">
+                  <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                  <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                  <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                  <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 w-full">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
+                <div className="flex items-center justify-between mb-6 gap-3">
+                  <div className="h-8 w-48 rounded bg-slate-200 skeleton-shimmer" />
+                  <div className="h-6 w-24 rounded-full bg-slate-200 skeleton-shimmer" />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 sm:items-center mb-8">
+                  <div className="h-24 w-24 rounded-full bg-slate-200 skeleton-shimmer" />
+                  <div className="space-y-2">
+                    <div className="h-5 w-36 rounded bg-slate-200 skeleton-shimmer" />
+                    <div className="h-4 w-52 rounded bg-slate-200 skeleton-shimmer" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {profileSkeletonFieldIndices.map((index) => (
+                    <div key={`settings-profile-skeleton-${index}`} className="space-y-2">
+                      <div className="h-4 w-28 rounded bg-slate-200 skeleton-shimmer" />
+                      <div className="h-11 w-full rounded-xl bg-slate-200 skeleton-shimmer" />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <div className="h-11 w-36 rounded-xl bg-slate-200 skeleton-shimmer" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F3F4F5]">
+        <div className="h-10 w-10 rounded-full bg-slate-200 skeleton-shimmer" />
       </div>
     )
   }

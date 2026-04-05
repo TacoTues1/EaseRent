@@ -4,8 +4,6 @@ import { useRouter } from 'next/router'
 import Footer from '../../components/Footer'
 import AuthModal from '../../components/AuthModal'
 import { showToast } from 'nextjs-toast-notify'
-import Lottie from "lottie-react"
-import loadingAnimation from "../../assets/loading.json"
 import {
   Carousel,
   CarouselContent,
@@ -219,6 +217,7 @@ export default function AllProperties() {
 
   // Carousel Item Class for responsiveness
   const carouselItemClass = "basis-full sm:basis-1/2 md:basis-1/3 lg:basis-1/4 pl-4"
+  const skeletonCardIndices = Array.from({ length: 12 }, (_, index) => index)
 
   const filterAmenities = [
     'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating Shower',
@@ -1042,6 +1041,22 @@ export default function AllProperties() {
     )
   }
 
+  const renderSkeletonCard = (key) => (
+    <div key={key} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="aspect-[4/3] bg-gray-200 skeleton-shimmer"></div>
+      <div className="p-3 sm:p-4 space-y-2">
+        <div className="h-4 w-3/4 bg-gray-200 rounded skeleton-shimmer"></div>
+        <div className="h-3 w-1/2 bg-gray-200 rounded skeleton-shimmer"></div>
+        <div className="h-8 w-24 bg-gray-200 rounded-lg skeleton-shimmer"></div>
+        <div className="flex items-center gap-2 pt-1">
+          <div className="h-2.5 w-14 bg-gray-200 rounded skeleton-shimmer"></div>
+          <div className="h-2.5 w-14 bg-gray-200 rounded skeleton-shimmer"></div>
+          <div className="h-2.5 w-16 bg-gray-200 rounded skeleton-shimmer"></div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-[#F3F4F5] font-sans text-black flex flex-col">
       <div className="max-w-[1500px] mx-auto w-full px-4 sm:px-6 py-6 flex-1">
@@ -1139,26 +1154,18 @@ export default function AllProperties() {
             <div className={`relative transition-opacity duration-300 ${loading ? 'opacity-80' : ''}`}>
               {/* Overlay Loader for subsequent filter changes */}
               {loading && properties.length > 0 && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-[1px] rounded-3xl pointer-events-none">
-                  <div className="bg-white/90 p-3 rounded-2xl shadow-xl flex flex-col items-center pointer-events-auto">
-                    <Lottie animationData={loadingAnimation} loop={true} className="w-20 h-20" />
-                    <p className="text-xs font-bold text-gray-700">Updating...</p>
+                <div className="absolute inset-0 z-50 bg-white/35 backdrop-blur-[1px] rounded-3xl pointer-events-none p-3 sm:p-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                    {skeletonCardIndices.slice(0, 8).map((item) => renderSkeletonCard(`overlay-${item}`))}
                   </div>
                 </div>
               )}
 
               {loading && properties.length === 0 ? (
                 /* Initial Full Loading State */
-                <div className="min-h-screen flex items-center justify-center bg-[#F5F5F5] rounded-3xl">
-                  <div className="flex flex-col items-center">
-                    <Lottie
-                      animationData={loadingAnimation}
-                      loop={true}
-                      className="w-64 h-64"
-                    />
-                    <p className="text-gray-500 font-medium text-lg mt-4">
-                      Loading Properties...
-                    </p>
+                <div className="rounded-3xl">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 mb-12">
+                    {skeletonCardIndices.map((item) => renderSkeletonCard(`initial-${item}`))}
                   </div>
                 </div>
               ) : showMapView ? (

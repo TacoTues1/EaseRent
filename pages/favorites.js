@@ -14,6 +14,7 @@ export default function FavoritesPage() {
   const [properties, setProperties] = useState([])
   const [propertyStats, setPropertyStats] = useState({})
   const [currentImageIndex, setCurrentImageIndex] = useState({})
+  const skeletonFavoriteIndices = Array.from({ length: 8 }, (_, index) => index)
 
   useEffect(() => {
     let isMounted = true
@@ -199,29 +200,58 @@ export default function FavoritesPage() {
     }))
   }
 
+  const renderFavoritesSkeletonGrid = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      {skeletonFavoriteIndices.map((index) => (
+        <div key={`favorite-skeleton-${index}`} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="h-48 w-full bg-slate-200 skeleton-shimmer" />
+          <div className="p-4 space-y-3">
+            <div className="h-5 w-3/4 rounded bg-slate-200 skeleton-shimmer" />
+            <div className="h-4 w-1/2 rounded bg-slate-200 skeleton-shimmer" />
+            <div className="h-4 w-2/3 rounded bg-slate-200 skeleton-shimmer" />
+            <div className="flex items-center justify-between pt-1">
+              <div className="h-4 w-16 rounded bg-slate-200 skeleton-shimmer" />
+              <div className="h-8 w-8 rounded-full bg-slate-200 skeleton-shimmer" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-[#f8fafc] pt-20">
       <section className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         <div className="mb-7 sm:mb-10 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-gray-900">My Favorite Properties</h1>
-            <p className="text-sm sm:text-base text-gray-500 mt-1">
-              {profile ? `${profile.first_name || 'User'}, these are all properties you marked as favorite.` : 'Your saved homes in one place.'}
-            </p>
+            {loading ? (
+              <div className="space-y-2">
+                <div className="h-9 w-64 rounded bg-slate-200 skeleton-shimmer" />
+                <div className="h-5 w-80 max-w-[90vw] rounded bg-slate-200 skeleton-shimmer" />
+              </div>
+            ) : (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-black text-gray-900">My Favorite Properties</h1>
+                <p className="text-sm sm:text-base text-gray-500 mt-1">
+                  {profile ? `${profile.first_name || 'User'}, these are all properties you marked as favorite.` : 'Your saved homes in one place.'}
+                </p>
+              </>
+            )}
           </div>
-          <button
-            onClick={() => router.push('/properties/allProperties')}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors cursor-pointer"
-          >
-            Browse More
-          </button>
+          {loading ? (
+            <div className="h-10 w-32 rounded-xl bg-slate-200 skeleton-shimmer" />
+          ) : (
+            <button
+              onClick={() => router.push('/properties/allProperties')}
+              className="px-4 py-2.5 rounded-xl text-sm font-bold bg-black text-white hover:bg-gray-800 transition-colors cursor-pointer"
+            >
+              Browse More
+            </button>
+          )}
         </div>
 
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
-            <div className="w-8 h-8 mx-auto border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
-            <p className="text-sm text-gray-500 mt-4">Loading your favorites...</p>
-          </div>
+          renderFavoritesSkeletonGrid()
         ) : properties.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
             <div className="w-14 h-14 mx-auto rounded-full bg-red-50 text-red-500 flex items-center justify-center">
