@@ -4,6 +4,11 @@ import Footer from '../components/Footer'
 import Link from 'next/link'
 
 export default function Terms() {
+  const supportEmail = 'alfnzperez@gmail.com'
+  const supportSubject = 'Terms of Service Support Request'
+  const supportBody = 'Hi Abalay Support,\n\nI have a question about your Terms of Service.\n\nThank you.'
+  const supportContactLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}&su=${encodeURIComponent(supportSubject)}&body=${encodeURIComponent(supportBody)}`
+
   return (
     <div className="min-h-screen bg-white text-black font-sans">
       <Head>
@@ -118,21 +123,13 @@ export default function Terms() {
             </div>
           </section>
 
-          {/* 7. Governing Law */}
-          <section>
-            <h2 className="text-2xl font-bold mb-4">7. Governing Law & Dispute Resolution</h2>
-            <p className="text-gray-600">
-              These Terms shall be governed by and construed in accordance with the applicable laws of the jurisdiction in which Abalay operates, without regard to its conflict of law provisions. Any dispute arising from these Terms will be handled strictly through binding arbitration or within competent local courts.
-            </p>
-          </section>
-
           {/* Contact */}
           <section className="bg-black text-white rounded-2xl p-8 mt-8">
             <h2 className="text-xl font-bold mb-2">Questions regarding these terms?</h2>
             <p className="text-gray-300 mb-4">
               If you have any clarifications required for our terms of service, reach out to us.
             </p>
-            <a href="mailto:admin@gmail.com" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors">
+            <a href={supportContactLink} target="_blank" rel="noopener noreferrer" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors">
               Contact Us
             </a>
           </section>

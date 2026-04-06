@@ -23,6 +23,7 @@ function MyApp({ Component, pageProps }) {
     '/team',
     '/terms',
     '/privacy',
+    '/delete-account',
     '/flowchart',
     '/gantt',
     '/getDirections',

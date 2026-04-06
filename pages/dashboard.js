@@ -87,7 +87,10 @@ async function loadProfile(userId, retries = 3) { // Add retry counter
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: session.user.id }),
+        body: JSON.stringify({
+          userId: session.user.id,
+          accessToken: session.access_token
+        }),
       })
 
       const data = await response.json()

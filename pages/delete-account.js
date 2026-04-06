@@ -7,6 +7,11 @@ import { useState } from 'react'
 export default function DeleteAccount() {
     const [expanded, setExpanded] = useState(null)
 
+    const supportEmail = 'alfnzperez@gmail.com'
+    const supportSubject = 'Account Deletion Request'
+    const supportBody = 'Hi Abalay Support,\n\nI would like to request account deletion for my account.\n\nEmail associated with my account: \n\nThank you.'
+    const supportContactLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}&su=${encodeURIComponent(supportSubject)}&body=${encodeURIComponent(supportBody)}`
+
     const toggle = (index) => {
         setExpanded(expanded === index ? null : index)
     }
@@ -61,7 +66,7 @@ export default function DeleteAccount() {
                         Last Updated: March 2026
                     </p>
                     <p className="mt-4 text-gray-600 leading-relaxed max-w-2xl">
-                        At <strong>Abalay</strong>, we respect your right to control your personal data. This page explains the steps you need to take to request permanent deletion of your account and all associated data from our property management platform.
+                        At <strong>Abalay</strong>, we respect your right to control your personal data. We hate to see you go, but if you decide to leave, this page explains the steps you need to take to request permanent deletion of your account and all associated data from our property management platform.
                     </p>
                 </div>
 
@@ -74,10 +79,8 @@ export default function DeleteAccount() {
                         <ul className="space-y-3 border-l border-gray-200 pl-4">
                             <li><a href="#steps" className="hover:text-black transition-colors">1. Steps to Delete</a></li>
                             <li><a href="#data-deleted" className="hover:text-black transition-colors">2. Data That Is Deleted</a></li>
-                            <li><a href="#data-retained" className="hover:text-black transition-colors">3. Data That May Be Retained</a></li>
-                            <li><a href="#retention" className="hover:text-black transition-colors">4. Retention Period</a></li>
-                            <li><a href="#faq" className="hover:text-black transition-colors">5. FAQ</a></li>
-                            <li><a href="#contact" className="hover:text-black transition-colors">6. Contact Us</a></li>
+                            <li><a href="#faq" className="hover:text-black transition-colors">3. FAQ</a></li>
+                            <li><a href="#contact" className="hover:text-black transition-colors">4. Contact Us</a></li>
                         </ul>
                     </div>
 
@@ -98,7 +101,7 @@ export default function DeleteAccount() {
                         {/* 1. Steps to Delete */}
                         <section id="steps">
                             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                                1. Steps to Request Account Deletion
+                                1. How to delete your Abalay account
                             </h2>
                             <p className="text-gray-600 mb-6">
                                 Follow these steps to request the permanent deletion of your Abalay account:
@@ -122,7 +125,7 @@ export default function DeleteAccount() {
                                     <div className="bg-gray-50 rounded-xl p-5 flex-1 border border-gray-100">
                                         <h3 className="font-bold text-black mb-1">Navigate to Account Settings</h3>
                                         <p className="text-sm text-gray-600">
-                                            Go to your <strong>Dashboard</strong> → <strong>Settings</strong> (gear icon). Scroll down to the <strong>&quot;Danger Zone&quot;</strong> section at the bottom of the page.
+                                            Go to your <strong>Dashboard</strong> → <strong>Settings</strong> (Profile dropdown) and click account settings. Scroll down to the <strong>&quot;Danger Zone&quot;</strong> section at the bottom of the page.
                                         </p>
                                     </div>
                                 </div>
@@ -157,7 +160,7 @@ export default function DeleteAccount() {
                                     <div className="bg-gray-50 rounded-xl p-5 flex-1 border border-gray-100">
                                         <h3 className="font-bold text-black mb-1">Alternative: Request via Email</h3>
                                         <p className="text-sm text-gray-600">
-                                            If you are unable to access your account, you may request account deletion by emailing <a href="mailto:alfnzperez@gmail.com" className="text-black underline font-semibold">alfnzperez@gmail.com</a> with the subject line <strong>&quot;Account Deletion Request&quot;</strong>. Please include the email address associated with your account so we can verify your identity.
+                                                If you are unable to access your account, you may request account deletion by emailing <a href={supportContactLink} target="_blank" rel="noopener noreferrer" className="text-black underline font-semibold">{supportEmail}</a> with the subject line <strong>&quot;Account Deletion Request&quot;</strong>. Please include the email address associated with your account so we can verify your identity.
                                         </p>
                                     </div>
                                 </div>
@@ -242,64 +245,7 @@ export default function DeleteAccount() {
                             </div>
                         </section>
 
-                        {/* 3. Data That May Be Retained */}
-                        <section id="data-retained">
-                            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                                <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-50 text-amber-600">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                </span>
-                                3. Data That May Be Retained
-                            </h2>
-                            <p className="text-gray-600 mb-4">
-                                Certain data may be retained for a limited period as required by law or legitimate business purposes:
-                            </p>
-                            <div className="space-y-3">
-                                <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-5">
-                                    <h3 className="font-bold text-black mb-1">Payment Transaction Records</h3>
-                                    <p className="text-sm text-gray-600">
-                                        Anonymized transaction records (date, amount, status) may be retained for up to <strong>5 years</strong> to comply with financial reporting and tax regulations. These records will not contain any personally identifiable information.
-                                    </p>
-                                </div>
-                                <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-5">
-                                    <h3 className="font-bold text-black mb-1">Legal Compliance Records</h3>
-                                    <p className="text-sm text-gray-600">
-                                        If your account was involved in any dispute, fraud investigation, or legal proceeding, relevant records may be retained until the matter is fully resolved, as required by applicable law.
-                                    </p>
-                                </div>
-                                <div className="border border-amber-100 bg-amber-50/50 rounded-xl p-5">
-                                    <h3 className="font-bold text-black mb-1">Aggregated & Anonymized Analytics</h3>
-                                    <p className="text-sm text-gray-600">
-                                        Non-identifiable, aggregated usage data (e.g., platform usage trends) may be retained indefinitely for analytics and service improvement purposes. This data cannot be linked back to your identity.
-                                    </p>
-                                </div>
-                            </div>
-                        </section>
-
-                        {/* 4. Retention Period */}
-                        <section id="retention">
-                            <h2 className="text-2xl font-bold mb-4">4. Retention & Processing Timeline</h2>
-                            <div className="bg-gray-50 rounded-xl p-6 border border-gray-100">
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                                    <div className="text-center p-4">
-                                        <div className="text-3xl font-black text-black mb-1">7</div>
-                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Business Days</div>
-                                        <p className="text-sm text-gray-600 mt-2">Account deletion is processed within 7 business days of your request.</p>
-                                    </div>
-                                    <div className="text-center p-4 border-y sm:border-y-0 sm:border-x border-gray-200">
-                                        <div className="text-3xl font-black text-black mb-1">30</div>
-                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Days Grace Period</div>
-                                        <p className="text-sm text-gray-600 mt-2">Personal data is fully purged from all backup systems within 30 days.</p>
-                                    </div>
-                                    <div className="text-center p-4">
-                                        <div className="text-3xl font-black text-black mb-1">5</div>
-                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Years Max Retention</div>
-                                        <p className="text-sm text-gray-600 mt-2">Anonymized financial records may be kept up to 5 years for legal compliance.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-                        {/* 5. FAQ */}
+                        {/* 3. FAQ */}
                         <section id="faq">
                             <h2 className="text-2xl font-bold mb-6">5. Frequently Asked Questions</h2>
                             <div className="space-y-3">
@@ -325,14 +271,14 @@ export default function DeleteAccount() {
                             </div>
                         </section>
 
-                        {/* 6. Contact */}
+                        {/* 4. Contact */}
                         <section id="contact" className="bg-black text-white rounded-2xl p-8 mt-8">
                             <h2 className="text-xl font-bold mb-2">Need help with account deletion?</h2>
                             <p className="text-gray-300 mb-4">
                                 If you have questions about the deletion process, need help resolving active agreements, or want to submit a deletion request via email, please reach out to our support team.
                             </p>
                             <div className="flex flex-col sm:flex-row gap-3">
-                                <a href="mailto:alfnzperez@gmail.com" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors text-center">
+                                <a href={supportContactLink} target="_blank" rel="noopener noreferrer" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors text-center">
                                     Email Support
                                 </a>
                                 <Link href="/privacy" className="inline-block bg-transparent border border-white/20 text-white px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-white/10 transition-colors text-center">

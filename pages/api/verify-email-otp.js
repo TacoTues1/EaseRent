@@ -2,6 +2,8 @@
 
 // In-memory OTP storage (for production, use Redis or database)
 const emailOtpStore = new Map();
+const RESEND_COOLDOWN_MS = 2 * 60 * 1000;
+const OTP_EXPIRY_MS = 5 * 60 * 1000;
 
 function generateOTP() {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -31,17 +33,18 @@ export default async function handler(req, res) {
     cleanupExpiredOTPs();
 
     if (action === 'send') {
-        // Rate limiting - 1 minute cooldown
+        // Rate limiting - 2 minute cooldown
         const existing = emailOtpStore.get(normalizedEmail);
-        if (existing && existing.expiresAt > Date.now() && existing.sentAt > Date.now() - 60000) {
-            const waitTime = Math.ceil((existing.sentAt + 60000 - Date.now()) / 1000);
+        if (existing && existing.sentAt > Date.now() - RESEND_COOLDOWN_MS) {
+            const waitTime = Math.ceil((existing.sentAt + RESEND_COOLDOWN_MS - Date.now()) / 1000);
             return res.status(429).json({
-                error: `Please wait ${waitTime} seconds before requesting a new code`
+                error: `Please wait ${waitTime} seconds before requesting a new code`,
+                waitSeconds: waitTime
             });
         }
 
         const otpCode = generateOTP();
-        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+        const expiresAt = Date.now() + OTP_EXPIRY_MS; // 5 minutes
 
         emailOtpStore.set(normalizedEmail, {
             code: otpCode,
@@ -79,7 +82,7 @@ export default async function handler(req, res) {
             <div style="background: #1a1a1a; color: white; font-size: 32px; font-weight: bold; letter-spacing: 8px; padding: 15px 30px; border-radius: 12px; display: inline-block;">
               ${otpCode}
             </div>
-            <p style="color: #999; font-size: 13px; margin-top: 20px;">This code expires in 10 minutes.<br/>Do not share this code with anyone.</p>
+                        <p style="color: #999; font-size: 13px; margin-top: 20px;">This code expires in 5 minutes.<br/>Do not share this code with anyone.</p>
           </div>
         </div>
       `;
@@ -88,7 +91,9 @@ export default async function handler(req, res) {
 
             return res.status(200).json({
                 success: true,
-                message: 'Verification code sent to your email'
+                                message: 'Verification code sent to your email',
+                                waitSeconds: Math.ceil(RESEND_COOLDOWN_MS / 1000),
+                                expiresInSeconds: Math.ceil(OTP_EXPIRY_MS / 1000)
             });
         } catch (error) {
             console.error('Failed to send email OTP via Brevo:', error);

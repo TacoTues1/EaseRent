@@ -4,6 +4,11 @@ import Footer from '../components/Footer'
 import Link from 'next/link'
 
 export default function Privacy() {
+  const supportEmail = 'alfnzperez@gmail.com'
+  const supportSubject = 'Privacy Policy Support Request'
+  const supportBody = 'Hi Abalay Support,\n\nI have a question about your Privacy Policy.\n\nThank you.'
+  const supportContactLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(supportEmail)}&su=${encodeURIComponent(supportSubject)}&body=${encodeURIComponent(supportBody)}`
+
   return (
     <div className="min-h-screen bg-white text-black font-sans">
       <Head>
@@ -45,7 +50,6 @@ export default function Privacy() {
               <li><a href="#payments" className="hover:text-black transition-colors">5. Payment Information</a></li>
               <li><a href="#rights" className="hover:text-black transition-colors">6. Your Rights</a></li>
               <li><a href="#cookies" className="hover:text-black transition-colors">7. Cookies & Tracking</a></li>
-              <li><a href="#compliance" className="hover:text-black transition-colors">8. Legal Compliance</a></li>
             </ul>
           </div>
 
@@ -76,7 +80,7 @@ export default function Privacy() {
               <h2 className="text-2xl font-bold mb-4">2. How We Use Information</h2>
               <ul className="list-disc pl-5 space-y-2 text-gray-600">
                 <li><strong>Service Provision:</strong> To create bookings, generate lease agreements, and manage maintenance requests.</li>
-                <li><strong>Communication:</strong> To send SMS notifications (via services like Twilio/MessageBird) regarding booking status, maintenance updates, or security alerts.</li>
+                <li><strong>Communication:</strong> To send SMS notifications (via services SMSgateway) regarding booking status, maintenance updates, or security alerts.</li>
                 <li><strong>Safety & Security:</strong> To detect and prevent fraud, spam, and abuse. We use data to verify that landlords own their properties and tenants are real people.</li>
                 <li><strong>Platform Improvement:</strong> To analyze usage trends and improve the Abalay user experience.</li>
               </ul>
@@ -129,6 +133,10 @@ export default function Privacy() {
               <ul className="list-disc pl-5 space-y-2 text-gray-600">
                 <li><strong>Access & Update:</strong> You can edit your profile and property information directly through your dashboard.</li>
                 <li><strong>Data Portability:</strong> You may request a copy of the personal data we hold about you in a structured, machine-readable format.</li>
+                <li>
+                  <strong>Account Deletion:</strong> You may request permanent deletion of your account and personal data.{' '}
+                  <Link href="/delete-account" className="font-semibold underline">Delete my Account</Link>
+                </li>
               </ul>
             </section>
 
@@ -159,7 +167,7 @@ export default function Privacy() {
               <p className="text-gray-300 mb-4">
                 If you have questions about this policy or your privacy rights, please contact our support team.
               </p>
-              <a href="mailto:admin@gmail.com" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors">
+              <a href={supportContactLink} target="_blank" rel="noopener noreferrer" className="inline-block bg-white text-black px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-gray-100 transition-colors">
                 Contact Support
               </a>
             </section>

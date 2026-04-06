@@ -62,6 +62,13 @@ export default function Settings() {
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [loginRecords, setLoginRecords] = useState([])
   const [loadingLoginRecords, setLoadingLoginRecords] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteOtpSent, setDeleteOtpSent] = useState(false)
+  const [deleteOtpCode, setDeleteOtpCode] = useState('')
+  const [deleteOtpVerified, setDeleteOtpVerified] = useState(false)
+  const [deleteOtpLoading, setDeleteOtpLoading] = useState(false)
+  const [deleteOtpCooldown, setDeleteOtpCooldown] = useState(0)
 
   // Subscription State (Tenant only)
   const [subscriptionPlan, setSubscriptionPlan] = useState(null)
@@ -134,16 +141,17 @@ export default function Settings() {
   }, [router.query])
 
   useEffect(() => {
-    if (phoneOtpCooldown <= 0 && gcashOtpCooldown <= 0 && mayaOtpCooldown <= 0) return
+    if (phoneOtpCooldown <= 0 && gcashOtpCooldown <= 0 && mayaOtpCooldown <= 0 && deleteOtpCooldown <= 0) return
 
     const timer = setInterval(() => {
       setPhoneOtpCooldown((prev) => Math.max(prev - 1, 0))
       setGcashOtpCooldown((prev) => Math.max(prev - 1, 0))
       setMayaOtpCooldown((prev) => Math.max(prev - 1, 0))
+      setDeleteOtpCooldown((prev) => Math.max(prev - 1, 0))
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [phoneOtpCooldown, gcashOtpCooldown, mayaOtpCooldown])
+  }, [phoneOtpCooldown, gcashOtpCooldown, mayaOtpCooldown, deleteOtpCooldown])
 
   const formatCooldown = (seconds) => {
     const mins = Math.floor(seconds / 60)
@@ -236,7 +244,7 @@ export default function Settings() {
       .select('id, login_at, provider')
       .eq('user_id', userId)
       .order('login_at', { ascending: false })
-      .limit(10)
+      .limit(3)
 
     if (error) {
       console.error('Failed to load login records:', error)
@@ -605,6 +613,157 @@ export default function Settings() {
     } catch (error) {
       console.error('Sign out error:', error)
       router.push('/')
+    }
+  }
+
+  function resetDeleteOtpState() {
+    setDeleteOtpSent(false)
+    setDeleteOtpCode('')
+    setDeleteOtpVerified(false)
+    setDeleteOtpCooldown(0)
+  }
+
+  function openDeleteAccountModal() {
+    resetDeleteOtpState()
+    setDeleteModalOpen(true)
+  }
+
+  function closeDeleteAccountModal() {
+    if (deletingAccount || deleteOtpLoading) return
+    setDeleteModalOpen(false)
+    resetDeleteOtpState()
+  }
+
+  async function handleSendDeleteOtp() {
+    if (!session?.user?.email) {
+      showToast.error('No email found for OTP verification')
+      return
+    }
+
+    if (deleteOtpCooldown > 0) {
+      showToast.error(`Please wait ${formatCooldown(deleteOtpCooldown)} before requesting another OTP`)
+      return
+    }
+
+    setDeleteOtpLoading(true)
+    try {
+      const response = await fetch('/api/verify-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send',
+          email: session.user.email
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (data?.waitSeconds) {
+          setDeleteOtpCooldown(Number(data.waitSeconds))
+        }
+        const waitMatch = String(data?.error || '').match(/wait\s+(\d+)\s+seconds/i)
+        if (waitMatch?.[1]) {
+          setDeleteOtpCooldown(Number(waitMatch[1]))
+        }
+        showToast.error(data.error || 'Failed to send OTP')
+        return
+      }
+
+      setDeleteOtpSent(true)
+      setDeleteOtpVerified(false)
+      setDeleteOtpCode('')
+      setDeleteOtpCooldown(Number(data?.waitSeconds || 120))
+      showToast.success('OTP sent to your email')
+    } catch (error) {
+      console.error('Send delete OTP error:', error)
+      showToast.error('Failed to send OTP. Please try again.')
+    } finally {
+      setDeleteOtpLoading(false)
+    }
+  }
+
+  async function handleVerifyDeleteOtp() {
+    if (!session?.user?.email) {
+      showToast.error('No email found for OTP verification')
+      return
+    }
+
+    const cleanCode = (deleteOtpCode || '').replace(/\D/g, '').slice(0, 6)
+    if (cleanCode.length < 6) {
+      showToast.error('Please enter the 6-digit OTP code')
+      return
+    }
+
+    setDeleteOtpLoading(true)
+    try {
+      const response = await fetch('/api/verify-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify',
+          email: session.user.email,
+          code: cleanCode
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        showToast.error(data.error || 'Invalid OTP')
+        return
+      }
+
+      setDeleteOtpVerified(true)
+      showToast.success('OTP verified. You can now confirm account deletion.')
+    } catch (error) {
+      console.error('Verify delete OTP error:', error)
+      showToast.error('Failed to verify OTP. Please try again.')
+    } finally {
+      setDeleteOtpLoading(false)
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!deleteOtpVerified) {
+      showToast.error('Please verify OTP first before deleting your account')
+      return
+    }
+
+    if (!session?.access_token) {
+      showToast.error('Session expired. Please sign in again.')
+      return
+    }
+
+    setDeletingAccount(true)
+    try {
+      const response = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: session.access_token,
+          userId: session.user.id
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        showToast.error(data.error || 'Unable to delete account')
+        return
+      }
+
+      showToast.success(data.message || 'Account deleted successfully')
+      setDeleteModalOpen(false)
+      resetDeleteOtpState()
+
+      await supabase.auth.signOut({ scope: 'global' })
+      router.push('/')
+    } catch (error) {
+      console.error('Delete account error:', error)
+      showToast.error('Failed to delete account. Please try again.')
+    } finally {
+      setDeletingAccount(false)
     }
   }
 
@@ -1146,14 +1305,27 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="mt-6">
-                    <button type="submit" disabled={passwordLoading || !newPassword || !currentPassword} className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer">
-                      {passwordLoading ? 'Updating...' : 'Update Password'}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button type="submit" disabled={passwordLoading || !newPassword || !currentPassword} className="bg-black text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer">
+                        {passwordLoading ? 'Updating...' : 'Update Password'}
+                      </button>
+
+                      {(profile?.role === 'tenant' || profile?.role === 'landlord') && (
+                        <button
+                          type="button"
+                          onClick={openDeleteAccountModal}
+                          className="px-6 py-3 rounded-xl border border-red-300 text-red-600 font-bold hover:bg-red-50 transition-colors cursor-pointer"
+                        >
+                          Delete Account
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </form>
 
                 <div className="mt-8 border-t border-gray-100 pt-6">
-                  <h3 className="text-sm font-bold uppercase text-gray-500 mb-3">Login Records</h3>
+                  <h3 className="text-sm font-bold uppercase text-gray-500 mb-1">Login Records</h3>
+                  <p className="text-xs text-gray-400 mb-3">Showing your 3 latest sign-ins.</p>
 
                   {loadingLoginRecords ? (
                     <p className="text-sm text-gray-500">Loading login records...</p>
@@ -1170,6 +1342,7 @@ export default function Settings() {
                     </div>
                   )}
                 </div>
+
               </div>
             )}
 
@@ -1359,6 +1532,81 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-xl font-black text-gray-900">Delete Account?</h3>
+              <p className="text-sm text-gray-500 mt-1">Flow: send OTP, verify OTP, then confirm deletion.</p>
+            </div>
+
+            <div className="p-6 space-y-4 text-sm text-gray-700">
+              <p>- Your account and related data will be permanently removed.</p>
+              <p>- Tenants can delete only when there are no active property occupancies.</p>
+              <p>- Landlords can delete only when there are no active tenants or occupied properties.</p>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <p className="font-bold text-gray-800">Step 1: Verify OTP</p>
+                <p className="text-xs text-gray-600">OTP will be sent to: <span className="font-semibold text-gray-800">{session?.user?.email || 'your email'}</span></p>
+                <p className="text-xs text-gray-600">Resend is available every 2 minutes. Each OTP expires in 5 minutes or when a new OTP is requested.</p>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSendDeleteOtp}
+                    disabled={deleteOtpLoading || deleteOtpCooldown > 0}
+                    className="px-4 py-2 rounded-lg bg-black text-white font-bold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {deleteOtpLoading ? 'Sending...' : (deleteOtpCooldown > 0 ? `Resend in ${formatCooldown(deleteOtpCooldown)}` : (deleteOtpSent ? 'Resend OTP' : 'Send OTP'))}
+                  </button>
+
+                  <input
+                    type="text"
+                    value={deleteOtpCode}
+                    onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit OTP"
+                    maxLength={6}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-center tracking-widest font-bold focus:outline-none focus:border-black"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyDeleteOtp}
+                  disabled={deleteOtpLoading || !deleteOtpSent || deleteOtpVerified}
+                  className="px-4 py-2 rounded-lg border border-black text-black font-bold text-sm hover:bg-black hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {deleteOtpVerified ? 'OTP Verified' : (deleteOtpLoading ? 'Verifying...' : 'Verify OTP')}
+                </button>
+
+                {deleteOtpVerified && (
+                  <p className="text-xs font-bold text-green-700">OTP verified. You can now confirm account deletion.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 pt-0 flex flex-col sm:flex-row justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteAccountModal}
+                disabled={deletingAccount || deleteOtpLoading}
+                className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || !deleteOtpVerified}
+                className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {deletingAccount ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

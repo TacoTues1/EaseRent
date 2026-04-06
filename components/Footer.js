@@ -117,7 +117,6 @@ export default function Footer() {
               <Link href="/about" className="text-[14px] hover:underline hover:text-black">How it works</Link>
               <Link href="/team" className="text-[14px] hover:underline hover:text-black">Our Team</Link>
             </div>
-
           </div>
 
           {/* Bottom Section */}
@@ -154,12 +153,11 @@ export default function Footer() {
             <form onSubmit={handleBugSubmit} className="p-5 font-sans">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Your Name</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Your Name <span className="text-gray-400 font-normal">(Optional)</span></label>
                   <input
                     type="text"
-                    required
                     maxLength="100"
-                    placeholder="Enter your name"
+                    placeholder="Enter your name (optional)"
                     value={bugData.name}
                     onChange={(e) => setBugData({...bugData, name: e.target.value})}
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-black outline-none transition-colors"
