@@ -69,6 +69,9 @@ export default function Settings() {
   const [deleteOtpVerified, setDeleteOtpVerified] = useState(false)
   const [deleteOtpLoading, setDeleteOtpLoading] = useState(false)
   const [deleteOtpCooldown, setDeleteOtpCooldown] = useState(0)
+  const [deleteReason, setDeleteReason] = useState('')
+  const [deleteReasonDetails, setDeleteReasonDetails] = useState('')
+  const [deleteFlowStep, setDeleteFlowStep] = useState('reason')
 
   // Subscription State (Tenant only)
   const [subscriptionPlan, setSubscriptionPlan] = useState(null)
@@ -85,6 +88,14 @@ export default function Settings() {
 
   // Tab State
   const [activeTab, setActiveTab] = useState('profile') // profile | security | notifications
+
+  const deleteReasonOptions = [
+    { value: 'no-longer-needed', label: 'I no longer need my account' },
+    { value: 'found-better-alternative', label: 'I found a better alternative' },
+    { value: 'privacy-concerns', label: 'I have privacy or security concerns' },
+    { value: 'duplicate-account', label: 'I accidentally created a duplicate account' },
+    { value: 'other', label: 'Other' }
+  ]
 
   useEffect(() => {
     supabase.auth.getSession().then(result => {
@@ -623,20 +634,65 @@ export default function Settings() {
     setDeleteOtpCooldown(0)
   }
 
-  function openDeleteAccountModal() {
+  function resetDeleteModalState() {
     resetDeleteOtpState()
+    setDeleteReason('')
+    setDeleteReasonDetails('')
+    setDeleteFlowStep('reason')
+  }
+
+  function isDeleteReasonValid() {
+    if (!deleteReason) return false
+    if (deleteReason === 'other') {
+      return deleteReasonDetails.trim().length > 0
+    }
+    return true
+  }
+
+  function getDeleteReasonText() {
+    if (!deleteReason) return ''
+    if (deleteReason === 'other') return deleteReasonDetails.trim()
+
+    const selectedOption = deleteReasonOptions.find((option) => option.value === deleteReason)
+    return selectedOption?.label || ''
+  }
+
+  function handleDeleteReasonNext() {
+    if (!isDeleteReasonValid()) {
+      showToast.error('Please select a reason before continuing')
+      return
+    }
+
+    resetDeleteOtpState()
+    setDeleteFlowStep('otp')
+  }
+
+  function handleDeleteReasonBack() {
+    if (deletingAccount || deleteOtpLoading) return
+    resetDeleteOtpState()
+    setDeleteFlowStep('reason')
+  }
+
+  function openDeleteAccountModal() {
+    resetDeleteModalState()
     setDeleteModalOpen(true)
   }
 
   function closeDeleteAccountModal() {
     if (deletingAccount || deleteOtpLoading) return
     setDeleteModalOpen(false)
-    resetDeleteOtpState()
+    resetDeleteModalState()
   }
 
   async function handleSendDeleteOtp() {
     if (!session?.user?.email) {
       showToast.error('No email found for OTP verification')
+      return
+    }
+
+    if (!isDeleteReasonValid()) {
+      setDeleteFlowStep('reason')
+      showToast.error('Please select a reason first')
       return
     }
 
@@ -725,6 +781,14 @@ export default function Settings() {
   }
 
   async function handleDeleteAccount() {
+    const deleteReasonText = getDeleteReasonText()
+
+    if (!deleteReasonText) {
+      setDeleteFlowStep('reason')
+      showToast.error('Please provide your reason for deletion first')
+      return
+    }
+
     if (!deleteOtpVerified) {
       showToast.error('Please verify OTP first before deleting your account')
       return
@@ -742,7 +806,8 @@ export default function Settings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accessToken: session.access_token,
-          userId: session.user.id
+          userId: session.user.id,
+          deleteReason: deleteReasonText
         })
       })
 
@@ -755,7 +820,7 @@ export default function Settings() {
 
       showToast.success(data.message || 'Account deleted successfully')
       setDeleteModalOpen(false)
-      resetDeleteOtpState()
+      resetDeleteModalState()
 
       await supabase.auth.signOut({ scope: 'global' })
       router.push('/')
@@ -1538,7 +1603,7 @@ export default function Settings() {
           <div className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <h3 className="text-xl font-black text-gray-900">Delete Account?</h3>
-              <p className="text-sm text-gray-500 mt-1">Flow: send OTP, verify OTP, then confirm deletion.</p>
+              <p className="text-sm text-gray-500 mt-1">Flow: select reason, verify OTP, then confirm deletion.</p>
             </div>
 
             <div className="p-6 space-y-4 text-sm text-gray-700">
@@ -1546,44 +1611,86 @@ export default function Settings() {
               <p>- Tenants can delete only when there are no active property occupancies.</p>
               <p>- Landlords can delete only when there are no active tenants or occupied properties.</p>
 
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-                <p className="font-bold text-gray-800">Step 1: Verify OTP</p>
-                <p className="text-xs text-gray-600">OTP will be sent to: <span className="font-semibold text-gray-800">{session?.user?.email || 'your email'}</span></p>
-                <p className="text-xs text-gray-600">Resend is available every 2 minutes. Each OTP expires in 5 minutes or when a new OTP is requested.</p>
+              {deleteFlowStep === 'reason' ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <p className="font-bold text-gray-800">Step 1: Select your reason</p>
+                  <p className="text-xs text-gray-600">Tell us why you want to delete your account.</p>
 
-                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="space-y-2">
+                    {deleteReasonOptions.map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${deleteReason === option.value ? 'border-black bg-white' : 'border-gray-200 bg-white/70 hover:border-gray-300'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="delete-reason"
+                          value={option.value}
+                          checked={deleteReason === option.value}
+                          onChange={(e) => setDeleteReason(e.target.value)}
+                          className="h-4 w-4 accent-black"
+                        />
+                        <span className="text-sm font-medium text-gray-800">{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  {deleteReason === 'other' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wide text-gray-500">Please specify your reason</label>
+                      <textarea
+                        value={deleteReasonDetails}
+                        onChange={(e) => setDeleteReasonDetails(e.target.value)}
+                        rows={3}
+                        placeholder="Type your reason here"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-black"
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <p className="font-bold text-gray-800">Step 2: Verify OTP</p>
+                  <p className="text-xs text-gray-600">Reason: <span className="font-semibold text-gray-800">{getDeleteReasonText()}</span></p>
+                  <p className="text-xs text-gray-600">OTP will be sent to: <span className="font-semibold text-gray-800">{session?.user?.email || 'your email'}</span></p>
+                  <p className="text-xs text-gray-600">Resend is available every 2 minutes. Each OTP expires in 5 minutes or when a new OTP is requested.</p>
+
                   <button
                     type="button"
                     onClick={handleSendDeleteOtp}
                     disabled={deleteOtpLoading || deleteOtpCooldown > 0}
                     className="px-4 py-2 rounded-lg bg-black text-white font-bold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    {deleteOtpLoading ? 'Sending...' : (deleteOtpCooldown > 0 ? `Resend in ${formatCooldown(deleteOtpCooldown)}` : (deleteOtpSent ? 'Resend OTP' : 'Send OTP'))}
+                    {deleteOtpLoading ? 'Sending...' : (deleteOtpSent ? (deleteOtpCooldown > 0 ? `Resend OTP in ${formatCooldown(deleteOtpCooldown)}` : 'Resend OTP') : 'Send OTP')}
                   </button>
 
-                  <input
-                    type="text"
-                    value={deleteOtpCode}
-                    onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="Enter 6-digit OTP"
-                    maxLength={6}
-                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-center tracking-widest font-bold focus:outline-none focus:border-black"
-                  />
+                  {deleteOtpSent && (
+                    <>
+                      <input
+                        type="text"
+                        value={deleteOtpCode}
+                        onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="Enter 6-digit OTP"
+                        maxLength={6}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-center tracking-widest font-bold focus:outline-none focus:border-black"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleVerifyDeleteOtp}
+                        disabled={deleteOtpLoading || deleteOtpVerified}
+                        className="px-4 py-2 rounded-lg border border-black text-black font-bold text-sm hover:bg-black hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {deleteOtpVerified ? 'OTP Verified' : (deleteOtpLoading ? 'Verifying...' : 'Verify OTP')}
+                      </button>
+                    </>
+                  )}
+
+                  {deleteOtpVerified && (
+                    <p className="text-xs font-bold text-green-700">OTP verified. You can now confirm account deletion.</p>
+                  )}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleVerifyDeleteOtp}
-                  disabled={deleteOtpLoading || !deleteOtpSent || deleteOtpVerified}
-                  className="px-4 py-2 rounded-lg border border-black text-black font-bold text-sm hover:bg-black hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
-                >
-                  {deleteOtpVerified ? 'OTP Verified' : (deleteOtpLoading ? 'Verifying...' : 'Verify OTP')}
-                </button>
-
-                {deleteOtpVerified && (
-                  <p className="text-xs font-bold text-green-700">OTP verified. You can now confirm account deletion.</p>
-                )}
-              </div>
+              )}
             </div>
 
             <div className="p-6 pt-0 flex flex-col sm:flex-row justify-end gap-3">
@@ -1595,14 +1702,35 @@ export default function Settings() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleDeleteAccount}
-                disabled={deletingAccount || !deleteOtpVerified}
-                className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                {deletingAccount ? 'Deleting...' : 'Confirm Delete'}
-              </button>
+              {deleteFlowStep === 'reason' ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteReasonNext}
+                  disabled={!isDeleteReasonValid()}
+                  className="px-5 py-2.5 rounded-xl bg-black text-white font-bold hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  Next
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleDeleteReasonBack}
+                    disabled={deletingAccount || deleteOtpLoading}
+                    className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deletingAccount || !deleteOtpVerified}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {deletingAccount ? 'Deleting...' : 'Confirm Delete'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

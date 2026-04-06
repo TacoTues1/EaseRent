@@ -8,7 +8,9 @@ function isIgnorableSchemaError(error) {
   const message = String(error?.message || '').toLowerCase()
   return (
     (message.includes('column') && message.includes('does not exist')) ||
-    (message.includes('relation') && message.includes('does not exist'))
+    (message.includes('relation') && message.includes('does not exist')) ||
+    message.includes('cannot delete from view') ||
+    (message.includes('could not find the table') && message.includes('schema cache'))
   )
 }
 
@@ -164,7 +166,6 @@ async function cleanupUserData(userId, role) {
   if (role === 'landlord' && landlordPropertyIds.length > 0) {
     await deleteByIn('available_time_slots', 'property_id', landlordPropertyIds)
     await deleteByIn('favorites', 'property_id', landlordPropertyIds)
-    await deleteByIn('property_stats', 'property_id', landlordPropertyIds)
     await deleteByIn('reviews', 'property_id', landlordPropertyIds)
     await deleteByIn('maintenance_requests', 'property_id', landlordPropertyIds)
     await deleteByIn('bookings', 'property_id', landlordPropertyIds)
