@@ -70,7 +70,7 @@ export default function Team() {
         {
             id: 3,
             role: "Programmer",
-            name: "Software Development",
+            name: "Software Developer",
             image: "/teampicture/developer.png",
             description: "Building and maintaining the platform's core features to keep Abalay reliable, secure, and fast for every user.",
             badgeColor: "bg-amber-100 text-amber-700",

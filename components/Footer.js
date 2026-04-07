@@ -107,7 +107,7 @@ export default function Footer() {
             {/* Column 2 */}
             <div className="flex flex-col space-y-3">
               <h3 className="font-bold text-[14px]">Landlords</h3>
-              <a href="#" className="text-[14px] hover:underline hover:text-black">List your property</a>
+              {/* <a href="#" className="text-[14px] hover:underline hover:text-black">List your property</a> */}
               <Link href="/landlords/landlordlist" className="text-[14px] hover:underline hover:text-black">Landlord list</Link>
             </div>
 

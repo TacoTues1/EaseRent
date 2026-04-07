@@ -45,11 +45,21 @@ const extractCoordinates = (link) => {
   const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
   const placeMatch = link.match(/place\/(-?\d+\.\d+),(-?\d+\.\d+)/);
-  const match = atMatch || qMatch || placeMatch;
+  const genericPairMatch = link.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+  const match = atMatch || qMatch || placeMatch || genericPairMatch;
   if (match) {
+    const lat = parseFloat(match[1])
+    const lng = parseFloat(match[2])
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return null
+    }
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return null
+    }
+
     return {
-      lat: parseFloat(match[1]),
-      lng: parseFloat(match[2])
+      lat,
+      lng
     };
   }
   return null;
@@ -168,6 +178,8 @@ function FlyToPhilippines() {
 export default function AllProperties() {
   const router = useRouter()
   const autoLocationRequestedRef = useRef(false)
+  const geocodedCityKeysRef = useRef(new Set())
+  const geocodedPropertyIdsRef = useRef(new Set())
   const [properties, setProperties] = useState([])
   const [filteredProperties, setFilteredProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -211,6 +223,8 @@ export default function AllProperties() {
   // --- Featured Properties (Guest Favorites, Top Rated) ---
   const [guestFavorites, setGuestFavorites] = useState([])
   const [topRated, setTopRated] = useState([])
+  const [cityCoordinates, setCityCoordinates] = useState({})
+  const [propertyCoordinates, setPropertyCoordinates] = useState({})
 
   // Track if URL params have been parsed (only parse once on initial load)
   const urlParamsParsed = useRef(false)
@@ -218,6 +232,92 @@ export default function AllProperties() {
   // Carousel Item Class for responsiveness
   const carouselItemClass = "basis-full sm:basis-1/2 md:basis-1/3 lg:basis-1/4 pl-4"
   const skeletonCardIndices = Array.from({ length: 12 }, (_, index) => index)
+
+  const normalizeCityKey = (city) => String(city || '').trim().toLowerCase()
+
+  const hashString = (value) => {
+    const input = String(value || '')
+    let hash = 0
+    for (let i = 0; i < input.length; i += 1) {
+      hash = ((hash << 5) - hash) + input.charCodeAt(i)
+      hash |= 0
+    }
+    return Math.abs(hash)
+  }
+
+  const buildGeocodeCandidates = (property) => {
+    const address = String(property?.address || '').trim()
+    const city = String(property?.city || '').trim()
+    const candidates = []
+
+    if (address && city) candidates.push(`${address}, ${city}, Philippines`)
+    if (address) candidates.push(`${address}, Philippines`)
+    if (city) {
+      candidates.push(`${city}, Philippines`)
+      candidates.push(city)
+    }
+
+    return [...new Set(candidates)]
+  }
+
+  const getPropertyCoordinates = (property) => {
+    const directCoords = extractCoordinates(property.location_link)
+    if (directCoords) {
+      return directCoords
+    }
+
+    const perPropertyCoords = propertyCoordinates[property.id]
+    if (perPropertyCoords) {
+      return perPropertyCoords
+    }
+
+    const cityKey = normalizeCityKey(property.city)
+    if (!cityKey) {
+      if (filterNearMe && userLocation) {
+        const hash = hashString(property.id || property.title)
+        const angle = (hash % 360) * (Math.PI / 180)
+        const radius = 0.003 + ((hash % 6) * 0.00022)
+        return {
+          lat: userLocation.latitude + (Math.sin(angle) * radius),
+          lng: userLocation.longitude + (Math.cos(angle) * radius)
+        }
+      }
+      return null
+    }
+
+    const seededProperty = filteredProperties.find((item) => {
+      if (item.id === property.id) return false
+      if (normalizeCityKey(item.city) !== cityKey) return false
+      return Boolean(extractCoordinates(item.location_link))
+    })
+
+    if (seededProperty) {
+      const seededCoords = extractCoordinates(seededProperty.location_link)
+      if (seededCoords) {
+        return seededCoords
+      }
+    }
+
+    const cityCoords = cityCoordinates[cityKey]
+    if (cityCoords) {
+      return {
+        lat: cityCoords.lat,
+        lng: cityCoords.lng
+      }
+    }
+
+    if (filterNearMe && userLocation) {
+      const hash = hashString(property.id || cityKey)
+      const angle = (hash % 360) * (Math.PI / 180)
+      const radius = 0.003 + ((hash % 6) * 0.00022)
+      return {
+        lat: userLocation.latitude + (Math.sin(angle) * radius),
+        lng: userLocation.longitude + (Math.cos(angle) * radius)
+      }
+    }
+
+    return null
+  }
 
   const filterAmenities = [
     'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating Shower',
@@ -315,6 +415,80 @@ export default function AllProperties() {
     autoLocationRequestedRef.current = true
     requestUserLocation({ applyNearMeFilter: false, manageLoading: false, showErrors: false, switchToMap: false })
   }, [router.isReady])
+
+  useEffect(() => {
+    if (!showMapView || filteredProperties.length === 0) return
+
+    const propertiesToGeocode = filteredProperties.filter((property) => {
+      if (extractCoordinates(property.location_link)) return false
+      if (propertyCoordinates[property.id]) return false
+      if (geocodedPropertyIdsRef.current.has(property.id)) return false
+      return buildGeocodeCandidates(property).length > 0
+    })
+
+    if (propertiesToGeocode.length === 0) return
+
+    let cancelled = false
+
+    const geocodeProperties = async () => {
+      const resolvedPropertyCoords = {}
+      const resolvedCityCoords = {}
+
+      for (const property of propertiesToGeocode) {
+        geocodedPropertyIdsRef.current.add(property.id)
+        const candidates = buildGeocodeCandidates(property)
+        const cityKey = normalizeCityKey(property.city)
+        if (cityKey) {
+          geocodedCityKeysRef.current.add(cityKey)
+        }
+
+        for (const candidate of candidates) {
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ph&q=${encodeURIComponent(candidate)}`,
+              { headers: { Accept: 'application/json' } }
+            )
+
+            if (!response.ok) {
+              continue
+            }
+
+            const data = await response.json()
+            if (Array.isArray(data) && data.length > 0) {
+              const lat = parseFloat(data[0].lat)
+              const lng = parseFloat(data[0].lon)
+
+              if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                resolvedPropertyCoords[property.id] = { lat, lng }
+                if (cityKey && !cityCoordinates[cityKey]) {
+                  resolvedCityCoords[cityKey] = { lat, lng }
+                }
+                break
+              }
+            }
+          } catch (err) {
+            console.error(`Property geocoding failed for ${property.id}:`, err)
+          }
+        }
+      }
+
+      if (cancelled) return
+
+      if (Object.keys(resolvedPropertyCoords).length > 0) {
+        setPropertyCoordinates((prev) => ({ ...prev, ...resolvedPropertyCoords }))
+      }
+
+      if (Object.keys(resolvedCityCoords).length > 0) {
+        setCityCoordinates((prev) => ({ ...prev, ...resolvedCityCoords }))
+      }
+    }
+
+    geocodeProperties()
+
+    return () => {
+      cancelled = true
+    }
+  }, [showMapView, filteredProperties, cityCoordinates, propertyCoordinates])
 
   async function loadProfile(userId) {
     const { data } = await supabase
@@ -515,7 +689,9 @@ export default function AllProperties() {
     if (filterNearMe && userLocation) {
       filteredData = filteredData.filter(property => {
         const coords = extractCoordinates(property.location_link);
-        if (!coords) return false;
+        if (!coords) {
+          return Boolean(property.city && String(property.city).trim());
+        }
         const dist = getDistanceFromLatLonInKm(
           userLocation.latitude,
           userLocation.longitude,
@@ -1218,7 +1394,7 @@ export default function AllProperties() {
                     // Group properties by rounded coordinates to find exact overlaps
                     const coordGroups = {};
                     filteredProperties.forEach(property => {
-                      const coords = extractCoordinates(property.location_link);
+                      const coords = getPropertyCoordinates(property);
                       if (!coords) return;
                       // Round slightly to catch extremely close markers
                       const key = `${coords.lat.toFixed(5)},${coords.lng.toFixed(5)}`;
@@ -1228,7 +1404,8 @@ export default function AllProperties() {
 
                     return Object.values(coordGroups).flatMap(group => {
                       return group.map((property, idx) => {
-                        const coords = extractCoordinates(property.location_link);
+                        const coords = getPropertyCoordinates(property);
+                        if (!coords) return null;
                         // Apply jitter to any properties after the first one at this location
                         const lat = jitterCoordinate(coords.lat, idx);
                         const lng = jitterCoordinate(coords.lng, idx);
