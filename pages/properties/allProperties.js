@@ -248,14 +248,20 @@ export default function AllProperties() {
   const buildGeocodeCandidates = (property) => {
     const address = String(property?.address || '').trim()
     const city = String(property?.city || '').trim()
+    const stateProvince = String(property?.state_province || '').trim()
+    const country = String(property?.country || 'Philippines').trim() || 'Philippines'
     const candidates = []
 
-    if (address && city) candidates.push(`${address}, ${city}, Philippines`)
-    if (address) candidates.push(`${address}, Philippines`)
+    if (address && city && stateProvince) candidates.push(`${address}, ${city}, ${stateProvince}, ${country}`)
+    if (address && city) candidates.push(`${address}, ${city}, ${country}`)
+    if (address && stateProvince) candidates.push(`${address}, ${stateProvince}, ${country}`)
+    if (address) candidates.push(`${address}, ${country}`)
     if (city) {
-      candidates.push(`${city}, Philippines`)
+      if (stateProvince) candidates.push(`${city}, ${stateProvince}, ${country}`)
+      candidates.push(`${city}, ${country}`)
       candidates.push(city)
     }
+    if (stateProvince) candidates.push(`${stateProvince}, ${country}`)
 
     return [...new Set(candidates)]
   }

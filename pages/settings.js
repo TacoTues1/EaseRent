@@ -351,7 +351,7 @@ export default function Settings() {
         showToast.error(data.error || 'Failed to send verification code')
       } else {
         setOtpSent(true)
-        setPhoneOtpCooldown(data.waitSeconds || 300)
+        setPhoneOtpCooldown(data.waitSeconds || 120)
         showToast.success('Verification code sent to your phone!')
       }
     } catch (error) {
@@ -527,7 +527,7 @@ export default function Settings() {
         return
       }
       setOtpSent(true)
-      setCooldown(data.waitSeconds || 300)
+      setCooldown(data.waitSeconds || 120)
       showToast.success(`Code sent to your ${type === 'gcash' ? 'GCash' : 'Maya'} number!`)
     } catch { showToast.error('Failed to send code') }
     finally { setOtpLoading(false) }

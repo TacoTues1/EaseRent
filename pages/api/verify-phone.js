@@ -4,7 +4,7 @@ import { sendOTP } from '../../lib/sms';
 // In-memory OTP storage (for production, use Redis or database)
 // Format: { [phone]: { code: string, expiresAt: number, attempts: number } }
 const otpStore = new Map();
-const RESEND_COOLDOWN_MS = 5 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 
 // Generate a 6-digit OTP
 function generateOTP() {

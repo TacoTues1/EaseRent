@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { normalizeImageForUpload } from '../../lib/imageCompression'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
+import { COUNTRY_SUGGESTIONS, getStateProvinceSuggestions, isPhilippinesCountry } from '../../lib/locationData'
 
 const TOTAL_STEPS = 7
 
@@ -36,6 +37,8 @@ export default function NewProperty() {
     street: '',
     address: '',
     city: '',
+    state_province: '',
+    country: 'Philippines',
     zip: '',
     location_link: '',
     owner_phone: '',
@@ -140,6 +143,14 @@ export default function NewProperty() {
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
+    }))
+  }
+
+  function handleCountryChange(e) {
+    const { value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      country: value
     }))
   }
 
@@ -348,6 +359,8 @@ export default function NewProperty() {
 
   const isUploading = Object.values(uploadingImages).some(v => v) || uploadingTerms
   const hasAtLeastOnePhoto = imageUrls.some(url => (url || '').trim() !== '')
+  const shouldSuggestPhilippineProvinces = isPhilippinesCountry(formData.country)
+  const stateProvinceSuggestions = getStateProvinceSuggestions(formData.country)
 
   function validateStep() {
     const warn = (msg) => {
@@ -365,6 +378,8 @@ export default function NewProperty() {
       if (!formData.street.trim()) { warn('Street is required'); return false }
       if (!formData.address.trim()) { warn('Barangay is required'); return false }
       if (!formData.city.trim()) { warn('City is required'); return false }
+      if (!formData.country.trim()) { warn('Country is required'); return false }
+      if (!formData.state_province.trim()) { warn(shouldSuggestPhilippineProvinces ? 'Province is required' : 'State/Province is required'); return false }
     }
     if (step === 2) {
       if (!formData.price) { warn('Monthly price is required'); return false }
@@ -480,6 +495,14 @@ export default function NewProperty() {
                     <input type="text" name="city" required placeholder="City" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black outline-none" value={formData.city} onChange={handleChange} />
                   </div>
                   <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-500 ml-1">Country *</label>
+                    <input type="text" name="country" required list="country-options" placeholder="Country" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black outline-none" value={formData.country} onChange={handleCountryChange} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-gray-500 ml-1">{shouldSuggestPhilippineProvinces ? 'Province *' : 'State / Province *'}</label>
+                    <input type="text" name="state_province" required list="state-province-options" placeholder={shouldSuggestPhilippineProvinces ? 'Select or type a Philippine province' : 'Select or type a state/province'} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black outline-none" value={formData.state_province} onChange={handleChange} />
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500 ml-1">ZIP</label>
                   <input
                     type="number"
@@ -495,6 +518,16 @@ export default function NewProperty() {
                     <input type="url" name="location_link" placeholder="https://maps.app.goo.gl/..." className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black outline-none text-blue-600" value={formData.location_link} onChange={handleChange} />
                   </div>
                 </div>
+                <datalist id="country-options">
+                  {COUNTRY_SUGGESTIONS.map((country) => (
+                    <option key={country} value={country} />
+                  ))}
+                </datalist>
+                <datalist id="state-province-options">
+                  {stateProvinceSuggestions.map((entry) => (
+                    <option key={entry} value={entry} />
+                  ))}
+                </datalist>
               </div>
             </div>
           )}

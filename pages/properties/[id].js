@@ -323,7 +323,8 @@ export default function PropertyDetail() {
     if (coords) {
       return `https://www.google.com/maps?q=${coords.lat},${coords.lng}&z=17&output=embed`
     }
-    const address = `${property?.address || ''}, ${property?.city || ''} ${property?.zip || ''}`
+    const country = property?.country || 'Philippines'
+    const address = `${property?.address || ''}, ${property?.city || ''}, ${property?.state_province || ''} ${property?.zip || ''}, ${country}`
     return `https://www.google.com/maps?q=${encodeURIComponent(address)}&z=17&output=embed`
   }
 
@@ -547,7 +548,8 @@ export default function PropertyDetail() {
   const handleInternalDirections = (e) => {
     e.preventDefault();
     const coords = extractCoordinates(property?.location_link);
-    const fullAddr = `${property.address}, ${property.city}`;
+    const country = property?.country || 'Philippines'
+    const fullAddr = `${property.address}, ${property.city}, ${property?.state_province || ''}, ${country}`;
 
     // Build query with destination info
     const query = {
@@ -880,7 +882,13 @@ export default function PropertyDetail() {
   const isOwner = profile?.id === property.landlord
   const isLandlord = profile?.role === 'landlord'
 
-  const fullAddress = `${property.address}, ${property.city} ${property.zip || ''}`
+  const addressSegments = [
+    String(property.address || '').trim(),
+    String(property.city || '').trim(),
+    String(property.state_province || '').trim(),
+    String(property.country || 'Philippines').trim()
+  ].filter(Boolean)
+  const fullAddress = `${addressSegments.join(', ')}${property.zip ? ` ${property.zip}` : ''}`
   const termsLink = property.terms_conditions && property.terms_conditions.startsWith('http')
     ? property.terms_conditions
     : '/terms';
@@ -1044,52 +1052,50 @@ export default function PropertyDetail() {
               {/* Specs & Description */}
               <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm relative overflow-hidden">
 
-                <div className="flex flex-wrap items-center gap-4 md:gap-8 pb-6 mb-6 border-b border-gray-100">
-                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg
-                      className="w-5 h-5"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" />
-                    </svg></div>
-                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.bedrooms}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Bedrooms</p></div>
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg
-                      className="w-5 h-5"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" />
-                    </svg></div>
-                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.bathrooms}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Bathrooms</p></div>
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-xl border border-gray-100 shadow-sm transition-transform hover:scale-105 hover:shadow-md">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-600 shadow-sm"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></div>
-                    <div><p className="text-xl font-black text-gray-900 leading-none">{property.area_sqft}</p><p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Sq. Ft.</p></div>
-                  </div>
-                  {propertyStatsInfo.isTopRated && (
-                    <div className="flex items-center gap-0 bg-amber-50 pr-4 pl-1 py-1.5 rounded-xl border border-amber-200 shadow-sm w-fit">
-                      <img src="/toprated.png" alt="Top Rated" className="h-10 sm:h-12 w-auto object-contain flex-shrink-0 -mb-2" />
-                      <div className="flex flex-col ml-1">
-                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider leading-none">Top Rated</span>
-                        <span className="text-sm font-bold text-amber-800 leading-none mt-1">{propertyStatsInfo.reviewCount} Reviews</span>
+                <div className="pb-6 mb-6 border-b border-gray-100">
+                  <div className="flex flex-wrap items-stretch gap-3 md:gap-4">
+                    <div className="inline-flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-2xl border border-gray-200 min-w-[170px]">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-blue-600"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" /></svg></div>
+                      <div className="leading-none">
+                        <p className="text-[30px] font-black text-gray-900">{property.bedrooms}</p>
+                        <p className="text-[12px] font-bold uppercase tracking-wider text-gray-500">Bedrooms</p>
                       </div>
                     </div>
-                  )}
 
-                  {propertyStatsInfo.isMostFavorite && (
-                    <div className="flex items-center gap-0 bg-rose-50 pr-4 pl-1 py-1.5 rounded-xl border border-rose-200 shadow-sm w-fit">
-                      <img src="/mostfavorite.png" alt="Most Favorite" className="h-10 sm:h-12 w-auto object-contain flex-shrink-0 -mb-2" />
-                      <div className="flex flex-col ml-1">
-                        <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider leading-none">Most Favorite</span>
-                        <span className="text-sm font-bold text-rose-800 leading-none mt-1">{propertyStatsInfo.favoriteCount} Favorites</span>
+                    <div className="inline-flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-2xl border border-gray-200 min-w-[170px]">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-blue-600"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" /></svg></div>
+                      <div className="leading-none">
+                        <p className="text-[30px] font-black text-gray-900">{property.bathrooms}</p>
+                        <p className="text-[12px] font-bold uppercase tracking-wider text-gray-500">Bathrooms</p>
                       </div>
                     </div>
-                  )}
+
+                    <div className="inline-flex items-center gap-3 bg-gray-50 px-4 py-3 rounded-2xl border border-gray-200 min-w-[170px]">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-blue-600"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></div>
+                      <div className="leading-none">
+                        <p className="text-[30px] font-black text-gray-900">{property.area_sqft}</p>
+                        <p className="text-[12px] font-bold uppercase tracking-wider text-gray-500">Sq. Ft.</p>
+                      </div>
+                    </div>
+
+                    {propertyStatsInfo.isTopRated && (
+                      <div className="inline-flex items-center gap-2 bg-amber-50 px-3.5 py-2.5 rounded-2xl border border-amber-200 min-w-[190px]">
+                        <img src="/toprated.png" alt="Top Rated" className="h-14 w-auto object-contain flex-shrink-0" />
+                        <div className="leading-none">
+                          <p className="text-[16px] font-bold text-amber-600 uppercase tracking-wider">Top Rated</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {propertyStatsInfo.isMostFavorite && (
+                      <div className="inline-flex items-center gap-2 bg-rose-50 px-3.5 py-2.5 rounded-2xl border border-rose-200 min-w-[190px]">
+                        <img src="/mostfavorite.png" alt="Most Favorite" className="h-14 w-auto object-contain flex-shrink-0" />
+                        <div className="leading-none">
+                          <p className="text-[16px] font-bold text-rose-600 uppercase tracking-wider">Most Favorite</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="mb-8">
                   <h3 className="text-3xl font-bold text-gray-900 mb-3 uppercase tracking-wider">About this property</h3>

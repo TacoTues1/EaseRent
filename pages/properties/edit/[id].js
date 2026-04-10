@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabaseClient'
 import { normalizeImageForUpload } from '../../../lib/imageCompression'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
+import { COUNTRY_SUGGESTIONS, getStateProvinceSuggestions, isPhilippinesCountry } from '../../../lib/locationData'
 
 export default function EditProperty() {
   const router = useRouter()
@@ -23,6 +24,8 @@ export default function EditProperty() {
     address: '',
     city: '',
     street: '',
+    state_province: '',
+    country: 'Philippines',
     zip: '',
     location_link: '',
     owner_phone: '',
@@ -154,6 +157,8 @@ export default function EditProperty() {
       street: data.street || '',
       address: data.address || '',
       city: data.city || '',
+      state_province: data.state_province || '',
+      country: data.country || 'Philippines',
       zip: data.zip || '',
       location_link: data.location_link || '',
       owner_phone: data.owner_phone || '',
@@ -191,6 +196,14 @@ export default function EditProperty() {
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
+    }))
+  }
+
+  function handleCountryChange(e) {
+    const { value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      country: value
     }))
   }
 
@@ -449,6 +462,8 @@ export default function EditProperty() {
   // Check if any uploads are in progress
   const isUploading = Object.values(uploadingImages).some(v => v) || uploadingTerms
   const wifiMode = getWifiModeFromAmenities(formData.amenities)
+  const shouldSuggestPhilippineProvinces = isPhilippinesCountry(formData.country)
+  const stateProvinceSuggestions = getStateProvinceSuggestions(formData.country)
 
   if (!session || !profile) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500">Loading...</div>
 
@@ -554,6 +569,32 @@ export default function EditProperty() {
                     onChange={handleChange}
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">Country *</label>
+                  <input
+                    type="text"
+                    name="country"
+                    required
+                    list="country-options"
+                    placeholder="Philippines"
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.country}
+                    onChange={handleCountryChange}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-500 ml-1">{shouldSuggestPhilippineProvinces ? 'Province *' : 'State / Province *'}</label>
+                  <input
+                    type="text"
+                    name="state_province"
+                    required
+                    list="state-province-options"
+                    placeholder={shouldSuggestPhilippineProvinces ? 'Select or type a Philippine province' : 'Select or type a state/province'}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:border-black focus:ring-0 outline-none"
+                    value={formData.state_province}
+                    onChange={handleChange}
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                 <div className="space-y-1">
@@ -578,6 +619,16 @@ export default function EditProperty() {
                   />
                 </div>
               </div>
+              <datalist id="country-options">
+                {COUNTRY_SUGGESTIONS.map((country) => (
+                  <option key={country} value={country} />
+                ))}
+              </datalist>
+              <datalist id="state-province-options">
+                {stateProvinceSuggestions.map((entry) => (
+                  <option key={entry} value={entry} />
+                ))}
+              </datalist>
             </div>
 
             {/* Specs & Contact Split */}
