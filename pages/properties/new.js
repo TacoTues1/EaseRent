@@ -71,10 +71,10 @@ export default function NewProperty() {
   const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   const availableAmenities = [
-    'Kitchen', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating',
-    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
+    'Kitchen', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating', 'Basketball court',
+    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden', "Kid's Playground",
     'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
-  ]
+]
 
   const normalizeAmenities = (amenities = []) => {
     const mapped = (amenities || []).map(a => (a === 'WiFi' ? 'Wifi' : a))

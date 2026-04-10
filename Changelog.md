@@ -2,6 +2,30 @@
 
 All notable updates are listed below.
 
+## 2026-04-10
+
+### Added
+- Property forms now include country and state/province fields with dynamic suggestions:
+  - Country suggestions while typing.
+  - Philippine province-aware behavior plus fallback suggestions for other countries.
+- Discovery sections now include Nearby Properties for visitor and tenant (no-active-property) views when location is available.
+- All Properties filter UX enhancements:
+  - Rating stars now show hover preview (e.g., hovering star 3 highlights stars 1-3).
+  - Amenities filter now shows first 10 entries by default with See More / See Less toggle.
+
+### Changed
+- All Properties map behavior:
+  - Opens from a default zoomed-out view, then auto-focuses to user location when available.
+  - Nearby coverage is centered on a 1km radius.
+  - Property marker visibility is zoom-aware: nearby-only at focused zoom, and all markers become visible when zooming out.
+  - Initial auto-focus animation was slowed and configured to run only once per page lifecycle to avoid repeated loops when toggling Grid/Map.
+- Navigation and public access:
+  - Visitor-friendly navigation links were expanded for Properties, Landlord List, and Compare.
+  - Public route allowlist now includes compare and landlord listing/profile paths.
+
+### Fixed
+- TypeScript deprecation warning for jsconfig baseUrl is now silenced by adding compiler option ignoreDeprecations: "6.0".
+
 ## 2026-04-01
 
 ### Added

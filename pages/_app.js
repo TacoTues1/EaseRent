@@ -33,6 +33,9 @@ function MyApp({ Component, pageProps }) {
     '/register-landlord',
     '/forgotPassword',
     '/updatePassword',
+    '/compare',
+    '/landlords/landlordlist',
+    '/landlords/landlordprofile',
     '/properties/allProperties',
     '/properties/[id]'
   ])

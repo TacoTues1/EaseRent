@@ -1017,6 +1017,8 @@ export default function Navbar({ isHomeLoading = false }) {
                     {renderNavbarSearch()}
 
                     <div className="hidden sm:flex items-center gap-4 lg:gap-6">
+                      <div className="w-px h-7 bg-gray-200"></div>
+
                       {/* Become a Landlord button with Icon */}
                       <button onClick={() => router.push('/register-landlord')} className="flex items-center gap-3 text-sm font-medium text-[#0F172A] cursor-pointer whitespace-nowrap group">
                         Become a Landlord
@@ -1052,7 +1054,6 @@ export default function Navbar({ isHomeLoading = false }) {
             <div className="lg:hidden mt-2 max-w-7xl mx-auto bg-white/95 backdrop-blur-md border border-gray-200 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-auto m-4">
               <div className="p-4 grid grid-cols-1 gap-2">
                 <button onClick={() => router.push('/')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Home</button>
-                <button onClick={() => router.push('/properties/allProperties')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Properties</button>
                 <button onClick={() => router.push('/contact')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Emergency Contacts</button>
                 {/* <button onClick={() => router.push('/team')} className="w-full text-left flex items-center px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all">Our Team</button> */}
                 <div className="h-px bg-gray-200 my-1"></div>
@@ -1120,36 +1121,37 @@ export default function Navbar({ isHomeLoading = false }) {
                 </>
               )}
 
-              {effectiveRole === 'tenant' && (
+              {(effectiveRole === 'tenant' || effectiveRole === 'visitor') && (
                 <>
-                  <Link href="/bookings" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/bookings') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
-                    My Bookings
-                    {bookingCount > 0 && (
-                      <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
-                        {bookingCount > 9 ? '9+' : bookingCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link href="/maintenance" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/maintenance') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
-                    Maintenance
-                    {maintenanceCount > 0 && (
-                      <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
-                        {maintenanceCount > 9 ? '9+' : maintenanceCount}
-                      </span>
-                    )}
-                  </Link>
+                  {effectiveRole === 'tenant' && (
+                    <>
+                      <Link href="/bookings" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/bookings') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                        My Bookings
+                        {bookingCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
+                            {bookingCount > 9 ? '9+' : bookingCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link href="/maintenance" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/maintenance') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                        Maintenance
+                        {maintenanceCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
+                            {maintenanceCount > 9 ? '9+' : maintenanceCount}
+                          </span>
+                        )}
+                      </Link>
 
-                  <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
-                    Payments
-                    {pendingPaymentCount > 0 && (
-                      <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
-                        {pendingPaymentCount > 9 ? '9+' : pendingPaymentCount}
-                      </span>
-                    )}
-                  </Link>
-                    <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
-                    Properties
-                  </Link>
+                      <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                        Payments
+                        {pendingPaymentCount > 0 && (
+                          <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
+                            {pendingPaymentCount > 9 ? '9+' : pendingPaymentCount}
+                          </span>
+                        )}
+                      </Link>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -1330,8 +1332,8 @@ export default function Navbar({ isHomeLoading = false }) {
                       <div className="font-bold text-black text-base">{profile?.first_name} {profile?.last_name}</div>
                       <div className="text-xs text-gray-500 mt-0.5 truncate">{session?.user?.email}</div>
                       <div className="mt-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${effectiveRole === 'landlord' ? 'bg-black text-white' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
-                          {effectiveRole === 'landlord' ? 'Landlord' : 'Tenant'}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${effectiveRole === 'landlord' ? 'bg-black text-white' : effectiveRole === 'visitor' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                          {effectiveRole === 'landlord' ? 'Landlord' : effectiveRole === 'visitor' ? 'Visitor' : 'Tenant'}
                         </span>
                       </div>
                     </div>
@@ -1377,8 +1379,8 @@ export default function Navbar({ isHomeLoading = false }) {
                 <div className="font-bold text-gray-900 text-sm">{profile?.first_name} {profile?.last_name}</div>
                 <div className="text-xs text-gray-500 truncate max-w-[180px]">{session?.user?.email}</div>
               </div>
-              <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${effectiveRole === 'landlord' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}>
-                {effectiveRole === 'landlord' ? 'Landlord' : 'Tenant'}
+              <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full ${effectiveRole === 'landlord' ? 'bg-black text-white' : effectiveRole === 'visitor' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-800'}`}>
+                {effectiveRole === 'landlord' ? 'Landlord' : effectiveRole === 'visitor' ? 'Visitor' : 'Tenant'}
               </span>
             </div>
 
@@ -1403,26 +1405,29 @@ export default function Navbar({ isHomeLoading = false }) {
                 </>
               )}
 
-              {effectiveRole === 'tenant' && (
+              {(effectiveRole === 'tenant' || effectiveRole === 'visitor') && (
                 <>
-                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
-                    My Bookings
-                    {bookingCount > 0 && (
-                      <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/bookings') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
-                        {bookingCount > 9 ? '9+' : bookingCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
-                    Maintenance
-                    {maintenanceCount > 0 && (
-                      <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/maintenance') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
-                        {maintenanceCount > 9 ? '9+' : maintenanceCount}
-                      </span>
-                    )}
-                  </Link>
-                  <Link href="/properties/allProperties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/allProperties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Properties</Link>
-                </>
+                  {effectiveRole === 'tenant' && (
+                    <>
+                      <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                        My Bookings
+                        {bookingCount > 0 && (
+                          <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/bookings') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
+                            {bookingCount > 9 ? '9+' : bookingCount}
+                          </span>
+                        )}
+                      </Link>
+                      <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                        Maintenance
+                        {maintenanceCount > 0 && (
+                          <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/maintenance') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
+                            {maintenanceCount > 9 ? '9+' : maintenanceCount}
+                          </span>
+                        )}
+                      </Link>
+                    </>
+                  )}
+                  </>
               )}
 
               <Link href="/favorites" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/favorites') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Favorite</Link>

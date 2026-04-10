@@ -39,6 +39,42 @@ function BillRow({ label, icon, value, compact = false }) {
   )
 }
 
+const NEARBY_RADIUS_KM = 1
+
+function toRadians(degrees) {
+  return degrees * (Math.PI / 180)
+}
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const dLat = toRadians(lat2 - lat1)
+  const dLon = toRadians(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return 6371 * c
+}
+
+function extractCoordinates(link) {
+  if (!link) return null
+  const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  const placeMatch = link.match(/place\/(-?\d+\.\d+),(-?\d+\.\d+)/)
+  const genericPairMatch = link.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/)
+  const match = atMatch || qMatch || placeMatch || genericPairMatch
+
+  if (!match) return null
+
+  const lat = parseFloat(match[1])
+  const lng = parseFloat(match[2])
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
+
+  return { lat, lng }
+}
+
 export default function TenantDashboard({ session, profile }) {
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -65,9 +101,11 @@ export default function TenantDashboard({ session, profile }) {
   const [favorites, setFavorites] = useState([])
   const [propertyStats, setPropertyStats] = useState({})
   const [guestFavorites, setGuestFavorites] = useState([])
+  const [nearbyProperties, setNearbyProperties] = useState([])
   const [mostFavoriteProperties, setMostFavoriteProperties] = useState([])
   const [topRated, setTopRated] = useState([])
   const [userLocationCity, setUserLocationCity] = useState('')
+  const [userLocationCoords, setUserLocationCoords] = useState(null)
   const [locationPermission, setLocationPermission] = useState('prompt')
   const [nextPaymentDate, setNextPaymentDate] = useState(null)
   const [lastRentPeriod, setLastRentPeriod] = useState(null)
@@ -177,7 +215,7 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   useEffect(() => {
-    const allProperties = [...properties, ...guestFavorites, ...mostFavoriteProperties, ...topRated]
+    const allProperties = [...properties, ...guestFavorites, ...nearbyProperties, ...mostFavoriteProperties, ...topRated]
     if (allProperties.length === 0) return
 
     const interval = setInterval(() => {
@@ -194,7 +232,7 @@ export default function TenantDashboard({ session, profile }) {
     }, 1450)
 
     return () => clearInterval(interval)
-  }, [properties, guestFavorites, mostFavoriteProperties, topRated])
+  }, [properties, guestFavorites, nearbyProperties, mostFavoriteProperties, topRated])
 
 
   useEffect(() => {
@@ -220,6 +258,7 @@ export default function TenantDashboard({ session, profile }) {
     await loadPropertyStats()
     const occupancy = await loadTenantOccupancy() 
     let detectedLocationCity = ''
+    let detectedLocationCoords = null
     let detectedLocationPermission = locationPermission
 
     const isOwnOccupancy = occupancy && occupancy.tenant_id === session.user.id
@@ -229,12 +268,13 @@ export default function TenantDashboard({ session, profile }) {
     } else {
       const locationResult = await detectUserLocation()
       detectedLocationCity = locationResult.city
+      detectedLocationCoords = locationResult.coords
       detectedLocationPermission = locationResult.permission
     }
 
     await checkPendingReviews(session.user.id)
     await loadUserFavorites()
-    await loadFeaturedSections(detectedLocationCity, detectedLocationPermission)
+    await loadFeaturedSections(detectedLocationCity, detectedLocationPermission, detectedLocationCoords)
 
     if (occupancy) {
       if (isOwnOccupancy) {
@@ -1377,7 +1417,8 @@ export default function TenantDashboard({ session, profile }) {
     if (typeof window === 'undefined' || !navigator?.geolocation) {
       setLocationPermission('unavailable')
       setUserLocationCity('')
-      return { permission: 'unavailable', city: '' }
+      setUserLocationCoords(null)
+      return { permission: 'unavailable', city: '', coords: null }
     }
 
     return new Promise((resolve) => {
@@ -1388,22 +1429,27 @@ export default function TenantDashboard({ session, profile }) {
             const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
             const data = await response.json()
             const city = (data?.city || data?.locality || data?.principalSubdivision || '').trim()
+            const coords = { lat: latitude, lng: longitude }
 
             setLocationPermission('granted')
             setUserLocationCity(city)
-            resolve({ permission: 'granted', city })
+            setUserLocationCoords(coords)
+            resolve({ permission: 'granted', city, coords })
           } catch (err) {
             console.error('Location reverse-geocode failed:', err)
+            const coords = { lat: position.coords.latitude, lng: position.coords.longitude }
             setLocationPermission('granted')
             setUserLocationCity('')
-            resolve({ permission: 'granted', city: '' })
+            setUserLocationCoords(coords)
+            resolve({ permission: 'granted', city: '', coords })
           }
         },
         (error) => {
           const permission = error?.code === 1 ? 'denied' : 'unavailable'
           setLocationPermission(permission)
           setUserLocationCity('')
-          resolve({ permission, city: '' })
+          setUserLocationCoords(null)
+          resolve({ permission, city: '', coords: null })
         },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
       )
@@ -1425,7 +1471,7 @@ export default function TenantDashboard({ session, profile }) {
     }
   }
 
-  async function loadFeaturedSections(locationCityOverride = '', locationPermissionOverride = locationPermission) {
+  async function loadFeaturedSections(locationCityOverride = '', locationPermissionOverride = locationPermission, locationCoordsOverride = null) {
     const { data: allProps } = await supabase.from('properties').select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)').eq('is_deleted', false).eq('status', 'available')
     const { data: stats } = await supabase.from('property_stats').select('*')
 
@@ -1447,6 +1493,37 @@ export default function TenantDashboard({ session, profile }) {
         setGuestFavorites(favs)
       } else {
         setGuestFavorites([])
+      }
+
+      const effectiveLocationCoords = locationCoordsOverride || userLocationCoords
+      if (
+        locationPermissionOverride === 'granted' &&
+        Number.isFinite(effectiveLocationCoords?.lat) &&
+        Number.isFinite(effectiveLocationCoords?.lng)
+      ) {
+        const nearby = allProps
+          .map((property) => {
+            const coords = extractCoordinates(property.location_link)
+            if (!coords) return null
+
+            const distanceKm = getDistanceFromLatLonInKm(
+              effectiveLocationCoords.lat,
+              effectiveLocationCoords.lng,
+              coords.lat,
+              coords.lng
+            )
+
+            if (distanceKm > NEARBY_RADIUS_KM) return null
+            return { property, distanceKm }
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distanceKm - b.distanceKm)
+          .slice(0, maxDisplayItems)
+          .map(({ property }) => property)
+
+        setNearbyProperties(nearby)
+      } else {
+        setNearbyProperties([])
       }
 
       const mostFavorited = allProps
@@ -2657,6 +2734,48 @@ export default function TenantDashboard({ session, profile }) {
                 <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
                   <CarouselContent className="-ml-2">
                     {mostFavoriteProperties.slice(0, maxDisplayItems).map((item) => {
+                      const images = getPropertyImages(item)
+                      const currentIndex = currentImageIndex[item.id] || 0
+                      const isSelectedForCompare = comparisonList.some(p => p.id === item.id)
+                      const isFavorite = favorites.includes(item.id)
+                      const stats = propertyStats[item.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
+
+                      return (
+                        <CarouselItem key={item.id} className={carouselItemClass}>
+                          <div className="p-1 h-full">
+                            {renderPropertyCard({
+                              property: item,
+                              images,
+                              currentIndex,
+                              isSelectedForCompare,
+                              isFavorite,
+                              stats
+                            })}
+                          </div>
+                        </CarouselItem>
+                      )
+                    })}
+                  </CarouselContent>
+                  <CarouselPrevious />
+                  <CarouselNext />
+                </Carousel>
+              </div>
+            )}
+
+            {/* Nearby Properties Section - Carousel */}
+            {locationPermission === 'granted' && nearbyProperties.length > 0 && (
+              <div className={`mb-2 mt-4 transition-all duration-700 delay-300 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                  <div>
+                    <div className="flex items-center gap-3 mb-1">
+                      <h2 className="text-2xl font-black text-black">Nearby Properties</h2>
+                    </div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Within 1 km of your current location</p>
+                  </div>
+                </div>
+                <Carousel className="w-full mx-auto sm:max-w-[calc(100%-100px)]">
+                  <CarouselContent className="-ml-2">
+                    {nearbyProperties.slice(0, maxDisplayItems).map((item) => {
                       const images = getPropertyImages(item)
                       const currentIndex = currentImageIndex[item.id] || 0
                       const isSelectedForCompare = comparisonList.some(p => p.id === item.id)

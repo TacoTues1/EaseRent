@@ -5,13 +5,6 @@ import Footer from '../../components/Footer'
 import AuthModal from '../../components/AuthModal'
 import { showToast } from 'nextjs-toast-notify'
 import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from '../../components/ui/carousel'
-import {
   Map,
   MapMarker,
   MarkerContent,
@@ -19,7 +12,6 @@ import {
   MapControls,
   useMap
 } from '../../components/ui/map'
-import { LocateFixed } from 'lucide-react'
 
 // --- Distance Calculation Helper ---
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -39,6 +31,11 @@ function deg2rad(deg) {
 }
 
 const PROPERTIES_PER_PAGE = 10
+const NEARBY_RADIUS_KM = 1
+const DEFAULT_MAP_CENTER = [122.0, 12.5]
+const DEFAULT_MAP_ZOOM = 4.5
+const USER_FOCUS_FALLBACK_ZOOM = 14
+const AMENITIES_VISIBLE_LIMIT = 10
 
 const extractCoordinates = (link) => {
   if (!link) return null;
@@ -86,7 +83,7 @@ function MapCoverageCircle({ center }) {
 
     const points = 64;
     const coords = [];
-    const radiusKm = 2;
+    const radiusKm = 1;
     const distanceX = radiusKm / (111.320 * Math.cos(center.latitude * Math.PI / 180));
     const distanceY = radiusKm / 110.574;
 
@@ -145,15 +142,6 @@ function MapCoverageCircle({ center }) {
     }
   }, [map, isLoaded, center]);
 
-  useEffect(() => {
-    if (!isLoaded || !map || !center) return;
-    map.flyTo({
-      center: [center.longitude, center.latitude],
-      zoom: 13.5,
-      duration: 1200
-    });
-  }, [map, isLoaded, center]);
-
   return null;
 }
 
@@ -172,6 +160,71 @@ function FlyToPhilippines() {
     }, 500);
     return () => clearTimeout(timer);
   }, [map, isLoaded]);
+  return null;
+}
+
+function MapZoomTracker({ onZoomChange }) {
+  const { map, isLoaded } = useMap();
+
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    const updateZoom = () => {
+      onZoomChange(map.getZoom());
+    };
+
+    updateZoom();
+    map.on("zoom", updateZoom);
+    map.on("moveend", updateZoom);
+
+    return () => {
+      map.off("zoom", updateZoom);
+      map.off("moveend", updateZoom);
+    };
+  }, [map, isLoaded, onZoomChange]);
+
+  return null;
+}
+
+function MapAutoFocusToUser({ userLocation, enabled, radiusKm = 1, onFocusStart, onFocused }) {
+  const { map, isLoaded } = useMap();
+
+  useEffect(() => {
+    if (!enabled || !isLoaded || !map || !userLocation) return;
+
+    const lat = userLocation.latitude;
+    const lng = userLocation.longitude;
+    const deltaLng = radiusKm / (111.320 * Math.cos(lat * Math.PI / 180));
+    const deltaLat = radiusKm / 110.574;
+
+    const bounds = [
+      [lng - deltaLng, lat - deltaLat],
+      [lng + deltaLng, lat + deltaLat]
+    ];
+
+    const plannedCamera = map.cameraForBounds(bounds, { padding: 20 });
+    const plannedZoom = plannedCamera?.zoom;
+    if (typeof plannedZoom === 'number') {
+      onFocusStart?.(plannedZoom);
+    }
+
+    const handleMoveEnd = () => {
+      onFocused?.(map.getZoom());
+      map.off("moveend", handleMoveEnd);
+    };
+
+    map.on("moveend", handleMoveEnd);
+    map.fitBounds(bounds, {
+      padding: 20,
+      duration: 2800,
+      essential: true
+    });
+
+    return () => {
+      map.off("moveend", handleMoveEnd);
+    };
+  }, [enabled, isLoaded, map, userLocation, radiusKm, onFocusStart, onFocused]);
+
   return null;
 }
 
@@ -197,14 +250,19 @@ export default function AllProperties() {
 
   // --- New Filters ---
   const [minRating, setMinRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
   const [filterMostFavorite, setFilterMostFavorite] = useState(false)
+  const [showAllAmenities, setShowAllAmenities] = useState(false)
 
   // --- Responsive Filters State ---
   const [showMobileFilters, setShowMobileFilters] = useState(false)
 
   // --- Location & Map State ---
-  const [filterNearMe, setFilterNearMe] = useState(false)
   const [userLocation, setUserLocation] = useState(null)
+  const [mapZoom, setMapZoom] = useState(null)
+  const [nearbyFocusZoom, setNearbyFocusZoom] = useState(null)
+  const [shouldAutoFocusUser, setShouldAutoFocusUser] = useState(false)
+  const [hasInitialMapAutoFocusPlayed, setHasInitialMapAutoFocusPlayed] = useState(false)
   const [showMapView, setShowMapView] = useState(false)
   const [locationError, setLocationError] = useState('')
 
@@ -279,7 +337,7 @@ export default function AllProperties() {
 
     const cityKey = normalizeCityKey(property.city)
     if (!cityKey) {
-      if (filterNearMe && userLocation) {
+      if (userLocation) {
         const hash = hashString(property.id || property.title)
         const angle = (hash % 360) * (Math.PI / 180)
         const radius = 0.003 + ((hash % 6) * 0.00022)
@@ -312,7 +370,7 @@ export default function AllProperties() {
       }
     }
 
-    if (filterNearMe && userLocation) {
+    if (userLocation) {
       const hash = hashString(property.id || cityKey)
       const angle = (hash % 360) * (Math.PI / 180)
       const radius = 0.003 + ((hash % 6) * 0.00022)
@@ -326,10 +384,10 @@ export default function AllProperties() {
   }
 
   const filterAmenities = [
-    'Kitchen', 'Wifi', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating Shower',
-    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden',
+    'Kitchen', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating', 'Basketball court',
+    'Washing machine', 'Dryer', 'Parking', 'Gym', 'Security', 'Balcony', 'Garden', "Kid's Playground",
     'Pet friendly', 'Furnished', 'Carbon monoxide alarm', 'Smoke alarm', 'Fire extinguisher', 'First aid kit'
-  ]
+]
 
   // Auto-slide images for property cards
   useEffect(() => {
@@ -391,11 +449,11 @@ export default function AllProperties() {
       loadProperties()
     }, 300)
     return () => clearTimeout(delayDebounceFn)
-  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, sortBy, router.isReady, statsLoaded, filterNearMe, userLocation, currentPage])
+  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, sortBy, router.isReady, statsLoaded, userLocation, currentPage])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, sortBy, filterNearMe, userLocation])
+  }, [searchQuery, selectedAmenities, priceRange, minRating, filterMostFavorite, sortBy, userLocation])
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(totalPropertyCount / PROPERTIES_PER_PAGE))
@@ -419,7 +477,7 @@ export default function AllProperties() {
   useEffect(() => {
     if (!router.isReady || autoLocationRequestedRef.current) return
     autoLocationRequestedRef.current = true
-    requestUserLocation({ applyNearMeFilter: false, manageLoading: false, showErrors: false, switchToMap: false })
+    requestUserLocation({ manageLoading: false, showErrors: false, switchToMap: false })
   }, [router.isReady])
 
   useEffect(() => {
@@ -691,23 +749,6 @@ export default function AllProperties() {
       })
     }
 
-    // 4. Near Me Filter (1km maximum)
-    if (filterNearMe && userLocation) {
-      filteredData = filteredData.filter(property => {
-        const coords = extractCoordinates(property.location_link);
-        if (!coords) {
-          return Boolean(property.city && String(property.city).trim());
-        }
-        const dist = getDistanceFromLatLonInKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          parseFloat(coords.lat),
-          parseFloat(coords.lng)
-        );
-        return dist <= 2; // within 2km
-      });
-    }
-
     setFilteredProperties(filteredData)
     setTotalPropertyCount(filteredData.length)
 
@@ -750,9 +791,13 @@ export default function AllProperties() {
     setPriceRange({ min: '', max: '' })
     setSortBy('newest')
     setMinRating(0)
+    setHoverRating(0)
     setFilterMostFavorite(false)
-    setFilterNearMe(false)
+    setShowAllAmenities(false)
     setUserLocation(null)
+    setMapZoom(null)
+    setNearbyFocusZoom(null)
+    setShouldAutoFocusUser(false)
     setShowMapView(false)
     setLocationError('')
     setCurrentPage(1)
@@ -797,7 +842,6 @@ export default function AllProperties() {
   }
 
   const requestUserLocation = ({
-    applyNearMeFilter = false,
     manageLoading = true,
     showErrors = true,
     switchToMap = true
@@ -822,22 +866,21 @@ export default function AllProperties() {
         }
 
         setUserLocation(coords)
-
-        if (applyNearMeFilter) {
-          setFilterNearMe(true)
-          if (switchToMap) {
-            setShowMapView(true)
-          }
-          setShowMobileFilters(false)
+        if (switchToMap) {
+          setShouldAutoFocusUser(!hasInitialMapAutoFocusPlayed)
         }
+
+        if (switchToMap) {
+          setShowMapView(true)
+        }
+        setShowMobileFilters(false)
       },
       (err) => {
         console.error("Geolocation error:", err)
 
-        if (applyNearMeFilter) {
-          setFilterNearMe(false)
-          setUserLocation(null)
-        }
+        setUserLocation(null)
+        setNearbyFocusZoom(null)
+        setShouldAutoFocusUser(false)
 
         if (showErrors) {
           setLocationError("Could not get your location. Please ensure location services are enabled.")
@@ -851,73 +894,43 @@ export default function AllProperties() {
     )
   }
 
-  const handleToggleNearMe = () => {
-    if (filterNearMe) {
-      setFilterNearMe(false)
-      setUserLocation(null)
-    } else {
-      if (userLocation) {
-        setLoading(true)
-        setLocationError('')
-        setFilterNearMe(true)
-        setShowMapView(true)
-        setShowMobileFilters(false)
-        return
-      }
+  const handleMapViewClick = () => {
+    setShowMapView(true)
+    setLocationError('')
+    setShouldAutoFocusUser(!hasInitialMapAutoFocusPlayed)
 
-        requestUserLocation({ applyNearMeFilter: true, manageLoading: true, showErrors: true, switchToMap: true })
+    if (userLocation) {
+      setShowMobileFilters(false)
+      return
     }
+
+    requestUserLocation({ manageLoading: true, showErrors: false, switchToMap: true })
   }
 
   // --- REUSABLE FILTER CONTENT ---
   // Note: Defined inline to prevent losing input focus on re-renders
   const filterContent = (
     <div className="space-y-6">
-      {/* Near Me */}
+      {/* View Mode */}
       <div>
-        <label className="flex items-center justify-between p-2.5 bg-slate-50 border border-gray-100 rounded-xl cursor-pointer hover:border-gray-200 transition-all shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">
-              <LocateFixed className="w-4 h-4 text-emerald-500 stroke-[2.5]" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-[#111827] leading-none mb-1">
-                Find Near Me
-              </p>
-              <p className="text-[11px] text-gray-500 font-medium leading-none">Properties within 2km</p>
-            </div>
-          </div>
-          <div className="relative flex-shrink-0 mt-0.5">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={filterNearMe}
-              onChange={handleToggleNearMe}
-            />
-            <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 transition-colors duration-300 ease-in-out after:transition-all after:duration-300 after:ease-in-out peer-checked:bg-emerald-500 shadow-inner"></div>
-          </div>
-        </label>
-        {locationError && <p className="text-[10px] text-red-500 font-medium mt-1.5 ml-1 leading-snug">{locationError}</p>}
-
-        <div className="mt-3">
-          <p className="text-xs font-bold text-gray-500 uppercase mb-2">View Mode</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setShowMapView(false)}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${!showMapView ? 'bg-black text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-              Grid
-            </button>
-            <button
-              onClick={() => setShowMapView(true)}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${showMapView ? 'bg-black text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-              Map
-            </button>
-          </div>
+        <p className="text-xs font-bold text-gray-500 uppercase mb-2">View Mode</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setShowMapView(false)}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${!showMapView ? 'bg-black text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+            Grid
+          </button>
+          <button
+            onClick={handleMapViewClick}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${showMapView ? 'bg-black text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:text-gray-800'}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+            Map
+          </button>
         </div>
+        {locationError && <p className="text-[10px] text-red-500 font-medium mt-1.5 ml-1 leading-snug">{locationError}</p>}
       </div>
 
       {/* Search */}
@@ -961,20 +974,24 @@ export default function AllProperties() {
 
       {/* Star Rating Filter */}
       <div>
-        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Top Rated</p>
-        <div className="flex gap-1">
+        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Rating</p>
+        <div className="flex gap-1" onMouseLeave={() => setHoverRating(0)}>
           {[1, 2, 3, 4, 5].map((star) => (
             <button
               key={star}
+              type="button"
+              onMouseEnter={() => setHoverRating(star)}
+              onFocus={() => setHoverRating(star)}
+              onBlur={() => setHoverRating(0)}
               onClick={() => setMinRating(prev => prev === star ? 0 : star)}
               className="focus:outline-none"
             >
               <svg
-                className={`w-6 h-6 transition-colors cursor-pointer ${star <= minRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
+                className={`w-6 h-6 transition-colors cursor-pointer ${star <= (hoverRating || minRating) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth={star <= minRating ? 0 : 1.5}
+                strokeWidth={star <= (hoverRating || minRating) ? 0 : 1.5}
               >
                 <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
@@ -1005,7 +1022,7 @@ export default function AllProperties() {
       <div>
         <p className="text-xs font-bold text-gray-500 uppercase mb-2">Amenities</p>
         <div className="flex flex-col gap-2">
-          {filterAmenities.map(amenity => (
+          {(showAllAmenities ? filterAmenities : filterAmenities.slice(0, AMENITIES_VISIBLE_LIMIT)).map(amenity => (
             <label key={amenity} className="flex items-center gap-2 cursor-pointer group">
               <div className="relative flex items-center">
                 <input
@@ -1021,6 +1038,15 @@ export default function AllProperties() {
               <span className="text-sm text-gray-600 group-hover:text-black transition-colors">{amenity}</span>
             </label>
           ))}
+          {filterAmenities.length > AMENITIES_VISIBLE_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllAmenities(prev => !prev)}
+              className="mt-1 text-xs font-semibold text-black hover:underline text-left cursor-pointer"
+            >
+              {showAllAmenities ? 'See Less' : `See More (${filterAmenities.length - AMENITIES_VISIBLE_LIMIT})`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -1369,19 +1395,33 @@ export default function AllProperties() {
                     </div>
                   )}
                 <Map
-                  key={filterNearMe ? 'nearme' : 'default'}
-                  center={userLocation ? [userLocation.longitude, userLocation.latitude] : [122.0, 12.5]}
-                  zoom={filterNearMe ? 14 : 0}
+                  key="all-properties-map"
+                  center={userLocation && hasInitialMapAutoFocusPlayed ? [userLocation.longitude, userLocation.latitude] : DEFAULT_MAP_CENTER}
+                  zoom={userLocation && hasInitialMapAutoFocusPlayed ? (nearbyFocusZoom || USER_FOCUS_FALLBACK_ZOOM) : DEFAULT_MAP_ZOOM}
                   mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
                   className="w-full h-full"
                 >
+                  <MapZoomTracker onZoomChange={setMapZoom} />
+                  <MapAutoFocusToUser
+                    userLocation={userLocation}
+                    enabled={showMapView && shouldAutoFocusUser && !!userLocation}
+                    radiusKm={NEARBY_RADIUS_KM}
+                    onFocusStart={(plannedZoom) => {
+                      setHasInitialMapAutoFocusPlayed(true)
+                      setNearbyFocusZoom(plannedZoom)
+                    }}
+                    onFocused={(zoom) => {
+                      setNearbyFocusZoom((prev) => (typeof prev === 'number' ? prev : zoom))
+                      setShouldAutoFocusUser(false)
+                    }}
+                  />
                   <MapControls position="top-right" showLocate={true} showZoom={true} />
 
-                  {/* Fly-to-Philippines animation when not using Find Near Me */}
-                  {!filterNearMe && <FlyToPhilippines />}
+                  {/* Fly-to-Philippines animation when location is unavailable */}
+                  {!userLocation && <FlyToPhilippines />}
 
                   {/* Coverage Circle */}
-                  <MapCoverageCircle center={filterNearMe ? userLocation : null} />
+                  <MapCoverageCircle center={userLocation} />
 
                   {/* User Location Marker */}
                   {userLocation && (
@@ -1397,9 +1437,30 @@ export default function AllProperties() {
 
                   {/* Property Markers */}
                   {(() => {
+                    const shouldShowNearbyOnly =
+                      userLocation &&
+                      typeof mapZoom === 'number' &&
+                      typeof nearbyFocusZoom === 'number' &&
+                      mapZoom >= (nearbyFocusZoom - 0.001)
+                    const markerSourceProperties = shouldShowNearbyOnly
+                      ? filteredProperties.filter((property) => {
+                        const coords = extractCoordinates(property.location_link)
+                        if (!coords) return false
+
+                        const dist = getDistanceFromLatLonInKm(
+                          userLocation.latitude,
+                          userLocation.longitude,
+                          parseFloat(coords.lat),
+                          parseFloat(coords.lng)
+                        )
+
+                        return dist <= NEARBY_RADIUS_KM
+                      })
+                      : filteredProperties
+
                     // Group properties by rounded coordinates to find exact overlaps
                     const coordGroups = {};
-                    filteredProperties.forEach(property => {
+                    markerSourceProperties.forEach(property => {
                       const coords = getPropertyCoordinates(property);
                       if (!coords) return;
                       // Round slightly to catch extremely close markers
