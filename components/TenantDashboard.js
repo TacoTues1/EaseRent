@@ -108,6 +108,7 @@ export default function TenantDashboard({ session, profile }) {
   const [userLocationCoords, setUserLocationCoords] = useState(null)
   const [locationPermission, setLocationPermission] = useState('prompt')
   const [nextPaymentDate, setNextPaymentDate] = useState(null)
+  const [nextPaymentDateLoading, setNextPaymentDateLoading] = useState(true)
   const [lastRentPeriod, setLastRentPeriod] = useState(null)
   const [securityDepositPaid, setSecurityDepositPaid] = useState(false)
   const [familyMembers, setFamilyMembers] = useState([])
@@ -132,6 +133,9 @@ export default function TenantDashboard({ session, profile }) {
   const realtimeSyncTimerRef = useRef(null)
   const realtimeSyncRunningRef = useRef(false)
   const realtimeSyncQueuedRef = useRef(false)
+  const nextPaymentCalcTokenRef = useRef(0)
+  const setNextPaymentDateSafe = (value) => setNextPaymentDate(value)
+  const setLastRentPeriodSafe = (value) => setLastRentPeriod(value)
   const mostFavoriteId = Object.entries(propertyStats).filter(([_, s]) => (s.favorite_count || 0) > 0).sort((a, b) => b[1].favorite_count - a[1].favorite_count)?.[0]?.[0];
   const topRatedId = Object.entries(propertyStats).filter(([_, s]) => (s.review_count || 0) > 0).sort((a, b) => b[1].avg_rating - a[1].avg_rating || b[1].review_count - a[1].review_count)?.[0]?.[0];
 
@@ -306,8 +310,10 @@ export default function TenantDashboard({ session, profile }) {
       await loadFamilyMembers(refreshedOccupancy)
       calculateNextPayment(refreshedOccupancy.id, refreshedOccupancy)
     } else {
-      setNextPaymentDate(null)
-      setLastRentPeriod(null)
+      nextPaymentCalcTokenRef.current += 1
+      setNextPaymentDateSafe(null)
+      setLastRentPeriodSafe(null)
+      setNextPaymentDateLoading(false)
     }
 
     await Promise.all([
@@ -467,8 +473,6 @@ export default function TenantDashboard({ session, profile }) {
         return;
       }
 
-      console.log('Executing Last Month Deposit Logic...');
-
       const rentAmount = Number(occupancy.property?.price || 0);
       const depositTotal = Number(occupancy.security_deposit || 0);
       const depositUsed = Number(occupancy.security_deposit_used || 0);
@@ -495,7 +499,6 @@ export default function TenantDashboard({ session, profile }) {
           recipient: session.user.id,
           actor: session.user.id,
           type: 'payment_paid',
-          message: 'Your last month rent has been automatically paid using your Security Deposit.',
           link: '/payments'
         });
 
@@ -578,9 +581,29 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   async function calculateNextPayment(occupancyId, occupancy = null) {
-    // Use passed occupancy or fall back to state
-    const currentOccupancy = occupancy || tenantOccupancy;
-    const isOwn = currentOccupancy?.tenant_id === session.user.id;
+    nextPaymentCalcTokenRef.current += 1
+    const calculationToken = nextPaymentCalcTokenRef.current
+    setNextPaymentDateLoading(true)
+
+    const isStaleCalculation = () => calculationToken !== nextPaymentCalcTokenRef.current
+    const setNextPaymentDateSafe = (value) => {
+      if (isStaleCalculation()) return
+      setNextPaymentDate(value)
+    }
+    const setLastRentPeriodSafe = (value) => {
+      if (isStaleCalculation()) return
+      setLastRentPeriod(value)
+    }
+
+    try {
+      // Use passed occupancy or fall back to state
+      const currentOccupancy = occupancy || tenantOccupancy;
+      if (!currentOccupancy) {
+        setNextPaymentDateSafe(null)
+        setLastRentPeriodSafe(null)
+        return
+      }
+      const isOwn = currentOccupancy?.tenant_id === session.user.id;
 
     const getFirstDueDateFromStart = (startDateValue) => {
       const base = new Date(startDateValue)
@@ -608,7 +631,7 @@ export default function TenantDashboard({ session, profile }) {
       // Primary tenant: query via client
       const { data: pendingData } = await supabase
         .from('payment_requests')
-        .select('due_date, is_move_in_payment, is_renewal_payment, occupancy_id, property_id, status')
+        .select('due_date, is_move_in_payment, occupancy_id, property_id, status')
         .eq('tenant', currentOccupancy.tenant_id)
         .eq('status', 'pending')
         .gt('rent_amount', 0)
@@ -617,7 +640,7 @@ export default function TenantDashboard({ session, profile }) {
 
       const { data: paidData } = await supabase
         .from('payment_requests')
-        .select('due_date, rent_amount, advance_amount, is_renewal_payment, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
+        .select('due_date, rent_amount, advance_amount, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
         .eq('tenant', currentOccupancy.tenant_id)
         .in('status', ['paid', 'pending_confirmation'])
         .gt('rent_amount', 0)
@@ -711,33 +734,24 @@ export default function TenantDashboard({ session, profile }) {
     }, Number.NEGATIVE_INFINITY)
     const coverageEndDate = Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : null
 
-    console.log('Last paid bill for next due calc:', lastBill);
-    console.log('Paid bills count:', filteredBills?.length || 0);
-    console.log('All paid bills count:', allPaidBills?.length || 0);
-
     // CRITICAL: For newly assigned tenants with NO paid bills, ALWAYS use pending bill if available
     // This MUST happen before any other calculations to prevent "All Paid" from showing
     if (!lastBill) {
       // If we have a pending bill, use it immediately
-      if (pendingBill && pendingBill.due_date && pendingBill.is_renewal_payment !== true) {
-        console.log('✅ No paid bills found, using pending bill due date:', pendingBill.due_date, 'is_move_in:', pendingBill.is_move_in_payment);
+      if (pendingBill && pendingBill.due_date) {
         const formattedDate = new Date(pendingBill.due_date).toLocaleDateString('en-US', {
           month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
         });
-        console.log('✅ Setting nextPaymentDate to:', formattedDate);
-        setNextPaymentDate(formattedDate);
-        setLastRentPeriod("N/A"); // No last payment yet if there's a pending bill
+        setNextPaymentDateSafe(formattedDate);
+        setLastRentPeriodSafe("N/A"); // No last payment yet if there's a pending bill
         return; // CRITICAL: Return immediately to prevent any "All Paid" logic
       }
-
-      // If no pending bill found in initial query, do a more aggressive search
-      console.log('⚠️ No pending bill found in initial query, doing aggressive search...');
 
       let aggressivePendingCheck = null;
       if (isOwn) {
         const { data } = await supabase
           .from('payment_requests')
-          .select('due_date, occupancy_id, property_id, is_move_in_payment, is_renewal_payment, status')
+          .select('due_date, occupancy_id, property_id, is_move_in_payment, status')
           .eq('tenant', currentOccupancy.tenant_id)
           .eq('status', 'pending')
           .gt('rent_amount', 0)
@@ -748,27 +762,22 @@ export default function TenantDashboard({ session, profile }) {
         aggressivePendingCheck = allPendingBills.slice(0, 5);
       }
 
-      console.log('Aggressive pending bill search results:', aggressivePendingCheck);
-
       if (aggressivePendingCheck && aggressivePendingCheck.length > 0) {
-        // Find any pending bill that's not a renewal
         const validPending = aggressivePendingCheck.find(bill =>
           bill.due_date &&
-          bill.is_renewal_payment !== true &&
           (
             (occupancyId && bill.occupancy_id === occupancyId) ||
             (currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) ||
             (!bill.occupancy_id && currentOccupancy?.property_id && bill.property_id === currentOccupancy.property_id) ||
             (!bill.occupancy_id && !bill.property_id) // Accept bills with no IDs for new tenants
           )
-        ) || aggressivePendingCheck.find(bill => bill.due_date && bill.is_renewal_payment !== true);
+        ) || aggressivePendingCheck.find(bill => bill.due_date);
 
         if (validPending && validPending.due_date) {
-          console.log('✅ Found pending bill in aggressive search, using it:', validPending.due_date);
-          setNextPaymentDate(new Date(validPending.due_date).toLocaleDateString('en-US', {
+          setNextPaymentDateSafe(new Date(validPending.due_date).toLocaleDateString('en-US', {
             month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
           }));
-          setLastRentPeriod("N/A");
+          setLastRentPeriodSafe("N/A");
           return; // CRITICAL: Return immediately
         }
       }
@@ -782,8 +791,8 @@ export default function TenantDashboard({ session, profile }) {
           month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
         });
         console.log('✅ Setting nextPaymentDate from start_date fallback:', formattedDate);
-        setNextPaymentDate(formattedDate);
-        setLastRentPeriod("N/A");
+        setNextPaymentDateSafe(formattedDate);
+        setLastRentPeriodSafe("N/A");
         return; // CRITICAL: Return immediately to prevent "All Paid"
       }
     }
@@ -801,11 +810,6 @@ export default function TenantDashboard({ session, profile }) {
 
         let monthsCovered = 1;
         if (rentAmount > 0 && advanceAmount > 0) {
-          // For renewal payments: advance_amount = 1 month rent, so total = 2 months
-          // The renewal payment's due_date should be the actual next due date (March 6), not contract end date (April 6)
-          // Example: If renewal due_date = March 6, it covers March (rent) + April (advance) = 2 months
-          // So the next due date should be: March 6 + 2 months = May 6
-          // We add 2 months because the renewal payment covers 2 months total (1 month rent + 1 month advance)
           monthsCovered = 1 + Math.floor(advanceAmount / rentAmount);
         }
 
@@ -814,7 +818,6 @@ export default function TenantDashboard({ session, profile }) {
           advanceAmount,
           monthsCovered,
           billDueDate: lastBill.due_date,
-          isRenewal: lastBill.is_renewal_payment,
           isMoveIn: lastBill.is_move_in_payment,
           originalDueDate: lastBill.due_date,
           billStatus: lastBill.status
@@ -904,12 +907,12 @@ export default function TenantDashboard({ session, profile }) {
             if (isMoveInPayment) {
               console.log('Move-in payment detected - showing calculated next due date, not "All Paid"');
               // The nextDue is already calculated correctly above, just use it
-              setNextPaymentDate(formattedNextDue);
+              setNextPaymentDateSafe(formattedNextDue);
               if (lastBill) {
                 const lastDate = new Date(lastBill.due_date);
-                setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+                setLastRentPeriodSafe(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
               } else {
-                setLastRentPeriod("N/A");
+                setLastRentPeriodSafe("N/A");
               }
               return; // Return immediately for move-in payments
             }
@@ -922,46 +925,45 @@ export default function TenantDashboard({ session, profile }) {
               if (isOwn) {
                 const { data } = await supabase
                   .from('payment_requests')
-                  .select('due_date, occupancy_id, property_id, is_renewal_payment')
+                  .select('due_date, occupancy_id, property_id')
                   .eq('tenant', currentOccupancy.tenant_id)
                   .eq('status', 'pending')
                   .gt('rent_amount', 0)
-                  .neq('is_renewal_payment', true)
                   .order('due_date', { ascending: true })
                   .limit(1)
                   .maybeSingle();
                 finalPendingCheck = data;
               } else {
-                finalPendingCheck = allPendingBills && allPendingBills.find(p => p.is_renewal_payment !== true);
+                finalPendingCheck = allPendingBills && allPendingBills.find(p => p?.due_date);
               }
 
               if (finalPendingCheck && finalPendingCheck.due_date) {
                 // There's a pending bill, use it instead of "All Paid"
                 console.log('⚠️ Found pending bill even though paid period extends past contract end, using pending bill:', finalPendingCheck.due_date);
-                setNextPaymentDate(new Date(finalPendingCheck.due_date).toLocaleDateString('en-US', {
+                setNextPaymentDateSafe(new Date(finalPendingCheck.due_date).toLocaleDateString('en-US', {
                   month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
                 }));
-                setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+                setLastRentPeriodSafe(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
                 return;
               }
 
               // No pending bills found, show "All Paid"
               console.log('Paid period already covers past contract end, showing "All Paid"');
-              setNextPaymentDate("All Paid - Contract Ending");
-              setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+              setNextPaymentDateSafe("All Paid - Contract Ending");
+              setLastRentPeriodSafe(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
               return;
             }
           }
 
           // Set the calculated next due date
           console.log('✅ FINAL: Setting nextPaymentDate to:', formattedNextDue);
-          setNextPaymentDate(formattedNextDue);
+          setNextPaymentDateSafe(formattedNextDue);
 
           if (lastBill) {
             const lastDate = new Date(lastBill.due_date);
-            setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+            setLastRentPeriodSafe(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
           } else {
-            setLastRentPeriod("N/A");
+            setLastRentPeriodSafe("N/A");
           }
           return; // IMPORTANT: Return immediately to prevent any other code from overriding
         }
@@ -976,7 +978,7 @@ export default function TenantDashboard({ session, profile }) {
           if (isOwn) {
             const { data } = await supabase
               .from('payment_requests')
-              .select('due_date, occupancy_id, property_id, is_move_in_payment, is_renewal_payment')
+              .select('due_date, occupancy_id, property_id, is_move_in_payment')
               .eq('tenant', currentOccupancy.tenant_id)
               .eq('status', 'pending')
               .gt('rent_amount', 0)
@@ -988,8 +990,7 @@ export default function TenantDashboard({ session, profile }) {
             anyPendingBillData = allPendingBills && allPendingBills.length > 0 ? allPendingBills[0] : null;
           }
 
-          // Only use it if it's not a renewal payment
-          const anyPendingBill = (anyPendingBillData && anyPendingBillData.is_renewal_payment !== true) ? anyPendingBillData : null;
+          const anyPendingBill = anyPendingBillData;
 
           if (anyPendingBill && anyPendingBill.due_date) {
             // Check if it matches this occupancy/property (be lenient for newly assigned tenants)
@@ -1000,20 +1001,20 @@ export default function TenantDashboard({ session, profile }) {
 
             if (matches) {
               console.log('✅ Found pending bill for newly assigned tenant, using its due date:', anyPendingBill.due_date);
-              setNextPaymentDate(new Date(anyPendingBill.due_date).toLocaleDateString('en-US', {
+              setNextPaymentDateSafe(new Date(anyPendingBill.due_date).toLocaleDateString('en-US', {
                 month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
               }));
-              setLastRentPeriod("N/A");
+              setLastRentPeriodSafe("N/A");
               return; // CRITICAL: Return immediately to prevent "All Paid" logic
             }
           }
         } else if (pendingBill && pendingBill.due_date) {
           // We already have a pending bill from earlier, use it
           console.log('✅ Using existing pending bill for newly assigned tenant:', pendingBill.due_date);
-          setNextPaymentDate(new Date(pendingBill.due_date).toLocaleDateString('en-US', {
+          setNextPaymentDateSafe(new Date(pendingBill.due_date).toLocaleDateString('en-US', {
             month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
           }));
-          setLastRentPeriod("N/A");
+          setLastRentPeriodSafe("N/A");
           return; // CRITICAL: Return immediately to prevent "All Paid" logic
         }
 
@@ -1052,13 +1053,13 @@ export default function TenantDashboard({ session, profile }) {
 
             if (daysDiff > 45) {
               console.log('⚠️ Paid period >= endDate but endDate is far away (' + daysDiff + ' days). Assuming calculation sync issue. Showing calculated date.');
-              setNextPaymentDate(formattedNextDue);
-              setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+              setNextPaymentDateSafe(formattedNextDue);
+              setLastRentPeriodSafe(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
               return;
             }
 
-            setNextPaymentDate("All Paid - Contract Ending");
-            setLastRentPeriod(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+            setNextPaymentDateSafe("All Paid - Contract Ending");
+            setLastRentPeriodSafe(new Date(lastBill.due_date).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
             return;
           }
           // If paid period doesn't extend past contract end, show the calculated next due date
@@ -1072,24 +1073,24 @@ export default function TenantDashboard({ session, profile }) {
           // This should never happen for newly assigned tenants because we already checked for pending bills above
           // But as a safety net, use start_date instead of "All Paid"
           console.log('⚠️ No paid bills and nextDue >= endDate, but no pending bills found. Using start_date instead of "All Paid"');
-          setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
+          setNextPaymentDateSafe(nextDue.toLocaleDateString('en-US', {
             month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
           }));
-          setLastRentPeriod("N/A");
+          setLastRentPeriodSafe("N/A");
           return;
         }
       }
 
       // Fallback: Use calculated nextDue (from start_date if no paid bill)
-      setNextPaymentDate(nextDue.toLocaleDateString('en-US', {
+      setNextPaymentDateSafe(nextDue.toLocaleDateString('en-US', {
         month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC'
       }))
 
       if (lastBill) {
         const lastDate = new Date(lastBill.due_date);
-        setLastRentPeriod(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
+        setLastRentPeriodSafe(lastDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
       } else {
-        setLastRentPeriod("N/A");
+        setLastRentPeriodSafe("N/A");
       }
 
     } else {
@@ -1150,15 +1151,24 @@ export default function TenantDashboard({ session, profile }) {
 
           // Only show "All Paid" if the paid period already extends past contract end
           if (paidPeriodEnd >= endDate) {
-            setNextPaymentDate("All Paid - Contract Ending");
+            setNextPaymentDateSafe("All Paid - Contract Ending");
             return;
           }
           // Otherwise, show the calculated next due date
         }
 
-        setNextPaymentDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
+        setNextPaymentDateSafe(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
       } else {
-        setNextPaymentDate("N/A");
+        setNextPaymentDateSafe("N/A");
+      }
+    }
+    } catch (error) {
+      console.error('Failed to calculate next payment date:', error)
+      setNextPaymentDateSafe('N/A')
+      setLastRentPeriodSafe('N/A')
+    } finally {
+      if (!isStaleCalculation()) {
+        setNextPaymentDateLoading(false)
       }
     }
   }
@@ -1974,7 +1984,7 @@ export default function TenantDashboard({ session, profile }) {
                 <div className="bg-white rounded-3xl p-5 border border-gray-200 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                       </div>
                       Active Property
@@ -2424,21 +2434,21 @@ export default function TenantDashboard({ session, profile }) {
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                           </div>
                           <div>
-                            {nextPaymentDate ? (
+                            {!nextPaymentDateLoading && nextPaymentDate ? (
                               <p className="text-lg font-black text-slate-900">{nextPaymentDate}</p>
                             ) : (
                               <p className="text-lg font-black text-slate-900 flex items-center gap-1">
                                 Loading <span className="flex items-center"><span className="animate-pulse delay-75">.</span><span className="animate-pulse delay-150">.</span><span className="animate-pulse delay-300">.</span></span>
                               </p>
                             )}
-                            {tenantOccupancy?.property?.price && !String(nextPaymentDate).includes('All Paid') && (
+                            {!nextPaymentDateLoading && tenantOccupancy?.property?.price && !String(nextPaymentDate).includes('All Paid') && (
                               <div className="mt-0.5">
                                 <p className="text-xs text-black-500 font-semibold">
                                   Expected Bill: ₱{Number(tenantOccupancy.property.price).toLocaleString()}
                                 </p>
                               </div>
                             )}
-                            {tenantOccupancy?.property?.price && String(nextPaymentDate).includes('All Paid') && (
+                            {!nextPaymentDateLoading && tenantOccupancy?.property?.price && String(nextPaymentDate).includes('All Paid') && (
                               <p className="text-xs text-green-600 font-semibold mt-0.5">All bills settled!</p>
                             )}
                           </div>
@@ -3132,3 +3142,4 @@ export default function TenantDashboard({ session, profile }) {
     </div >
   )
 }
+

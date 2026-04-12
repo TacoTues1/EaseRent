@@ -5,9 +5,10 @@ import { createNotification } from '../lib/notifications'
 import { supabase } from '../lib/supabaseClient'
 
 const BOOKINGS_PER_PAGE = 5
-const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected', 'cancelled']
+const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'rejected', 'cancelled']
 const PENDING_BOOKING_STATUSES = ['pending', 'pending_approval']
+const ASSIGNMENT_RELATED_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
 const EMPTY_STATUS_SUMMARY = {
   total: 0,
   pending: 0,
@@ -24,12 +25,12 @@ function buildStatusSummary(rows = []) {
 
     if (status === 'pending' || status === 'pending_approval') {
       summary.pending += 1
-    } else if (status === 'approved' || status === 'accepted') {
+    } else if (status === 'approved' || status === 'accepted' || status === 'viewing_done') {
       summary.approved += 1
+    } else if (status === 'assigned' || status === 'completed') {
+      summary.completed += 1
     } else if (status === 'rejected' || status === 'cancelled') {
       summary.rejected += 1
-    } else if (status === 'completed') {
-      summary.completed += 1
     }
 
     return summary
@@ -147,12 +148,26 @@ export default function BookingsPage() {
         filter: bookingFilter,
       }, scheduleRealtimeRefresh)
 
-    if (roleLower !== 'landlord') {
+    if (roleLower === 'landlord') {
+      channel.on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'tenant_occupancies',
+        filter: `landlord_id=eq.${userId}`,
+      }, scheduleRealtimeRefresh)
+    } else {
       channel.on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'applications',
         filter: `tenant=eq.${userId}`,
+      }, scheduleRealtimeRefresh)
+
+      channel.on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'tenant_occupancies',
+        filter: `tenant_id=eq.${userId}`,
       }, scheduleRealtimeRefresh)
     }
 
@@ -257,13 +272,13 @@ export default function BookingsPage() {
       return query.in('status', ['pending', 'pending_approval'])
     }
     if (activeFilter === 'approved') {
-      return query.in('status', ['approved', 'accepted'])
+      return query.in('status', ['approved', 'accepted', 'viewing_done'])
     }
     if (activeFilter === 'rejected') {
       return query.in('status', ['rejected', 'cancelled'])
     }
     if (activeFilter === 'completed') {
-      return query.eq('status', 'completed')
+      return query.in('status', ['assigned', 'completed'])
     }
     return query
   }
@@ -519,6 +534,56 @@ export default function BookingsPage() {
         // Secondary sort: Date (Newest first) within the same status group
         return new Date(b.booking_date || 0) - new Date(a.booking_date || 0);
       });
+    }
+
+    // Keep booking status synced when assignments are completed from mobile clients.
+    const syncCandidates = finalBookings.filter((booking) => {
+      if (!booking || booking.is_application) return false
+      if (!booking.id || !booking.tenant || !booking.property_id) return false
+      const status = String(booking.status || '').toLowerCase()
+      return ASSIGNMENT_RELATED_BOOKING_STATUSES.includes(status)
+    })
+
+    if (syncCandidates.length > 0) {
+      const syncTenantIds = [...new Set(syncCandidates.map((booking) => booking.tenant).filter(isUuid))]
+      const syncPropertyIds = [...new Set(syncCandidates.map((booking) => booking.property_id).filter(Boolean))]
+
+      if (syncTenantIds.length > 0 && syncPropertyIds.length > 0) {
+        const { data: activeOccupancies, error: occupancySyncError } = await supabase
+          .from('tenant_occupancies')
+          .select('tenant_id, property_id')
+          .in('tenant_id', syncTenantIds)
+          .in('property_id', syncPropertyIds)
+          .in('status', ['active', 'pending_end'])
+
+        if (occupancySyncError) {
+          console.error('Error syncing booking statuses from occupancies:', occupancySyncError)
+        } else {
+          const occupancyKeys = new Set((activeOccupancies || []).map((row) => `${row.tenant_id}|${row.property_id}`))
+          const completedBookingIds = syncCandidates
+            .filter((booking) => occupancyKeys.has(`${booking.tenant}|${booking.property_id}`))
+            .map((booking) => booking.id)
+
+          if (completedBookingIds.length > 0) {
+            const { error: statusSyncError } = await supabase
+              .from('bookings')
+              .update({ status: 'completed' })
+              .in('id', completedBookingIds)
+              .in('status', ASSIGNMENT_RELATED_BOOKING_STATUSES)
+
+            if (statusSyncError) {
+              console.error('Error setting completed status after occupancy sync:', statusSyncError)
+            } else {
+              const completedSet = new Set(completedBookingIds)
+              finalBookings = finalBookings.map((booking) =>
+                completedSet.has(booking.id)
+                  ? { ...booking, status: 'completed' }
+                  : booking
+              )
+            }
+          }
+        }
+      }
     }
 
     // --- AUTO-CANCEL PAST PENDING BOOKINGS ---
@@ -1474,6 +1539,8 @@ export default function BookingsPage() {
         return <span className="px-2.5 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold uppercase tracking-wide border border-green-100 rounded-full">Booking Approved</span>
       case 'viewing_done':
         return <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wide border border-indigo-100 rounded-full">Waiting for Assigning</span>
+      case 'assigned':
+        return <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wide border border-emerald-100 rounded-full">Assigned</span>
       case 'rejected':
         return <span className="px-2.5 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold uppercase tracking-wide border border-red-100 rounded-full">Rejected</span>
       case 'cancelled':
@@ -1629,7 +1696,7 @@ export default function BookingsPage() {
             <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Pending</span>
-                <div className="w-8 h-8 bg-yellow-50 rounded-full flex items-center justify-center text-yellow-600">
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </div>
@@ -1639,7 +1706,7 @@ export default function BookingsPage() {
             <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Approved / Completed</span>
-                <div className="w-8 h-8 bg-green-50 rounded-full flex items-center justify-center text-green-600">
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
               </div>
@@ -1649,7 +1716,7 @@ export default function BookingsPage() {
             <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Rejected/Cancelled</span>
-                <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </div>
               </div>
@@ -1749,7 +1816,7 @@ export default function BookingsPage() {
                           </p>
                           <div className="flex items-center justify-end gap-2 text-sm text-gray-600">
                             <span>{timeInfo.time}</span>
-                            {isPast && !['completed', 'cancelled', 'rejected'].includes(statusLower) && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
+                            {isPast && !['assigned', 'completed', 'cancelled', 'rejected'].includes(statusLower) && <span className="text-red-500 font-bold text-xs bg-red-50 px-1.5 py-0.5 rounded">PAST</span>}
                           </div>
                         </div>
                       )}
@@ -1809,8 +1876,8 @@ export default function BookingsPage() {
                         </div>
                       )}
 
-                      {/* TENANT ACTIONS - Hide all buttons for completed status */}
-                      {roleLower !== 'landlord' && statusLower !== 'completed' && (!isPast || ['rejected', 'cancelled'].includes(statusLower)) && (
+                      {/* TENANT ACTIONS - Hide all buttons for assigned/completed status */}
+                      {roleLower !== 'landlord' && !['assigned', 'completed'].includes(statusLower) && (!isPast || ['rejected', 'cancelled'].includes(statusLower)) && (
                         <div className="flex gap-2 w-full md:w-auto">
 
                           {/* Case 1: Ready to Book (Accepted Application) */}

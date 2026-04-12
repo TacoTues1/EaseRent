@@ -1110,6 +1110,9 @@ export default function Navbar({ isHomeLoading = false }) {
                       </span>
                     )}
                   </Link>
+                  <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                    Properties
+                  </Link>
                   <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
                     Payments
                     {pendingPaymentCount > 0 && (
@@ -1141,7 +1144,9 @@ export default function Navbar({ isHomeLoading = false }) {
                           </span>
                         )}
                       </Link>
-
+                      <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                        Properties
+                      </Link>
                       <Link href="/payments" className={`nav-link text-sm font-semibold transition-colors relative group ${isActive('/payments') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
                         Payments
                         {pendingPaymentCount > 0 && (
@@ -1151,6 +1156,11 @@ export default function Navbar({ isHomeLoading = false }) {
                         )}
                       </Link>
                     </>
+                  )}
+                  {effectiveRole === 'visitor' && (
+                    <Link href="/properties/allProperties" className={`nav-link text-sm font-semibold transition-colors ${isActive('/properties/allProperties') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
+                      Properties
+                    </Link>
                   )}
                 </>
               )}
@@ -1389,7 +1399,6 @@ export default function Navbar({ isHomeLoading = false }) {
 
               {effectiveRole === 'landlord' && (
                 <>
-                  <Link href="/properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/allProperties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>All Properties</Link>
                   <Link href="/properties/my-properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/my-properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Properties</Link>
                   <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Add Property</Link>
                   <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Tenants Inquiries</Link>
@@ -1446,6 +1455,9 @@ export default function Navbar({ isHomeLoading = false }) {
             </div>
 
             <div className="p-2 border-t border-gray-100 bg-gray-50/50 grid grid-cols-2 gap-1">
+              <Link href="/properties/allProperties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all ${disabledClass}`}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg> Properties
+              </Link>
               <Link href="/payments" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-white rounded-lg transition-all relative ${disabledClass}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> Payments
                 {pendingPaymentCount > 0 && (

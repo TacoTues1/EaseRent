@@ -546,19 +546,19 @@ export default function PaymentsPage() {
       setShowFormModal(false);
       loadPaymentRequests();
 
-      showToast.success(`${billTypeLabel} request sent!`,{ 
-        duration: 4000, 
+      showToast.success(`${billTypeLabel} request sent!`, {
+        duration: 4000,
         progress: true,
         position: "top-center",
-        transition: "bounceInDown" 
+        transition: "bounceInDown"
       });
 
     } catch (error) {
       console.error('Error creating payment request:', error)
-      showToast.error('Failed to send request', { 
+      showToast.error('Failed to send request', {
         duration: 4000, progress: true,
         position: "top-center",
-        transition: "bounceInDown" 
+        transition: "bounceInDown"
       });
     }
   }
@@ -1156,6 +1156,9 @@ export default function PaymentsPage() {
 
           const isSuccess = await checkPaymentStatus(billId, sessionId);
 
+          // Another polling tick may have already completed while this async check was in flight.
+          if (pollingStopped) return;
+
           if (isSuccess) {
             pollingStopped = true;
             clearInterval(pollInterval);
@@ -1276,14 +1279,8 @@ export default function PaymentsPage() {
         parseFloat(request.other_bills || 0)
       );
 
-      // Calculate how many months this payment covers
-      // For renewal payments: rent_amount (1 month) + advance_amount (1 month) = 2 months total
-      // The original bill covers month 1, extraMonths creates additional "paid" bills for month 2+
-      // IMPORTANT: Skip for move-in payments! Move-in advance is a deposit, not a prepayment for future months.
       let extraMonths = 0;
       if (monthlyRent > 0 && !request.is_move_in_payment) {
-        // If there's an advance_amount field, calculate additional months from that
-        // For renewals: advance_amount = 1 month rent, so extraMonths = 1
         const advanceAmount = parseFloat(request.advance_amount || 0);
         if (advanceAmount > 0) {
           extraMonths = Math.floor(advanceAmount / monthlyRent);
@@ -1313,118 +1310,13 @@ export default function PaymentsPage() {
 
       if (paymentError) throw paymentError
 
-      // For renewal payments, calculate and update the correct due_date (next due date, not contract end date)
       let actualNextDueDate = request.due_date;
 
-      if (request.is_renewal_payment && effectiveOccupancyId) {
-        // Find the actual next due date from the last paid bill (excluding this renewal payment)
-        // We need to find bills that were paid BEFORE this renewal
-        const { data: lastPaidBill } = await supabase
-          .from('payment_requests')
-          .select('due_date, rent_amount, advance_amount')
-          .eq('tenant', request.tenant)
-          .eq('occupancy_id', effectiveOccupancyId)
-          .in('status', ['paid', 'pending_confirmation'])
-          .neq('id', requestId) // Exclude the current renewal payment
-          .gt('rent_amount', 0)
-          .order('due_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (lastPaidBill && lastPaidBill.due_date) {
-          // Calculate next due date from last paid bill
-          const lastDue = new Date(lastPaidBill.due_date);
-          const rentAmount = parseFloat(lastPaidBill.rent_amount || 0);
-          const advanceAmount = parseFloat(lastPaidBill.advance_amount || 0);
-
-          let monthsFromLast = 1;
-          if (rentAmount > 0 && advanceAmount > 0) {
-            monthsFromLast = 1 + Math.floor(advanceAmount / rentAmount);
-          }
-
-          // Calculate the actual next due date
-          const currentMonth = lastDue.getMonth();
-          const currentYear = lastDue.getFullYear();
-          const currentDay = lastDue.getDate();
-
-          const targetMonth = currentMonth + monthsFromLast;
-          const targetYear = currentYear + Math.floor(targetMonth / 12);
-          let finalMonth = targetMonth % 12;
-          if (finalMonth < 0) finalMonth += 12;
-
-          actualNextDueDate = new Date(targetYear, finalMonth, currentDay).toISOString();
-
-          console.log('Renewal payment: Calculated actual next due date:', {
-            lastPaidBillDue: lastPaidBill.due_date,
-            monthsFromLast,
-            calculatedNextDue: actualNextDueDate,
-            renewalBillOriginalDue: request.due_date
-          });
-        } else {
-          // If no previous paid bills, calculate from occupancy start_date + 1 month
-          // This ensures we don't use the contract end date
-          const occupancyStartDate = resolvedOccupancy?.start_date
-
-          let occupancyStartSource = occupancyStartDate ? { start_date: occupancyStartDate } : null
-          if (!occupancyStartSource && effectiveOccupancyId) {
-            const { data: occupancy } = await supabase
-              .from('tenant_occupancies')
-              .select('start_date')
-              .eq('id', effectiveOccupancyId)
-              .single();
-            occupancyStartSource = occupancy
-          }
-
-          if (occupancyStartSource && occupancyStartSource.start_date) {
-            // Calculate next due date from start_date (add 1 month)
-            const startDate = new Date(occupancyStartSource.start_date);
-            const currentMonth = startDate.getMonth();
-            const currentYear = startDate.getFullYear();
-            const currentDay = startDate.getDate();
-
-            const targetMonth = currentMonth + 1;
-            const targetYear = currentYear + Math.floor(targetMonth / 12);
-            let finalMonth = targetMonth % 12;
-            if (finalMonth < 0) finalMonth += 12;
-
-            actualNextDueDate = new Date(targetYear, finalMonth, currentDay).toISOString();
-            console.log('Renewal payment: Calculated from occupancy start_date + 1 month:', actualNextDueDate);
-          } else {
-            // Fallback: if renewal bill's due_date looks like contract end date, calculate from it backwards
-            // But this shouldn't happen in normal flow
-            console.warn('Renewal payment: No last paid bill and no start_date, using renewal bill due_date as-is');
-          }
-        }
-      }
-
-      // Update payment request status to paid and correct due_date if needed
-      // CRITICAL: For renewal payments, update due_date to actual next due date (not contract end date)
+      // Update payment request status to paid
       const updateData = {
         status: 'paid',
         payment_id: payment.id
       };
-
-      const originalDueDate = request.due_date ? new Date(request.due_date) : null;
-      const recalculatedDueDate = actualNextDueDate ? new Date(actualNextDueDate) : null;
-      const originalDueDateValid = originalDueDate && !Number.isNaN(originalDueDate.getTime());
-      const recalculatedDueDateValid = recalculatedDueDate && !Number.isNaN(recalculatedDueDate.getTime());
-      const dueDateDayDiff = (originalDueDateValid && recalculatedDueDateValid)
-        ? Math.round((originalDueDate - recalculatedDueDate) / (1000 * 60 * 60 * 24))
-        : 0;
-
-      // Only correct renewal due_date when the original date is clearly far later
-      // (e.g., contract-end date drift). Do not shift a valid current-cycle due date forward.
-      const shouldCorrectRenewalDueDate = request.is_renewal_payment
-        && actualNextDueDate !== request.due_date
-        && originalDueDateValid
-        && recalculatedDueDateValid
-        && dueDateDayDiff > 35;
-
-      // Only update due_date if it's different (for renewal payments)
-      if (shouldCorrectRenewalDueDate) {
-        updateData.due_date = actualNextDueDate;
-        console.log(`🔄 Updating renewal payment due_date from ${request.due_date} to ${actualNextDueDate}`);
-      }
 
       const { error: updateError } = await supabase
         .from('payment_requests')
@@ -1434,12 +1326,10 @@ export default function PaymentsPage() {
       if (updateError) {
         console.error('Error updating payment request:', updateError);
         throw updateError;
-      } else if (shouldCorrectRenewalDueDate) {
-        console.log('Successfully updated renewal payment due_date');
       }
 
       // Handle advance payment - create and mark future months as paid
-      // Use the actualNextDueDate we calculated above (for renewals) or request.due_date (for regular payments)
+      // Use the request due_date as base for creating future paid months from advance.
       if (extraMonths > 0 && actualNextDueDate && (effectiveOccupancyId || request.property_id)) {
         const baseDueDate = new Date(actualNextDueDate);
 
@@ -1496,8 +1386,6 @@ export default function PaymentsPage() {
       }
 
       // Calculate remaining credit
-      // For renewal payments with advance_amount: the advance is consumed immediately to create paid bills
-      // The advance amount should NEVER go to credit balance - it's already used for future months
       const totalPaidByTenant = parseFloat(request.amount_paid || 0);
 
       if (totalPaidByTenant > 0) {
@@ -1514,59 +1402,7 @@ export default function PaymentsPage() {
         // Calculate remaining credit (excess payment beyond what was billed)
         const remainingCredit = totalPaidByTenant - billOwed;
 
-        // For renewal payments: advance_amount is consumed to create paid bills for future months
-        // Do NOT add ANY amount to credit balance for renewal payments, even if there's excess
-        // The advance is meant to be fully consumed, not stored as credit
-        if (request.is_renewal_payment) {
-          // For renewal payments, the advance_amount is already consumed by creating paid bills above
-          // Do not add to credit balance - the advance covers future months and is fully consumed
-
-          // CRITICAL: Also REMOVE any credit that might have been incorrectly added for this renewal
-          // This fixes cases where credit was added before this fix was applied
-          if (effectiveOccupancyId) {
-            const { data: existingBalance } = await supabase
-              .from('tenant_balances')
-              .select('amount')
-              .eq('tenant_id', request.tenant)
-              .eq('occupancy_id', effectiveOccupancyId)
-              .maybeSingle();
-
-            if (existingBalance && existingBalance.amount > 0) {
-              // Check if the credit amount matches the advance amount (likely incorrectly added)
-              const advanceAmount = parseFloat(request.advance_amount || 0);
-              if (Math.abs(existingBalance.amount - advanceAmount) < 1) {
-                // Credit matches advance amount - remove it
-                console.log(`⚠️ Removing incorrectly added credit (₱${existingBalance.amount.toLocaleString()}) for renewal payment`);
-                await supabase
-                  .from('tenant_balances')
-                  .update({
-                    amount: 0,
-                    last_updated: new Date().toISOString()
-                  })
-                  .eq('tenant_id', request.tenant)
-                  .eq('occupancy_id', effectiveOccupancyId);
-              } else {
-                // Credit doesn't match - might be from other payments, reduce by advance amount
-                const newBalance = Math.max(0, existingBalance.amount - advanceAmount);
-                console.log(`⚠️ Reducing credit balance by advance amount: ₱${existingBalance.amount.toLocaleString()} - ₱${advanceAmount.toLocaleString()} = ₱${newBalance.toLocaleString()}`);
-                await supabase
-                  .from('tenant_balances')
-                  .update({
-                    amount: newBalance,
-                    last_updated: new Date().toISOString()
-                  })
-                  .eq('tenant_id', request.tenant)
-                  .eq('occupancy_id', effectiveOccupancyId);
-              }
-            }
-          }
-
-          if (remainingCredit > 0) {
-            console.log(`Renewal payment: ₱${remainingCredit.toLocaleString()} excess will not be added to credit. Advance amount (₱${parseFloat(request.advance_amount || 0).toLocaleString()}) is consumed for future months.`);
-          } else {
-            console.log(`Renewal payment: Advance amount (₱${parseFloat(request.advance_amount || 0).toLocaleString()}) consumed for future months, no credit added.`);
-          }
-        } else if (remainingCredit > 0 && effectiveOccupancyId) {
+        if (remainingCredit > 0 && effectiveOccupancyId) {
           // For non-renewal payments, only add excess to credit balance
           // (Regular payments don't have advance_amount, so this is just excess payment)
           const { data: existingBalance } = await supabase
@@ -1593,9 +1429,7 @@ export default function PaymentsPage() {
 
       // Notify tenant that payment is confirmed
       let notificationMessage = `Your payment for ${request.properties?.title || 'property'} has been confirmed by your landlord.`;
-      if (request.is_renewal_payment && extraMonths > 0) {
-        notificationMessage = `Your renewal payment for ${request.properties?.title || 'property'} has been confirmed! This covers ${extraMonths + 1} months - your next due date has been advanced accordingly.`;
-      } else if (extraMonths > 0) {
+      if (extraMonths > 0) {
         notificationMessage += ` This includes ${extraMonths} advance month(s).`;
       }
 
@@ -1625,9 +1459,7 @@ export default function PaymentsPage() {
       loadPayments()
 
       let successMsg = 'Payment confirmed and recorded!';
-      if (request.is_renewal_payment) {
-        successMsg = `Renewal payment confirmed! Covers ${extraMonths + 1} months. Next due date advanced.`;
-      } else if (extraMonths > 0) {
+      if (extraMonths > 0) {
         successMsg = `Payment confirmed! ${extraMonths} advance month(s) created.`;
       }
       showToast.success(successMsg, {
@@ -2791,9 +2623,6 @@ export default function PaymentsPage() {
                             <div className="flex gap-2 mt-2">
                               {selectedBill.is_move_in_payment && (
                                 <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold border border-green-200">Move-in</span>
-                              )}
-                              {selectedBill.is_renewal_payment && (
-                                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">Renewal</span>
                               )}
                             </div>
                           </div>
