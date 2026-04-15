@@ -578,18 +578,36 @@ export default async function handler(req, res) {
                         message: trimmedMessage
                     }]
 
-                const { error: insertError } = await supabaseAdmin
+                const { data: insertedMessages, error: insertError } = await supabaseAdmin
                     .from('group_messages')
                     .insert(inserts)
+                    .select('id, group_conversation_id, sender_id, message, file_url, file_name, file_type, file_size, created_at')
 
                 if (insertError) throw insertError
+
+                let senderProfile = null
+                const { data: senderData, error: senderError } = await supabaseAdmin
+                    .from('profiles')
+                    .select('id, first_name, middle_name, last_name, role, avatar_url')
+                    .eq('id', userId)
+                    .maybeSingle()
+
+                if (!senderError && senderData) {
+                    const enrichedSender = await enrichProfilesWithFamilyPrimary([senderData])
+                    senderProfile = enrichedSender?.[0] || senderData
+                }
+
+                const responseMessages = (insertedMessages || []).map(messageRow => ({
+                    ...messageRow,
+                    sender: senderProfile
+                }))
 
                 await supabaseAdmin
                     .from('group_conversations')
                     .update({ updated_at: new Date().toISOString() })
                     .eq('id', group_id)
 
-                return res.status(200).json({ success: true, sent: inserts.length })
+                return res.status(200).json({ success: true, sent: inserts.length, messages: responseMessages })
             } catch (err) {
                 console.error('Error sending group message:', err)
                 return res.status(500).json({ error: 'Failed to send group message' })

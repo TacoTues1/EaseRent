@@ -47,6 +47,8 @@ export default function Messages() {
   const [groupCreating, setGroupCreating] = useState(false)
   const [groupsLoading, setGroupsLoading] = useState(false)
   const [showAddMembers, setShowAddMembers] = useState(false)
+  const [addMemberSearchQuery, setAddMemberSearchQuery] = useState('')
+  const [addingMembers, setAddingMembers] = useState(false)
   const [groupDeleteConfirmId, setGroupDeleteConfirmId] = useState(null)
   const [groupLeaveConfirmId, setGroupLeaveConfirmId] = useState(null)
   const [isEditingGroupName, setIsEditingGroupName] = useState(false)
@@ -56,6 +58,8 @@ export default function Messages() {
   const [memberRemoveConfirm, setMemberRemoveConfirm] = useState(null)
   const groupSendInFlightRef = useRef(false)
   const groupMessagesRef = useRef([])
+  const groupMessagesCacheRef = useRef(new Map())
+  const selectedGroupConversationRef = useRef(null)
   const directChannelRef = useRef(null)
   const groupChannelRef = useRef(null)
   const directTypingTimeoutRef = useRef(null)
@@ -71,6 +75,37 @@ export default function Messages() {
   useEffect(() => {
     groupMessagesRef.current = groupMessages
   }, [groupMessages])
+
+  useEffect(() => {
+    selectedGroupConversationRef.current = selectedGroupConversation
+  }, [selectedGroupConversation])
+
+  useEffect(() => {
+    if (selectedConversation?.id && selectedGroupConversation?.id) {
+      // Keep group active when race conditions briefly select both.
+      setSelectedConversation(null)
+      setMessages([])
+    }
+  }, [selectedConversation?.id, selectedGroupConversation?.id])
+
+  useEffect(() => {
+    if (!selectedGroupConversation?.id) return
+    groupMessagesCacheRef.current.set(selectedGroupConversation.id, groupMessages)
+  }, [groupMessages, selectedGroupConversation?.id])
+
+  useEffect(() => {
+    if (!showAddMembers) return
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setShowAddMembers(false)
+        setSelectedMemberIds([])
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showAddMembers])
 
   const scrollMessagesToBottom = (behavior = 'smooth') => {
     const messagesContainer = messagesContainerRef.current
@@ -182,6 +217,8 @@ export default function Messages() {
         setSession(result.data.session)
         loadProfile(result.data.session.user.id)
       } else {
+        setSession(null)
+        setProfile(null)
         router.push('/')
       }
     })
@@ -191,6 +228,14 @@ export default function Messages() {
         setSession(session)
         loadProfile(session.user.id)
       } else {
+        setSession(null)
+        setProfile(null)
+        setConversations([])
+        setGroupConversations([])
+        setSelectedConversation(null)
+        setSelectedGroupConversation(null)
+        setMessages([])
+        setGroupMessages([])
         router.push('/')
       }
     })
@@ -515,12 +560,13 @@ export default function Messages() {
 
       setConversations(allowedConversations)
       setSelectedConversation(prevSelected => {
+        if (selectedGroupConversationRef.current?.id) return null
         if (allowedConversations.length === 0) return null
         if (prevSelected?.id) {
           const matchedConversation = allowedConversations.find(conv => conv.id === prevSelected.id)
-          if (matchedConversation) return matchedConversation
+          return matchedConversation || null
         }
-        return allowedConversations[0]
+        return null
       })
     } else {
       setConversations([])
@@ -797,6 +843,8 @@ export default function Messages() {
     )
 
     if (existingLocal) {
+      setSelectedGroupConversation(null)
+      setGroupMessages([])
       setSelectedConversation(existingLocal)
       setShowNewConversation(false)
       return
@@ -838,6 +886,8 @@ export default function Messages() {
         if (alreadyInList) return prev
         return [enrichedConv, ...prev]
       })
+      setSelectedGroupConversation(null)
+      setGroupMessages([])
       setSelectedConversation(enrichedConv)
       setShowNewConversation(false)
       return
@@ -866,6 +916,8 @@ export default function Messages() {
         const enrichedConv = enrichConversationWithKnownUsers(retryConv, otherUser)
 
         setConversations([enrichedConv, ...conversations])
+        setSelectedGroupConversation(null)
+        setGroupMessages([])
         setSelectedConversation(enrichedConv)
         setShowNewConversation(false)
         return
@@ -882,6 +934,8 @@ export default function Messages() {
       const enrichedConv = enrichConversationWithKnownUsers(newConv, otherUser)
 
       setConversations([enrichedConv, ...conversations])
+      setSelectedGroupConversation(null)
+      setGroupMessages([])
       setSelectedConversation(enrichedConv)
       setShowNewConversation(false)
     }
@@ -1279,17 +1333,32 @@ export default function Messages() {
 
   // ─── GROUP CHAT FUNCTIONS ───
   async function loadGroupConversations() {
-    if (!session?.access_token) return
+    if (!session?.access_token) {
+      setGroupConversations([])
+      return
+    }
+
     setGroupsLoading(true)
     try {
       const res = await fetch('/api/group-chat', {
         headers: { Authorization: `Bearer ${session.access_token}` }
       })
-      if (!res.ok) throw new Error('Failed to load groups')
+
+      if (res.status === 401 || res.status === 403) {
+        setGroupConversations([])
+        return
+      }
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        console.warn('Unable to load groups:', payload?.error || res.statusText)
+        return
+      }
+
       const data = await res.json()
       setGroupConversations(data.groups || [])
     } catch (err) {
-      console.error('Error loading group conversations:', err)
+      console.warn('Error loading group conversations:', err)
     } finally {
       setGroupsLoading(false)
     }
@@ -1358,7 +1427,10 @@ export default function Messages() {
       if (!res.ok) throw new Error('Failed to load group messages')
 
       const data = await res.json()
-      setGroupMessages(data.messages || [])
+      const nextMessages = dedupeMessagesById(data.messages || []).sort((a, b) =>
+        new Date(a.created_at || 0) - new Date(b.created_at || 0)
+      )
+      setGroupMessages(nextMessages)
       scheduleScrollToBottom('auto')
 
       // Mark messages as read
@@ -1434,9 +1506,9 @@ export default function Messages() {
 
     groupSendInFlightRef.current = true
     setUploadingFile(true)
+    const filesBackup = [...selectedFiles]
 
     try {
-      const filesBackup = [...selectedFiles]
       let uploadedFiles = []
       if (selectedFiles.length > 0) {
         for (const file of selectedFiles) {
@@ -1509,8 +1581,20 @@ export default function Messages() {
         throw new Error(payload?.error || 'Failed to send message')
       }
 
-      setGroupMessages(prev => prev.filter(msg => !String(msg.id).startsWith('temp-group-')))
-      await refreshGroupMessagesSilently(selectedGroupConversation.id)
+      const sentMessages = Array.isArray(payload?.messages) ? payload.messages : []
+      setGroupMessages(prev => {
+        const withoutTemps = prev.filter(msg => !String(msg.id).startsWith('temp-group-'))
+        if (sentMessages.length === 0) return withoutTemps
+        return dedupeMessagesById([...withoutTemps, ...sentMessages]).sort((a, b) =>
+          new Date(a.created_at || 0) - new Date(b.created_at || 0)
+        )
+      })
+
+      if (sentMessages.length === 0) {
+        await refreshGroupMessagesSilently(selectedGroupConversation.id)
+      }
+
+      loadGroupConversations()
       scheduleScrollToBottom('smooth')
     } catch (err) {
       console.error('Error sending group message:', err)
@@ -1565,6 +1649,9 @@ export default function Messages() {
   }
 
   async function addMembersToGroup(groupId, memberIds) {
+    if (!groupId || !Array.isArray(memberIds) || memberIds.length === 0 || addingMembers) return
+
+    setAddingMembers(true)
     try {
       const res = await fetch('/api/group-chat', {
         method: 'POST',
@@ -1589,6 +1676,7 @@ export default function Messages() {
 
       setShowAddMembers(false)
       setSelectedMemberIds([])
+      setAddMemberSearchQuery('')
       await loadGroupConversations()
       // Refresh the selected group
       const { data: updatedMembers } = await supabase
@@ -1600,6 +1688,8 @@ export default function Messages() {
       showToast.error(err.message || 'Failed to add members', {
         duration: 4000, progress: true, position: 'top-center', transition: 'bounceIn', icon: '', sound: true
       })
+    } finally {
+      setAddingMembers(false)
     }
   }
 
@@ -1669,10 +1759,23 @@ export default function Messages() {
   // Subscribe to group messages in real-time when a group is selected
   useEffect(() => {
     if (selectedGroupConversation?.id && session?.user?.id) {
-      setGroupMessages([])
       setGroupTypingActive(false)
-      setGroupMessagesLoading(true)
-      loadGroupMessages(selectedGroupConversation.id)
+      setShowAddMembers(false)
+      setSelectedMemberIds([])
+      setAddMemberSearchQuery('')
+
+      const cachedMessages = groupMessagesCacheRef.current.get(selectedGroupConversation.id)
+      if (cachedMessages && cachedMessages.length > 0) {
+        setGroupMessages(cachedMessages)
+        setGroupMessagesLoading(false)
+        scheduleScrollToBottom('auto')
+        refreshGroupMessagesSilently(selectedGroupConversation.id)
+      } else {
+        setGroupMessages([])
+        setGroupMessagesLoading(true)
+        loadGroupMessages(selectedGroupConversation.id)
+      }
+
       setShowMobileDetails(false)
 
       const channel = supabase
@@ -1690,8 +1793,64 @@ export default function Messages() {
             filter: `group_conversation_id=eq.${selectedGroupConversation.id}`
           },
           async (payload) => {
-            if (payload?.new?.group_conversation_id !== selectedGroupConversation.id) return
-            await refreshGroupMessagesSilently(selectedGroupConversation.id)
+            const inserted = payload?.new
+            if (inserted?.group_conversation_id !== selectedGroupConversation.id) return
+
+            const senderFromMembers = (selectedGroupConversation.members || []).find(member => member.user_id === inserted.sender_id)?.user || null
+            const fallbackSender = inserted.sender_id === session.user.id
+              ? {
+                id: session.user.id,
+                first_name: profile?.first_name,
+                last_name: profile?.last_name,
+                role: profile?.role,
+                avatar_url: profile?.avatar_url
+              }
+              : senderFromMembers
+
+            const incomingMessage = {
+              ...inserted,
+              sender: fallbackSender
+            }
+
+            setGroupMessages(prev => {
+              const exists = prev.some(message => message.id === incomingMessage.id)
+              if (exists) return prev
+
+              const tempMatchIndex = prev.findIndex(message =>
+                String(message.id).startsWith('temp-group-') &&
+                message.sender_id === inserted.sender_id &&
+                (message.message || '') === (inserted.message || '') &&
+                (message.file_url || null) === (inserted.file_url || null) &&
+                (message.file_name || null) === (inserted.file_name || null)
+              )
+
+              const next = [...prev]
+              if (tempMatchIndex !== -1) {
+                next[tempMatchIndex] = incomingMessage
+              } else {
+                next.push(incomingMessage)
+              }
+
+              return dedupeMessagesById(next).sort((a, b) =>
+                new Date(a.created_at || 0) - new Date(b.created_at || 0)
+              )
+            })
+
+            if (!senderFromMembers && inserted.sender_id !== session.user.id) {
+              refreshGroupMessagesSilently(selectedGroupConversation.id)
+            }
+
+            if (inserted.sender_id !== session.user.id && session?.access_token) {
+              fetch('/api/group-chat', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ action: 'mark_read', group_id: selectedGroupConversation.id })
+              }).then(() => loadGroupConversations()).catch(() => {})
+            }
+
             scheduleScrollToBottom('smooth')
           }
         )
@@ -1747,6 +1906,15 @@ export default function Messages() {
     const fullName = `${m.first_name || ''} ${m.last_name || ''}`.toLowerCase()
     return fullName.includes(groupSearchQuery.toLowerCase())
   })
+
+  const existingGroupMemberIds = new Set((selectedGroupConversation?.members || []).map(member => member.user_id))
+  const filteredAddableMembers = eligibleMembers
+    .filter(member => !existingGroupMemberIds.has(member.id))
+    .filter(member => {
+      if (!addMemberSearchQuery.trim()) return true
+      const fullName = `${member.first_name || ''} ${member.last_name || ''}`.toLowerCase()
+      return fullName.includes(addMemberSearchQuery.toLowerCase())
+    })
 
   // Helper to get shared media
   const activeMessages = selectedGroupConversation ? groupMessages : messages
@@ -2173,7 +2341,7 @@ export default function Messages() {
           {/* Middle Column: Chat Area */}
           <div className={`${isAnyChatSelected ? 'flex' : 'hidden md:flex'} flex-1 flex-col h-full bg-[#F3F4F5]`}>
             {/* ─── DIRECT MESSAGE CHAT ─── */}
-            {selectedConversation ? (
+            {selectedConversation && !selectedGroupConversation ? (
               <>
                 {/* Chat Header */}
                 <div className="p-4 border-b border-black flex justify-between items-center flex-shrink-0 bg-[#F3F4F5]">
@@ -2402,7 +2570,7 @@ export default function Messages() {
                 </div>
               </>
 
-            ) : selectedGroupConversation ? (
+            ) : selectedGroupConversation && !selectedConversation ? (
               /* ─── GROUP CHAT VIEW ─── */
               <>
                 {/* Group Chat Header */}
@@ -2470,7 +2638,7 @@ export default function Messages() {
                           : null
 
                         return (
-                          <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} mb-3`}>
+                          <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} mb-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                             {/* Show sender name for non-own messages in group */}
                             {!isOwn && senderName && (
                               <div className="text-[10px] text-gray-500 font-medium mb-0.5 pl-9">
@@ -2490,7 +2658,7 @@ export default function Messages() {
                               </div>
 
                               <div className={`flex flex-col rounded-2xl p-3 text-sm transition-all duration-200 ${isOwn
-                                ? 'bg-gray-900 text-white rounded-tr-sm shadow-md'
+                                ? 'bg-gray-900 text-white rounded-tr-sm shadow-md hover:shadow-lg hover:bg-gray-800'
                                 : 'bg-gray-100 text-black rounded-tl-sm shadow-sm'
                               }`}>
                                 {msg.message && (
@@ -2614,7 +2782,7 @@ export default function Messages() {
 
           {/* Right Column: Settings & History */}
           {/* ─── DIRECT MESSAGE DETAILS PANEL ─── */}
-          {selectedConversation && (
+          {selectedConversation && !selectedGroupConversation && (
             <div className={`
                 absolute inset-0 z-20 bg-[#F3F4F5] w-full h-full flex flex-col
                 lg:static lg:flex lg:w-72 lg:border-l-1 lg:border-black lg:inset-auto lg:z-auto
@@ -2715,7 +2883,7 @@ export default function Messages() {
           )}
 
           {/* ─── GROUP CHAT DETAILS PANEL ─── */}
-          {selectedGroupConversation && (
+          {selectedGroupConversation && !selectedConversation && (
             <div className={`
                 absolute inset-0 z-20 bg-[#F3F4F5] w-full h-full flex flex-col
                 lg:static lg:flex lg:w-72 lg:border-l-1 lg:border-black lg:inset-auto lg:z-auto
@@ -2796,65 +2964,17 @@ export default function Messages() {
                     {profile.role === 'landlord' && selectedGroupConversation.created_by === session?.user?.id && (
                       <button
                         onClick={() => {
-                          setShowAddMembers(!showAddMembers)
-                          if (!showAddMembers) loadEligibleMembers()
+                          setShowAddMembers(true)
                           setSelectedMemberIds([])
+                          setAddMemberSearchQuery('')
+                          loadEligibleMembers()
                         }}
                         className="text-[10px] font-bold text-black hover:underline cursor-pointer"
                       >
-                        {showAddMembers ? 'Cancel' : '+ Add'}
+                        + Add
                       </button>
                     )}
                   </div>
-
-                  {/* Add Members Panel */}
-                  {showAddMembers && (
-                    <div className="mb-3 p-3 bg-white rounded-lg border border-gray-100">
-                      {eligibleMembersLoading ? (
-                        <div className="py-3 text-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-200 border-t-black mx-auto"></div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {eligibleMembers
-                              .filter(m => !(selectedGroupConversation.members || []).some(gm => gm.user_id === m.id))
-                              .map(member => {
-                                const isChecked = selectedMemberIds.includes(member.id)
-                                return (
-                                  <div
-                                    key={member.id}
-                                    onClick={() => {
-                                      setSelectedMemberIds(prev =>
-                                        isChecked ? prev.filter(id => id !== member.id) : [...prev, member.id]
-                                      )
-                                    }}
-                                    className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors text-xs ${
-                                      isChecked ? 'bg-black text-white' : 'hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${
-                                      isChecked ? 'bg-white text-black' : 'bg-gray-100 text-gray-600'
-                                    }`}>
-                                      {(member.first_name?.[0] || '?').toUpperCase()}
-                                    </div>
-                                    <span className="truncate">{member.first_name} {member.last_name}</span>
-                                  </div>
-                                )
-                              })}
-                          </div>
-                          {selectedMemberIds.length > 0 && (
-                            <button
-                              onClick={() => addMembersToGroup(selectedGroupConversation.id, selectedMemberIds)}
-                              className="w-full mt-2 py-2 bg-black text-white text-xs font-bold rounded-lg cursor-pointer active:scale-[0.98]"
-                            >
-                              Add {selectedMemberIds.length} Member{selectedMemberIds.length !== 1 ? 's' : ''}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
 
                   {/* Current Members */}
                   <div className="space-y-1">
@@ -3040,6 +3160,159 @@ export default function Messages() {
           )}
         </div>
       </div>
+
+      {/* Add Members Modal */}
+      {showAddMembers && selectedGroupConversation && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/45 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => {
+            setShowAddMembers(false)
+            setSelectedMemberIds([])
+            setAddMemberSearchQuery('')
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-[#F3F4F5] border border-black rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-4 border-b border-black flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-black">Add Members</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {selectedGroupConversation.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddMembers(false)
+                  setSelectedMemberIds([])
+                  setAddMemberSearchQuery('')
+                }}
+                className="w-7 h-7 rounded-full text-gray-500 hover:bg-gray-100 hover:text-black cursor-pointer"
+                aria-label="Close add members modal"
+              >
+                <svg className="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 border-b border-gray-200">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={addMemberSearchQuery}
+                  onChange={(event) => setAddMemberSearchQuery(event.target.value)}
+                  placeholder="Search tenants..."
+                  className="w-full px-3 py-2 pl-9 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                />
+                <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              {selectedMemberIds.length > 0 && (
+                <p className="text-[11px] text-gray-500 mt-2">
+                  {selectedMemberIds.length} member{selectedMemberIds.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
+
+            <div className="p-4 max-h-72 overflow-y-auto custom-scrollbar">
+              {eligibleMembersLoading ? (
+                <div className="py-8 text-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-black mx-auto"></div>
+                  <p className="text-xs text-gray-400 mt-2">Loading eligible members...</p>
+                </div>
+              ) : filteredAddableMembers.length === 0 ? (
+                <div className="py-8 text-center">
+                  <p className="text-xs text-gray-500">
+                    {eligibleMembers.length === 0 ? 'No eligible members available for this group.' : 'No matching eligible members found.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {filteredAddableMembers.map(member => {
+                    const isChecked = selectedMemberIds.includes(member.id)
+
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMemberIds(prev =>
+                            isChecked ? prev.filter(id => id !== member.id) : [...prev, member.id]
+                          )
+                        }}
+                        className={`w-full text-left flex items-center gap-3 p-2.5 rounded-lg transition-all cursor-pointer ${
+                          isChecked ? 'bg-black text-white' : 'bg-white hover:bg-gray-50 border border-gray-100'
+                        }`}
+                      >
+                        <div className="flex-shrink-0">
+                          {member.avatar_url ? (
+                            <img src={member.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-gray-100" />
+                          ) : (
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              isChecked ? 'bg-white text-black' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {(member.first_name?.[0] || '?').toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold truncate">{member.first_name} {member.last_name}</p>
+                          {member.property_title && (
+                            <p className={`text-[10px] truncate mt-0.5 ${isChecked ? 'text-gray-300' : 'text-gray-400'}`}>
+                              {member.property_title}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                          isChecked ? 'border-white bg-white' : 'border-gray-300'
+                        }`}>
+                          {isChecked && (
+                            <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-black bg-[#F3F4F5] flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAddMembers(false)
+                  setSelectedMemberIds([])
+                  setAddMemberSearchQuery('')
+                }}
+                className="px-3 py-2 text-xs font-bold border border-gray-300 rounded-lg text-gray-700 bg-white cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => addMembersToGroup(selectedGroupConversation.id, selectedMemberIds)}
+                disabled={selectedMemberIds.length === 0 || addingMembers}
+                className={`px-3 py-2 text-xs font-bold rounded-lg ${selectedMemberIds.length === 0 || addingMembers
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-black text-white cursor-pointer active:scale-[0.98]'
+                }`}
+              >
+                {addingMembers
+                  ? 'Adding...'
+                  : selectedMemberIds.length > 0
+                    ? `Add ${selectedMemberIds.length} Member${selectedMemberIds.length !== 1 ? 's' : ''}`
+                    : 'Add Members'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Image Modal */}
       {imageModal && (
