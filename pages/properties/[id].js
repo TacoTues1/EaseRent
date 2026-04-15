@@ -9,7 +9,67 @@ import { showToast } from 'nextjs-toast-notify'
 import Footer from '@/components/Footer'
 
 const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected', 'cancelled']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
+const TENANT_PREFERRED_SCHEDULE_LABEL = 'TENANTS PREFEREED SCHEDULE'
+
+function getTodayDateInputValue() {
+  const now = new Date()
+  const tzOffset = now.getTimezoneOffset() * 60000
+  return new Date(now.getTime() - tzOffset).toISOString().split('T')[0]
+}
+
+function parseTenantPreferredSchedule(dateValue, timeValue) {
+  if (!dateValue || !timeValue) return null
+
+  const normalizedTime = timeValue.length === 5 ? `${timeValue}:00` : timeValue
+  const parsedDate = new Date(`${dateValue}T${normalizedTime}`)
+  if (Number.isNaN(parsedDate.getTime())) return null
+
+  return parsedDate
+}
+
+function parseTenantPreferredScheduleRange(dateValue, startTimeValue, endTimeValue) {
+  if (!dateValue || !startTimeValue || !endTimeValue) return null
+
+  const startDate = parseTenantPreferredSchedule(dateValue, startTimeValue)
+  const endDate = parseTenantPreferredSchedule(dateValue, endTimeValue)
+
+  if (!startDate || !endDate) return null
+  if (endDate.getTime() <= startDate.getTime()) return null
+
+  return { startDate, endDate }
+}
+
+function buildBookingNotesWithPreferredSchedule(rawNotes, preferredDate, preferredStartTime, preferredEndTime) {
+  const parsedPreferredSchedule = parseTenantPreferredScheduleRange(preferredDate, preferredStartTime, preferredEndTime)
+  const sanitizedNotes = String(rawNotes || '')
+    .split('\n')
+    .filter((line) => !line.trim().toUpperCase().startsWith(`${TENANT_PREFERRED_SCHEDULE_LABEL}:`))
+    .join('\n')
+    .trim()
+
+  if (!parsedPreferredSchedule) return sanitizedNotes
+
+  const preferredDateText = parsedPreferredSchedule.startDate.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+  const preferredStartText = parsedPreferredSchedule.startDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+  const preferredEndText = parsedPreferredSchedule.endDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+  const preferredScheduleText = `${preferredDateText} ${preferredStartText} - ${preferredEndText}`
+
+  return sanitizedNotes
+    ? `${TENANT_PREFERRED_SCHEDULE_LABEL}: ${preferredScheduleText}\n${sanitizedNotes}`
+    : `${TENANT_PREFERRED_SCHEDULE_LABEL}: ${preferredScheduleText}`
+}
 
 export default function PropertyDetail() {
   const router = useRouter()
@@ -37,6 +97,10 @@ export default function PropertyDetail() {
   const [bookingStep, setBookingStep] = useState(1) // 1 = pick date, 2 = pick time
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [bookingNote, setBookingNote] = useState('')
+  const [preferredScheduleDate, setPreferredScheduleDate] = useState('')
+  const [preferredScheduleTime, setPreferredScheduleTime] = useState('')
+  const [preferredScheduleEndTime, setPreferredScheduleEndTime] = useState('')
+  const [showPreferredSchedulePicker, setShowPreferredSchedulePicker] = useState(false)
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showGalleryModal, setShowGalleryModal] = useState(false)
   const [showAllReviewsModal, setShowAllReviewsModal] = useState(false)
@@ -187,7 +251,9 @@ export default function PropertyDetail() {
   // Load slots when property (and landlord) is available
   useEffect(() => {
     if (property?.landlord) {
-      loadTimeSlots(property.landlord)
+      loadTimeSlots(property.landlord).catch((error) => {
+        console.error('Unexpected slot loading failure:', error)
+      })
     }
   }, [property])
 
@@ -197,20 +263,113 @@ export default function PropertyDetail() {
       return
     }
 
-    let availableSlots = []
-    try {
-      const response = await fetch(`/api/available-slots?propertyId=${encodeURIComponent(id)}&landlordId=${encodeURIComponent(landlordId)}`, {
+    const params = new URLSearchParams({
+      propertyId: String(id),
+      landlordId: String(landlordId),
+      includeBookedSlots: '1'
+    })
+
+    const relativeUrl = `/api/available-slots?${params.toString()}`
+    const absoluteUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}${relativeUrl}`
+      : relativeUrl
+
+    let slotsWithAvailability = []
+
+    const parseTimestamp = (value) => {
+      if (!value) return null
+      const parsedDate = new Date(value)
+      const timestamp = parsedDate.getTime()
+      return Number.isNaN(timestamp) ? null : timestamp
+    }
+
+    const loadSlotsFromClientFallback = async () => {
+      const nowIso = new Date().toISOString()
+
+      const [{ data: rawSlots, error: slotsError }, { data: slotLockingBookings, error: bookingsError }] = await Promise.all([
+        supabase
+          .from('available_time_slots')
+          .select('id, landlord_id, start_time, end_time, is_booked')
+          .eq('landlord_id', landlordId)
+          .gte('start_time', nowIso)
+          .order('start_time', { ascending: true }),
+        supabase
+          .from('bookings')
+          .select('id, time_slot_id, booking_date, start_time, status')
+          .eq('property_id', id)
+          .in('status', SLOT_LOCKING_BOOKING_STATUSES)
+      ])
+
+      if (slotsError) throw slotsError
+      if (bookingsError) throw bookingsError
+
+      const takenSlotIds = new Set((slotLockingBookings || []).map((item) => item.time_slot_id).filter(Boolean))
+      const takenScheduleTimes = new Set(
+        (slotLockingBookings || [])
+          .map((item) => parseTimestamp(item.booking_date) ?? parseTimestamp(item.start_time))
+          .filter((value) => value !== null)
+      )
+
+      return (rawSlots || []).map((slot) => {
+        const slotTime = parseTimestamp(slot.start_time)
+        const isAvailable = !takenSlotIds.has(slot.id)
+          && !(slotTime !== null && takenScheduleTimes.has(slotTime))
+
+        return {
+          ...slot,
+          is_available: isAvailable,
+        }
+      })
+    }
+
+    const fetchSlots = async (requestUrl) => {
+      const response = await fetch(requestUrl, {
         method: 'GET',
         cache: 'no-store'
       })
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        throw new Error(payload?.error || `Availability API failed with status ${response.status}`)
+        return { slots: [], errorMessage: payload?.error || `Availability API failed with status ${response.status}` }
       }
 
-      const payload = await response.json()
-      availableSlots = Array.isArray(payload?.slots) ? payload.slots : []
+      const payload = await response.json().catch(() => ({}))
+      return { slots: Array.isArray(payload?.slots) ? payload.slots : [], errorMessage: '' }
+    }
+
+    try {
+      let slotResult
+      let apiUnavailable = false
+
+      try {
+        slotResult = await fetchSlots(relativeUrl)
+      } catch (primaryError) {
+        // Retry once with an absolute URL for environments where relative fetch can fail.
+        try {
+          slotResult = await fetchSlots(absoluteUrl)
+        } catch (secondaryError) {
+          apiUnavailable = true
+        }
+      }
+
+      if (slotResult?.errorMessage) {
+        apiUnavailable = true
+        console.warn('Availability API error:', slotResult.errorMessage)
+      }
+
+      if (apiUnavailable) {
+        try {
+          slotsWithAvailability = await loadSlotsFromClientFallback()
+          console.warn('Using client-side slot fallback because API availability is currently failing.')
+        } catch (fallbackError) {
+          console.error('Availability fallback failed:', fallbackError)
+          setTimeSlots([])
+          setSelectedSlotId('')
+          return
+        }
+      } else {
+        slotsWithAvailability = Array.isArray(slotResult?.slots) ? slotResult.slots : []
+      }
     } catch (error) {
       console.error('Error loading slots:', error)
       setTimeSlots([])
@@ -218,13 +377,14 @@ export default function PropertyDetail() {
       return
     }
 
-    if (availableSlots) {
-      setTimeSlots(availableSlots)
+    if (slotsWithAvailability) {
+      setTimeSlots(slotsWithAvailability)
       // Auto-select today's first available slot as default
-      if (availableSlots.length > 0 && !selectedSlotId) {
+      if (slotsWithAvailability.length > 0 && !selectedSlotId) {
         const today = new Date()
         const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-        const todaySlot = availableSlots.find(slot => {
+        const todaySlot = slotsWithAvailability.find(slot => {
+          if (slot.is_available === false) return false
           const d = new Date(slot.start_time)
           const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
           return key === todayKey
@@ -233,9 +393,10 @@ export default function PropertyDetail() {
           setSelectedSlotId(todaySlot.id)
         } else {
           // If no slots today, select the first available slot
-          setSelectedSlotId(availableSlots[0].id)
+          const firstAvailableSlot = slotsWithAvailability.find((slot) => slot.is_available !== false)
+          setSelectedSlotId(firstAvailableSlot?.id || '')
         }
-      } else if (availableSlots.length === 0) {
+      } else if (slotsWithAvailability.length === 0) {
         setSelectedSlotId('')
       }
     }
@@ -840,6 +1001,10 @@ export default function PropertyDetail() {
       await loadTimeSlots(property.landlord)
     }
 
+    setPreferredScheduleDate('')
+    setPreferredScheduleTime('')
+    setPreferredScheduleEndTime('')
+    setShowPreferredSchedulePicker(false)
     setShowBookingOptions(true)
   }
 
@@ -847,6 +1012,10 @@ export default function PropertyDetail() {
   const handleCancelBooking = () => {
     setShowBookingOptions(false)
     setBookingNote('')
+    setPreferredScheduleDate('')
+    setPreferredScheduleTime('')
+    setPreferredScheduleEndTime('')
+    setShowPreferredSchedulePicker(false)
     setTermsAccepted(false)
     setBookingStep(1)
     setSelectedBookingDate(null)
@@ -859,6 +1028,31 @@ export default function PropertyDetail() {
     if (!selectedSlotId) {
       showToast.error("Please select a viewing time.", { duration: 4000, transition: "bounceIn" })
       return
+    }
+
+    const selectedSlot = timeSlots.find(s => s.id === selectedSlotId)
+    if (!selectedSlot) {
+      showToast.error('Selected time slot is invalid.', { duration: 4000, transition: "bounceIn" })
+      return
+    }
+
+    const hasAnyPreferredScheduleInput = Boolean(preferredScheduleDate || preferredScheduleTime || preferredScheduleEndTime)
+    if (hasAnyPreferredScheduleInput && (!preferredScheduleDate || !preferredScheduleTime || !preferredScheduleEndTime)) {
+      showToast.error('Please provide preferred schedule date, start time, and end time.', { duration: 4000, transition: 'bounceIn' })
+      return
+    }
+
+    if (preferredScheduleDate && preferredScheduleTime && preferredScheduleEndTime) {
+      const parsedPreferredSchedule = parseTenantPreferredScheduleRange(preferredScheduleDate, preferredScheduleTime, preferredScheduleEndTime)
+      if (!parsedPreferredSchedule) {
+        showToast.error('Preferred schedule is invalid. End time must be later than start time.', { duration: 4000, transition: 'bounceIn' })
+        return
+      }
+
+      if (parsedPreferredSchedule.startDate < new Date()) {
+        showToast.error('Preferred schedule cannot be in the past.', { duration: 4000, transition: 'bounceIn' })
+        return
+      }
     }
 
     setSubmitting(true)
@@ -907,9 +1101,10 @@ export default function PropertyDetail() {
     }
 
     // 3. Get Selected Slot Data
-    const slot = timeSlots.find(s => s.id === selectedSlotId)
-    if (!slot) {
-      showToast.error('Selected time slot is invalid.', { duration: 4000, transition: "bounceIn" })
+    const slot = selectedSlot
+
+    if (slot.is_available === false) {
+      showToast.error('This schedule is already booked. Please choose another time.', { duration: 4000, transition: "bounceIn" })
       setSubmitting(false)
       return
     }
@@ -967,7 +1162,7 @@ export default function PropertyDetail() {
       booking_date: slot.start_time,
       time_slot_id: slot.id,
       status: 'pending',
-      notes: bookingNote || 'No message provided'
+      notes: buildBookingNotesWithPreferredSchedule(bookingNote || 'No message provided', preferredScheduleDate, preferredScheduleTime, preferredScheduleEndTime)
     }).select().single()
 
     if (error) {
@@ -1112,6 +1307,11 @@ export default function PropertyDetail() {
   const propertyImages = property.images && property.images.length > 0
     ? property.images
     : ['https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&h=800&fit=crop']
+
+  const minPreferredScheduleDate = getTodayDateInputValue()
+  const isPreferredScheduleToday = preferredScheduleDate === minPreferredScheduleDate
+  const minPreferredScheduleTime = isPreferredScheduleToday ? new Date().toTimeString().slice(0, 5) : undefined
+  const minPreferredScheduleEndTime = preferredScheduleTime || minPreferredScheduleTime
 
   const isOwner = profile?.id === property.landlord
   const isLandlord = profile?.role === 'landlord'
@@ -1667,7 +1867,7 @@ export default function PropertyDetail() {
                           <div className="flex flex-col gap-4 animate-in slide-in-from-top-4 fade-in duration-500 bg-gray-50 p-4 rounded-xl">
 
                             <div className="flex justify-between items-center mb-1">
-                              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Select Schedule</label>
+                              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">{showPreferredSchedulePicker ? 'Preferred Schedule' : 'Select Schedule'}</label>
                               <button
                                 onClick={handleCancelBooking}
                                 className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-black hover:bg-gray-200 rounded-full transition-colors cursor-pointer"
@@ -1678,8 +1878,9 @@ export default function PropertyDetail() {
                             </div>
 
                             {/* Date/Time Selection - Step-by-Step Wizard */}
-                            <div>
-                              {timeSlots.length > 0 ? (() => {
+                            {!showPreferredSchedulePicker && (
+                              <div>
+                                {timeSlots.length > 0 ? (() => {
                                 // --- Build calendar data ---
                                 const slotsByDate = {}
                                 timeSlots.forEach(slot => {
@@ -1710,8 +1911,8 @@ export default function PropertyDetail() {
                                 const slotDates = Object.keys(slotsByDate)
                                 const allMonths = [...new Set(slotDates.map(d => d.substring(0, 7)))].sort()
 
-                                return (
-                                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                  return (
+                                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
 
                                     {/* ===== STEP 1: DATE PICKER (Calendar) ===== */}
                                     {bookingStep === 1 && (
@@ -1752,10 +1953,14 @@ export default function PropertyDetail() {
                                                     if (day === null) return <div key={`empty-${i}`} className="aspect-square"></div>
 
                                                     const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-                                                    const hasSlots = !!slotsByDate[dateKey]
+                                                    const dateSlots = slotsByDate[dateKey] || []
+                                                    const availableSlotsForDate = dateSlots.filter((slot) => slot.is_available !== false)
+                                                    const hasSlots = dateSlots.length > 0
+                                                    const hasAvailableSlots = availableSlotsForDate.length > 0
+                                                    const hasUnavailableOnly = hasSlots && !hasAvailableSlots
                                                     const dateObj = new Date(year, month, day)
                                                     const isPast = dateObj < today
-                                                    const isDisabled = !hasSlots || isPast
+                                                    const isDisabled = !hasAvailableSlots || isPast
                                                     const isToday = dateObj.getTime() === today.getTime()
                                                     const isSelected = selectedBookingDate === dateKey
 
@@ -1765,25 +1970,35 @@ export default function PropertyDetail() {
                                                         type="button"
                                                         disabled={isDisabled}
                                                         onClick={() => {
-                                                          // Select this date and move to step 2
+                                                          // Select date and proceed to time-slot selection.
                                                           setSelectedBookingDate(dateKey)
-                                                          const daySlots = slotsByDate[dateKey] || []
-                                                          if (daySlots.length > 0) setSelectedSlotId(daySlots[0].id)
+                                                          const daySlots = (slotsByDate[dateKey] || []).filter((slot) => slot.is_available !== false)
+                                                          if (daySlots.length > 0) {
+                                                            setSelectedSlotId(daySlots[0].id)
+                                                          } else {
+                                                            setSelectedSlotId('')
+                                                          }
+                                                          setShowPreferredSchedulePicker(false)
                                                           setBookingStep(2)
                                                         }}
                                                         className={`aspect-square flex items-center justify-center text-xs rounded-full transition-all relative
                                                         ${isSelected
                                                             ? 'bg-black text-white font-black shadow-lg'
+                                                            : hasUnavailableOnly && !isPast
+                                                              ? 'text-red-600 font-bold cursor-not-allowed'
                                                             : isDisabled
                                                               ? 'text-gray-300 cursor-not-allowed'
-                                                              : 'text-gray-800 font-bold hover:bg-gray-100 cursor-pointer'
+                                                              : 'text-gray-800 font-bold hover:bg-green-50 cursor-pointer'
                                                           }
                                                         ${isToday && !isSelected ? 'ring-1 ring-black ring-offset-1' : ''}
                                                       `}
                                                       >
                                                         {day}
-                                                        {hasSlots && !isPast && !isSelected && (
-                                                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-black rounded-full"></span>
+                                                        {hasAvailableSlots && !isPast && !isSelected && (
+                                                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-green-600 rounded-full"></span>
+                                                        )}
+                                                        {hasUnavailableOnly && !isPast && !isSelected && (
+                                                          <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-red-600 rounded-full"></span>
                                                         )}
                                                       </button>
                                                     )
@@ -1792,6 +2007,17 @@ export default function PropertyDetail() {
                                               </div>
                                             )
                                           })}
+                                        </div>
+
+                                        <div className="px-3 py-2 border-t border-gray-100 flex items-center gap-4 text-[10px] font-semibold text-gray-600">
+                                          <span className="inline-flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-green-600"></span>
+                                            Available
+                                          </span>
+                                          <span className="inline-flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-red-600"></span>
+                                            Fully Booked
+                                          </span>
                                         </div>
                                       </>
                                     )}
@@ -1824,7 +2050,9 @@ export default function PropertyDetail() {
                                             <p className="text-xs font-bold text-gray-900">
                                               {new Date(selectedBookingDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                                             </p>
-                                            <p className="text-[10px] text-gray-500">{(slotsByDate[selectedBookingDate] || []).length} time slot{(slotsByDate[selectedBookingDate] || []).length !== 1 ? 's' : ''} available</p>
+                                            <p className="text-[10px] text-gray-500">
+                                              {(slotsByDate[selectedBookingDate] || []).filter((slot) => slot.is_available !== false).length} available / {(slotsByDate[selectedBookingDate] || []).length} total
+                                            </p>
                                           </div>
                                         </div>
 
@@ -1844,23 +2072,33 @@ export default function PropertyDetail() {
 
                                             return dateSlots.map((slot) => {
                                               const isActive = selectedSlot && slot.id === selectedSlot.id
+                                              const isAvailable = slot.is_available !== false
 
                                               return (
                                                 <button
                                                   key={slot.id}
                                                   type="button"
-                                                  onClick={() => setSelectedSlotId(slot.id)}
+                                                  disabled={!isAvailable}
+                                                  onClick={() => {
+                                                    if (!isAvailable) return
+                                                    setSelectedSlotId(slot.id)
+                                                  }}
                                                   className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all cursor-pointer ${isActive
                                                       ? 'border-black bg-gray-50'
+                                                      : !isAvailable
+                                                        ? 'border-red-200 bg-red-50 text-red-500 cursor-not-allowed'
                                                       : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                                     }`}
                                                 >
                                                   <span className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'border-black' : 'border-gray-300'}`}>
                                                     {isActive && <span className="w-2 h-2 rounded-full bg-black" />}
                                                   </span>
-                                                  <span className={`text-xs font-bold ${isActive ? 'text-black' : 'text-gray-700'}`}>
+                                                  <span className={`text-xs font-bold ${isActive ? 'text-black' : !isAvailable ? 'text-red-600' : 'text-gray-700'}`}>
                                                     {formatSlotRange(slot)}
                                                   </span>
+                                                  {!isAvailable && (
+                                                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-red-600">Booked</span>
+                                                  )}
                                                 </button>
                                               )
                                             })
@@ -1884,14 +2122,126 @@ export default function PropertyDetail() {
                                         )}
                                       </>
                                     )}
+                                    </div>
+                                  )
+                                })() : (
+                                  <div className="text-xs text-red-500 bg-white p-3 rounded-xl border border-red-100 text-center">
+                                    No available viewing slots found.
                                   </div>
-                                )
-                              })() : (
-                                <div className="text-xs text-red-500 bg-white p-3 rounded-xl border border-red-100 text-center">
-                                  No available viewing slots found.
+                                )}
+                              </div>
+                            )}
+
+                            {/* Message Field (Restored) */}
+                            {bookingStep !== 2 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  {showPreferredSchedulePicker && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowPreferredSchedulePicker(false)
+                                        setPreferredScheduleDate('')
+                                        setPreferredScheduleTime('')
+                                        setPreferredScheduleEndTime('')
+                                      }}
+                                      className="text-[10px] font-bold text-gray-500 hover:text-black cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  )}
                                 </div>
-                              )}
-                            </div>
+                                {!showPreferredSchedulePicker ? (
+                                 <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowPreferredSchedulePicker(true)
+                                        setBookingStep(1)
+                                        setSelectedBookingDate(null)
+                                      }}
+                                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-center text-sm text-gray-700 hover:border-black transition-colors cursor-pointer shadow-sm"
+                                    >
+                                      Set preferred schedule
+                                    </button>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="date"
+                                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none shadow-sm"
+                                      value={preferredScheduleDate}
+                                      min={minPreferredScheduleDate}
+                                      onChange={(e) => {
+                                        const nextPreferredDate = e.target.value
+                                        if (nextPreferredDate && nextPreferredDate < minPreferredScheduleDate) {
+                                          showToast.error('Past dates are not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                                          setPreferredScheduleDate('')
+                                          setPreferredScheduleTime('')
+                                          setPreferredScheduleEndTime('')
+                                          return
+                                        }
+
+                                        setPreferredScheduleDate(nextPreferredDate)
+                                        setPreferredScheduleTime('')
+                                        setPreferredScheduleEndTime('')
+                                      }}
+                                    />
+
+                                    {preferredScheduleDate ? (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <input
+                                          type="time"
+                                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none shadow-sm"
+                                          value={preferredScheduleTime}
+                                          min={isPreferredScheduleToday ? minPreferredScheduleTime : undefined}
+                                          onChange={(e) => {
+                                            const nextStartTime = e.target.value
+
+                                            if (isPreferredScheduleToday && minPreferredScheduleTime && nextStartTime && nextStartTime < minPreferredScheduleTime) {
+                                              showToast.error('Past time is not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                                              setPreferredScheduleTime('')
+                                              setPreferredScheduleEndTime('')
+                                              return
+                                            }
+
+                                            setPreferredScheduleTime(nextStartTime)
+                                            if (preferredScheduleEndTime && nextStartTime && preferredScheduleEndTime <= nextStartTime) {
+                                              setPreferredScheduleEndTime('')
+                                            }
+                                          }}
+                                          title="Preferred Start Time"
+                                        />
+                                        <input
+                                          type="time"
+                                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none shadow-sm"
+                                          value={preferredScheduleEndTime}
+                                          min={isPreferredScheduleToday ? minPreferredScheduleEndTime : preferredScheduleTime || undefined}
+                                          onChange={(e) => {
+                                            const nextEndTime = e.target.value
+
+                                            if (isPreferredScheduleToday && minPreferredScheduleEndTime && nextEndTime && nextEndTime < minPreferredScheduleEndTime) {
+                                              showToast.error('Past time is not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                                              setPreferredScheduleEndTime('')
+                                              return
+                                            }
+
+                                            if (preferredScheduleTime && nextEndTime && nextEndTime <= preferredScheduleTime) {
+                                              showToast.error('Preferred end time must be later than start time.', { duration: 3000, transition: 'bounceIn' })
+                                              setPreferredScheduleEndTime('')
+                                              return
+                                            }
+
+                                            setPreferredScheduleEndTime(nextEndTime)
+                                          }}
+                                          title="Preferred End Time"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <p className="text-[10px] text-gray-500">Choose a date first, then enter start and end time.</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Message Field (Restored) */}
                             <div>

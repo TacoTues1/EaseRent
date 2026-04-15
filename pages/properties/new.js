@@ -69,6 +69,8 @@ export default function NewProperty() {
   const bedTypes = ['Single Bed', 'Double Bed', 'Triple Bed']
 
   const [showAllAmenities, setShowAllAmenities] = useState(false)
+  const [amenitiesSearch, setAmenitiesSearch] = useState('')
+  const initialAmenitiesCount = 18
 
   const availableAmenities = [
   'Kitchen', 'Pool', 'TV', 'Elevator', 'Air conditioning', 'Heating', 'Basketball court',
@@ -126,6 +128,16 @@ export default function NewProperty() {
         : [...prev.amenities, amenity]
     }))
   }
+
+  const normalizedAmenitySearch = amenitiesSearch.trim().toLowerCase()
+
+  const filteredAmenities = availableAmenities.filter((amenity) =>
+    amenity.toLowerCase().includes(normalizedAmenitySearch)
+  )
+
+  const visibleAmenities = normalizedAmenitySearch
+    ? filteredAmenities
+    : (showAllAmenities ? availableAmenities : availableAmenities.slice(0, initialAmenitiesCount))
 
   useEffect(() => {
     checkAuth()
@@ -793,8 +805,17 @@ export default function NewProperty() {
               <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <span className="w-1.5 h-4 bg-black rounded-full"></span> Amenities
               </h3>
+              <div>
+                <input
+                  type="text"
+                  value={amenitiesSearch}
+                  onChange={(e) => setAmenitiesSearch(e.target.value)}
+                  placeholder="Search amenities..."
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-black outline-none"
+                />
+              </div>
               <div className="flex flex-wrap gap-2">
-                {availableAmenities.map((amenity) => (
+                {visibleAmenities.map((amenity) => (
                   <label
                     key={amenity}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-full cursor-pointer text-sm border transition-all ${formData.amenities.includes(amenity)
@@ -812,6 +833,18 @@ export default function NewProperty() {
                   </label>
                 ))}
               </div>
+              {visibleAmenities.length === 0 && (
+                <p className="text-sm text-gray-500">No amenities found for your search.</p>
+              )}
+              {!normalizedAmenitySearch && availableAmenities.length > initialAmenitiesCount && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllAmenities(prev => !prev)}
+                  className="text-sm font-bold text-black underline underline-offset-4 hover:text-gray-700 transition-colors cursor-pointer"
+                >
+                  {showAllAmenities ? 'See less amenities' : 'See more amenities'}
+                </button>
+              )}
               <p className="text-xs text-gray-400">Select all amenities available in your property.</p>
             </div>
           )}

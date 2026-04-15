@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin'
 
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected', 'cancelled']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
 const EXCLUDABLE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
 
 function parseTimestamp(value) {
@@ -22,6 +22,7 @@ export default async function handler(req, res) {
   const propertyId = String(req.query?.propertyId || '').trim()
   const landlordId = String(req.query?.landlordId || '').trim()
   const excludeBookingId = String(req.query?.excludeBookingId || '').trim()
+  const includeBookedSlots = String(req.query?.includeBookedSlots || '').toLowerCase() === '1'
 
   if (!propertyId || !landlordId) {
     return res.status(400).json({ error: 'Missing propertyId or landlordId' })
@@ -107,12 +108,22 @@ export default async function handler(req, res) {
       await supabaseAdmin.from('available_time_slots').update({ is_booked: false }).in('id', staleFreeIds)
     }
 
-    const availableSlots = slots.filter(slot => {
+    const slotsWithAvailability = slots.map((slot) => {
       const slotTime = parseTimestamp(slot.start_time)
-      if (availabilityTakenSlotIds.has(slot.id)) return false
-      if (slotTime !== null && availabilityTakenScheduleTimes.has(slotTime)) return false
-      return true
+      const isAvailable = !availabilityTakenSlotIds.has(slot.id)
+        && !(slotTime !== null && availabilityTakenScheduleTimes.has(slotTime))
+
+      return {
+        ...slot,
+        is_available: isAvailable,
+      }
     })
+
+    if (includeBookedSlots) {
+      return res.status(200).json({ slots: slotsWithAvailability })
+    }
+
+    const availableSlots = slotsWithAvailability.filter((slot) => slot.is_available)
 
     return res.status(200).json({ slots: availableSlots })
   } catch (error) {

@@ -46,6 +46,71 @@ export default function SchedulePage() {
     return dateTime
   }
 
+  function rangesOverlap(startA, endA, startB, endB) {
+    if (!startA || !endA || !startB || !endB) return false
+    return startA < endB && endA > startB
+  }
+
+  function normalizeExistingSlotRange(slot) {
+    if (!slot?.start_time) return null
+
+    const slotStart = new Date(slot.start_time)
+    if (Number.isNaN(slotStart.getTime())) return null
+
+    const parsedEnd = slot?.end_time ? new Date(slot.end_time) : null
+    const hasValidEnd = parsedEnd && !Number.isNaN(parsedEnd.getTime()) && parsedEnd > slotStart
+
+    // Legacy rows may not have end_time. Keep exact start blocked by using a tiny range.
+    const slotEnd = hasValidEnd ? parsedEnd : new Date(slotStart.getTime() + 60 * 1000)
+
+    return { slotStart, slotEnd }
+  }
+
+  function findOverlappingSlot(startDateTime, endDateTime, slots = []) {
+    return (slots || []).find((slot) => {
+      const normalizedRange = normalizeExistingSlotRange(slot)
+      if (!normalizedRange) return false
+      const { slotStart, slotEnd } = normalizedRange
+      return rangesOverlap(startDateTime, endDateTime, slotStart, slotEnd)
+    }) || null
+  }
+
+  async function fetchExistingSlotsInRange(rangeStart, rangeEnd) {
+    if (!session?.user?.id || !rangeStart || !rangeEnd) return []
+
+    const rangeEndIso = rangeEnd.toISOString()
+    const rangeStartIso = rangeStart.toISOString()
+
+    const [rangeResult, legacyResult] = await Promise.all([
+      supabase
+        .from('available_time_slots')
+        .select('id, start_time, end_time')
+        .eq('landlord_id', session.user.id)
+        .lt('start_time', rangeEndIso)
+        .gt('end_time', rangeStartIso),
+      supabase
+        .from('available_time_slots')
+        .select('id, start_time, end_time')
+        .eq('landlord_id', session.user.id)
+        .lt('start_time', rangeEndIso)
+        .is('end_time', null)
+    ])
+
+    if (rangeResult.error || legacyResult.error) {
+      console.error('Error checking overlapping slots:', rangeResult.error || legacyResult.error)
+      return []
+    }
+
+    const mergedById = new Map()
+    const combinedSlots = [...(rangeResult.data || []), ...(legacyResult.data || [])]
+
+    combinedSlots.forEach((slot) => {
+      mergedById.set(slot.id, slot)
+    })
+
+    return Array.from(mergedById.values())
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(result => {
       if (result.data?.session) {
@@ -176,7 +241,7 @@ export default function SchedulePage() {
     }
 
     setSubmitting(true)
-    const slotsToCreate = []
+    const candidateSlots = []
 
     for (const slotKey of selectedTimesForAdd) {
       const config = TIME_SLOTS[slotKey]
@@ -192,13 +257,11 @@ export default function SchedulePage() {
       // Safety guard: never insert past slots.
       if (startDateTime <= new Date()) continue
 
-      // Check availability strictly client-side first to avoid simple dupes (optional)
-      const isDuplicate = timeSlots.some(s =>
-        new Date(s.start_time).getTime() === startDateTime.getTime()
-      )
-      if (isDuplicate) continue // Skip duplicates
-
-      slotsToCreate.push({
+      candidateSlots.push({
+        slotKey,
+        label: config.label,
+        startDateTime,
+        endDateTime,
         property_id: null,
         landlord_id: session.user.id,
         start_time: startDateTime.toISOString(),
@@ -207,8 +270,45 @@ export default function SchedulePage() {
       })
     }
 
+    if (candidateSlots.length === 0) {
+      showToast.info("Selected slots are invalid or already in the past", { duration: 3000 })
+      setSubmitting(false)
+      return
+    }
+
+    const rangeStart = new Date(Math.min(...candidateSlots.map((slot) => slot.startDateTime.getTime())))
+    const rangeEnd = new Date(Math.max(...candidateSlots.map((slot) => slot.endDateTime.getTime())))
+    const serverSlots = await fetchExistingSlotsInRange(rangeStart, rangeEnd)
+
+    const conflictLabels = []
+    const slotsToCreate = []
+
+    candidateSlots.forEach((candidate) => {
+      const localOverlap = findOverlappingSlot(candidate.startDateTime, candidate.endDateTime, timeSlots)
+      const serverOverlap = findOverlappingSlot(candidate.startDateTime, candidate.endDateTime, serverSlots)
+
+      if (localOverlap || serverOverlap) {
+        conflictLabels.push(candidate.label)
+        return
+      }
+
+      slotsToCreate.push({
+        property_id: candidate.property_id,
+        landlord_id: candidate.landlord_id,
+        start_time: candidate.start_time,
+        end_time: candidate.end_time,
+        is_booked: candidate.is_booked,
+      })
+    })
+
+    if (conflictLabels.length > 0) {
+      const labelText = conflictLabels.join(', ')
+      showToast.warning(`Cannot add overlapping slot(s): ${labelText}`, { duration: 3500 })
+      setSubmitting(false)
+      return
+    }
+
     if (slotsToCreate.length === 0) {
-      showToast.info("Selected slots already exist", { duration: 3000 })
       setSubmitting(false)
       return
     }
@@ -258,14 +358,12 @@ export default function SchedulePage() {
       return
     }
 
-    const duplicate = timeSlots.some((slot) => {
-      const slotStart = new Date(slot.start_time).getTime()
-      const slotEnd = new Date(slot.end_time).getTime()
-      return slotStart === startDateTime.getTime() && slotEnd === endDateTime.getTime()
-    })
+    const localOverlap = findOverlappingSlot(startDateTime, endDateTime, timeSlots)
+    const serverSlots = await fetchExistingSlotsInRange(startDateTime, endDateTime)
+    const serverOverlap = findOverlappingSlot(startDateTime, endDateTime, serverSlots)
 
-    if (duplicate) {
-      showToast.info("This custom schedule already exists", { duration: 3000 })
+    if (localOverlap || serverOverlap) {
+      showToast.warning("This custom time overlaps an existing schedule", { duration: 3500 })
       return
     }
 
@@ -393,15 +491,15 @@ export default function SchedulePage() {
 
     // Check which slots already exist for this date
     const existingSlots = timeSlots.filter(s => new Date(s.start_time).toDateString() === selectedDate.toDateString())
-    const existingSlotLabels = existingSlots.map(s => {
-      const h = new Date(s.start_time).getHours()
-      const m = new Date(s.start_time).getMinutes()
-      if (h === 8 && m === 30) return 'am1'
-      if (h === 10 && m === 0) return 'am2'
-      if (h === 13 && m === 0) return 'pm1'
-      if (h === 14 && m === 30) return 'pm2'
-      return ''
-    })
+    const getPresetConflict = (slotKey) => {
+      const config = TIME_SLOTS[slotKey]
+      if (!config) return null
+      const slotStart = buildDateTime(selectedDate, config.start)
+      const slotEnd = buildDateTime(selectedDate, config.end)
+      if (!slotStart || !slotEnd) return null
+
+      return findOverlappingSlot(slotStart, slotEnd, existingSlots)
+    }
 
     return (
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
@@ -415,7 +513,8 @@ export default function SchedulePage() {
         <div className="grid grid-cols-2 gap-4 mb-8">
           {['am1', 'am2', 'pm1', 'pm2'].map(slotKey => {
             const isSelected = selectedTimesForAdd.includes(slotKey)
-            const isExisting = existingSlotLabels.includes(slotKey)
+            const overlapSlot = getPresetConflict(slotKey)
+            const isExisting = Boolean(overlapSlot)
             const config = TIME_SLOTS[slotKey]
             const [startHour, startMinute] = config.start.split(':')
             const slotStart = new Date(selectedDate)
@@ -436,7 +535,7 @@ export default function SchedulePage() {
               >
                 <div className="text-sm font-bold uppercase mb-1">{config.label}</div>
                 <div className={`text-xs ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>{config.time}</div>
-                {isExisting && <div className="text-[10px] text-green-600 font-bold mt-1">Added</div>}
+                {isExisting && <div className="text-[10px] text-green-600 font-bold mt-1">Conflict</div>}
                 {!isExisting && isPastSlot && <div className="text-[10px] text-red-600 font-bold mt-1">Past</div>}
               </button>
             )

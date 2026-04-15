@@ -6,15 +6,149 @@ import { supabase } from '../lib/supabaseClient'
 
 const BOOKINGS_PER_PAGE = 5
 const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'rejected', 'cancelled']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
 const PENDING_BOOKING_STATUSES = ['pending', 'pending_approval']
 const ASSIGNMENT_RELATED_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
+const TENANT_PREFERRED_SCHEDULE_LABEL = 'TENANTS PREFEREED SCHEDULE'
 const EMPTY_STATUS_SUMMARY = {
   total: 0,
   pending: 0,
   approved: 0,
   rejected: 0,
   completed: 0,
+}
+
+function getTodayDateInputValue() {
+  const now = new Date()
+  const tzOffset = now.getTimezoneOffset() * 60000
+  return new Date(now.getTime() - tzOffset).toISOString().split('T')[0]
+}
+
+function parseTenantPreferredSchedule(dateValue, timeValue) {
+  if (!dateValue || !timeValue) return null
+
+  const normalizedTime = timeValue.length === 5 ? `${timeValue}:00` : timeValue
+  const parsedDate = new Date(`${dateValue}T${normalizedTime}`)
+  if (Number.isNaN(parsedDate.getTime())) return null
+
+  return parsedDate
+}
+
+function parseTenantPreferredScheduleRange(dateValue, startTimeValue, endTimeValue) {
+  if (!dateValue || !startTimeValue || !endTimeValue) return null
+
+  const startDate = parseTenantPreferredSchedule(dateValue, startTimeValue)
+  const endDate = parseTenantPreferredSchedule(dateValue, endTimeValue)
+
+  if (!startDate || !endDate) return null
+  if (endDate.getTime() <= startDate.getTime()) return null
+
+  return { startDate, endDate }
+}
+
+function buildBookingNotesWithPreferredSchedule(rawNotes, preferredDate, preferredStartTime, preferredEndTime) {
+  const parsedPreferredSchedule = parseTenantPreferredScheduleRange(preferredDate, preferredStartTime, preferredEndTime)
+  const sanitizedNotes = String(rawNotes || '')
+    .split('\n')
+    .filter((line) => !line.trim().toUpperCase().startsWith(`${TENANT_PREFERRED_SCHEDULE_LABEL}:`))
+    .join('\n')
+    .trim()
+
+  if (!parsedPreferredSchedule) return sanitizedNotes
+
+  const preferredDateText = parsedPreferredSchedule.startDate.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
+  const preferredStartText = parsedPreferredSchedule.startDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+  const preferredEndText = parsedPreferredSchedule.endDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  })
+  const preferredScheduleText = `${preferredDateText} ${preferredStartText} - ${preferredEndText}`
+
+  return sanitizedNotes
+    ? `${TENANT_PREFERRED_SCHEDULE_LABEL}: ${preferredScheduleText}\n${sanitizedNotes}`
+    : `${TENANT_PREFERRED_SCHEDULE_LABEL}: ${preferredScheduleText}`
+}
+
+function extractTenantPreferredSchedule(notesValue) {
+  if (!notesValue) {
+    return {
+      preferredScheduleText: '',
+      cleanNotes: ''
+    }
+  }
+
+  const lines = String(notesValue).split('\n')
+  let preferredScheduleText = ''
+  const cleanLines = []
+
+  lines.forEach((line) => {
+    const trimmedLine = line.trim()
+    const normalizedLine = trimmedLine.toUpperCase()
+    const schedulePrefix = `${TENANT_PREFERRED_SCHEDULE_LABEL}:`
+
+    if (!preferredScheduleText && normalizedLine.startsWith(schedulePrefix)) {
+      preferredScheduleText = trimmedLine.slice(schedulePrefix.length).trim()
+      return
+    }
+
+    cleanLines.push(line)
+  })
+
+  return {
+    preferredScheduleText,
+    cleanNotes: cleanLines.join('\n').trim()
+  }
+}
+
+function parsePreferredScheduleText(preferredScheduleText) {
+  if (!preferredScheduleText) return null
+
+  const trimmedText = String(preferredScheduleText).trim()
+  const rangeSeparatorIndex = trimmedText.lastIndexOf(' - ')
+  if (rangeSeparatorIndex < 0) return null
+
+  const startText = trimmedText.slice(0, rangeSeparatorIndex).trim()
+  const endTimeText = trimmedText.slice(rangeSeparatorIndex + 3).trim()
+  const startDate = new Date(startText)
+
+  if (Number.isNaN(startDate.getTime())) return null
+
+  const endDate = new Date(`${startDate.toDateString()} ${endTimeText}`)
+
+  return {
+    startDate,
+    endDate: Number.isNaN(endDate.getTime()) ? null : endDate
+  }
+}
+
+function getBookingScheduleReferenceDate(booking) {
+  if (!booking) return null
+
+  const preferredScheduleInfo = extractTenantPreferredSchedule(booking.notes)
+  const parsedPreferredSchedule = parsePreferredScheduleText(preferredScheduleInfo.preferredScheduleText)
+
+  if (parsedPreferredSchedule?.endDate) return parsedPreferredSchedule.endDate
+  if (parsedPreferredSchedule?.startDate) return parsedPreferredSchedule.startDate
+
+  const fallbackValues = [booking.end_time, booking.start_time, booking.booking_date]
+  for (const value of fallbackValues) {
+    if (!value) continue
+
+    const parsedValue = new Date(value)
+    if (!Number.isNaN(parsedValue.getTime())) {
+      return parsedValue
+    }
+  }
+
+  return null
 }
 
 function buildStatusSummary(rows = []) {
@@ -59,6 +193,10 @@ export default function BookingsPage() {
   const [selectedBookingDate, setSelectedBookingDate] = useState('')
   const [bookingCalendarMonth, setBookingCalendarMonth] = useState(new Date())
   const [bookingNotes, setBookingNotes] = useState('')
+  const [preferredScheduleDate, setPreferredScheduleDate] = useState('')
+  const [preferredScheduleTime, setPreferredScheduleTime] = useState('')
+  const [preferredScheduleEndTime, setPreferredScheduleEndTime] = useState('')
+  const [showPreferredSchedulePicker, setShowPreferredSchedulePicker] = useState(false)
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
@@ -242,6 +380,7 @@ export default function BookingsPage() {
     const params = new URLSearchParams({
       propertyId: String(propertyId),
       landlordId: String(landlordId),
+      includeBookedSlots: '1',
     })
 
     if (excludeBookingId) {
@@ -381,7 +520,13 @@ export default function BookingsPage() {
         .eq('tenant', session.user.id)
         .order('booking_date', { ascending: false })
       query = applyFilterToBookingQuery(query, activeFilter)
-      query = query.range(from, to)
+
+      // Tenant "All" also needs status-priority sorting BEFORE pagination.
+      if (activeFilter === 'all') {
+        useClientSidePagination = true
+      } else {
+        query = query.range(from, to)
+      }
 
       const { data: existingBookings, error, count } = await query
       if (error) console.error('Error loading bookings:', error)
@@ -477,26 +622,28 @@ export default function BookingsPage() {
     const getSortWeight = (booking) => {
       const s = (booking.status || '').toLowerCase();
 
-      // 0. Viewing Success (Top Priority)
-      if (s === 'viewing_done') return 0;
+      // 0. Approved requests first for tenant list.
+      if (['approved', 'accepted'].includes(s)) return 0;
 
-      // 1. Pending (First)
-      if (PENDING_BOOKING_STATUSES.includes(s)) return 1;
+      // 1. Viewing success still stays near the top.
+      if (s === 'viewing_done') return 1;
 
-      // 2. Ready to Book & Limit Reached
+      // 2. Pending requests.
+      if (PENDING_BOOKING_STATUSES.includes(s)) return 2;
+
+      // 3/4. Ready to book or blocked by booking limit.
       if (s === 'ready_to_book') {
         // If user is tenant and has an active booking elsewhere, this is "Limit Reached"
-        if (userRole !== 'landlord' && hasBookingLimit) return 3; // Limit Reached
-        return 2; // Ready to Book
+        if (userRole !== 'landlord' && hasBookingLimit) return 4; // Limit Reached
+        return 3; // Ready to Book
       }
 
-      // 4. Approved
-      if (['approved', 'accepted'].includes(s)) return 4;
+      if (['assigned', 'completed'].includes(s)) return 5;
 
-      // 5. Rejected/Cancelled (Last)
-      if (['rejected', 'cancelled'].includes(s)) return 5;
+      // 6. Rejected/Cancelled (Last)
+      if (['rejected', 'cancelled'].includes(s)) return 6;
 
-      return 6; // Default/Unknown
+      return 7; // Default/Unknown
     };
 
     const getLandlordAllSortWeight = (booking) => {
@@ -588,11 +735,13 @@ export default function BookingsPage() {
 
     // --- AUTO-CANCEL PAST PENDING BOOKINGS ---
     const now = new Date()
-    const pastPendingBookings = finalBookings.filter(b =>
-      PENDING_BOOKING_STATUSES.includes((b.status || '').toLowerCase()) &&
-      b.booking_date &&
-      new Date(b.booking_date) < now
-    )
+    const pastPendingBookings = finalBookings.filter((booking) => {
+      const status = String(booking?.status || '').toLowerCase()
+      if (!PENDING_BOOKING_STATUSES.includes(status)) return false
+
+      const scheduleReferenceDate = getBookingScheduleReferenceDate(booking)
+      return Boolean(scheduleReferenceDate) && scheduleReferenceDate < now
+    })
 
     if (pastPendingBookings.length > 0) {
       const pastIds = pastPendingBookings.map(b => b.id)
@@ -675,10 +824,6 @@ export default function BookingsPage() {
             finalBookings = finalBookings.map((booking) =>
               booking.id === latestBooking.id ? { ...booking, status: 'completed' } : booking
             )
-          } else {
-            setLoading(false)
-            router.push(`/assign-tenant?bookingId=${latestBooking.id}`)
-            return
           }
         }
       }
@@ -787,15 +932,9 @@ export default function BookingsPage() {
 
   async function handleViewingSuccessRequest(booking) {
     const competingSamePropertyBookings = await getSamePropertyCompetingBookings(booking)
-
-    if (competingSamePropertyBookings.length > 0) {
-      setBookingToMarkSuccess(booking)
-      setSameDateConflictBookings(competingSamePropertyBookings)
-      setShowViewingSuccessWarningModal(true)
-      return
-    }
-
-    await markViewingSuccess(booking)
+    setBookingToMarkSuccess(booking)
+    setSameDateConflictBookings(competingSamePropertyBookings)
+    setShowViewingSuccessWarningModal(true)
   }
 
   function closeViewingSuccessWarningModal() {
@@ -1303,6 +1442,10 @@ export default function BookingsPage() {
     setBookingNotes('')
     setSelectedTimeSlot('')
     setSelectedBookingDate('')
+    setPreferredScheduleDate('')
+    setPreferredScheduleTime('')
+    setPreferredScheduleEndTime('')
+    setShowPreferredSchedulePicker(false)
     setBookingCalendarMonth(new Date())
 
     const excludeBookingId = shouldExcludeBookingFromAvailability(bookingWithLatestProperty)
@@ -1312,7 +1455,25 @@ export default function BookingsPage() {
     setAvailableTimeSlots(fetchedSlots)
 
     if (fetchedSlots.length > 0) {
-      const firstSlotDate = new Date(fetchedSlots[0].start_time)
+      const now = new Date()
+      const firstAvailableSlot = fetchedSlots
+        .slice()
+        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
+        .find((slot) => {
+          if (slot.is_available === false) return false
+          const slotStart = new Date(slot.start_time)
+          return !Number.isNaN(slotStart.getTime()) && slotStart >= now
+        })
+
+      if (firstAvailableSlot) {
+        const firstAvailableDate = new Date(firstAvailableSlot.start_time)
+        const dateKey = `${firstAvailableDate.getFullYear()}-${String(firstAvailableDate.getMonth() + 1).padStart(2, '0')}-${String(firstAvailableDate.getDate()).padStart(2, '0')}`
+        setSelectedBookingDate(dateKey)
+        setSelectedTimeSlot(firstAvailableSlot.id)
+      }
+
+      const monthSourceSlot = firstAvailableSlot || fetchedSlots[0]
+      const firstSlotDate = new Date(monthSourceSlot.start_time)
       if (!Number.isNaN(firstSlotDate.getTime())) {
         setBookingCalendarMonth(new Date(firstSlotDate.getFullYear(), firstSlotDate.getMonth(), 1))
       }
@@ -1325,12 +1486,35 @@ export default function BookingsPage() {
     setAvailableTimeSlots([])
     setSelectedTimeSlot('')
     setSelectedBookingDate('')
+    setPreferredScheduleDate('')
+    setPreferredScheduleTime('')
+    setPreferredScheduleEndTime('')
+    setShowPreferredSchedulePicker(false)
     setBookingCalendarMonth(new Date())
   }
 
   async function submitBooking(e) {
     e.preventDefault()
     if (!selectedTimeSlot || !selectedApplication) return
+
+    const hasAnyPreferredScheduleInput = Boolean(preferredScheduleDate || preferredScheduleTime || preferredScheduleEndTime)
+    if (hasAnyPreferredScheduleInput && (!preferredScheduleDate || !preferredScheduleTime || !preferredScheduleEndTime)) {
+      showToast.error('Please provide preferred schedule date, start time, and end time.', { duration: 4000, transition: 'bounceIn' })
+      return
+    }
+
+    if (preferredScheduleDate && preferredScheduleTime && preferredScheduleEndTime) {
+      const parsedPreferredSchedule = parseTenantPreferredScheduleRange(preferredScheduleDate, preferredScheduleTime, preferredScheduleEndTime)
+      if (!parsedPreferredSchedule) {
+        showToast.error('Preferred schedule is invalid. End time must be later than start time.', { duration: 4000, transition: 'bounceIn' })
+        return
+      }
+
+      if (parsedPreferredSchedule.startDate < new Date()) {
+        showToast.error('Preferred schedule cannot be in the past.', { duration: 4000, transition: 'bounceIn' })
+        return
+      }
+    }
 
     setSubmittingBooking(true)
 
@@ -1412,6 +1596,14 @@ export default function BookingsPage() {
       return
     }
 
+    if (slot.is_available === false) {
+      await refreshAvailableSlots()
+      setSelectedTimeSlot('')
+      showToast.error('This schedule is already booked. Please choose another time slot.', { duration: 4000, transition: "bounceIn" })
+      setSubmittingBooking(false)
+      return
+    }
+
     // Best-effort check before insert. Final protection is DB-level unique index.
     let slotConflictQuery = supabase
       .from('bookings')
@@ -1460,7 +1652,7 @@ export default function BookingsPage() {
       booking_date: slot.start_time,
       time_slot_id: slot.id,
       status: 'pending',
-      notes: bookingNotes || `Booking for ${selectedApplication.property?.title}`
+      notes: buildBookingNotesWithPreferredSchedule(bookingNotes || `Booking for ${selectedApplication.property?.title}`, preferredScheduleDate, preferredScheduleTime, preferredScheduleEndTime)
     }).select().single()
 
     if (error) {
@@ -1552,26 +1744,56 @@ export default function BookingsPage() {
     }
   }
 
-  function getTimeSlotInfo(booking) {
+  function getTimeSlotInfo(booking, preferredScheduleText = '') {
+    const parsedPreferredSchedule = parsePreferredScheduleText(preferredScheduleText)
+
+    if (parsedPreferredSchedule) {
+      const preferredStartText = parsedPreferredSchedule.startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      const preferredEndText = parsedPreferredSchedule.endDate
+        ? parsedPreferredSchedule.endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : ''
+
+      return {
+        emoji: '⏰',
+        label: 'Tenant Preferred',
+        date: parsedPreferredSchedule.startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        time: preferredEndText ? `${preferredStartText} - ${preferredEndText}` : preferredStartText,
+        referenceDate: parsedPreferredSchedule.startDate
+      }
+    }
+
+    if (preferredScheduleText) {
+      return {
+        emoji: '⏰',
+        label: 'Tenant Preferred',
+        date: 'Custom Schedule',
+        time: preferredScheduleText,
+        referenceDate: null
+      }
+    }
+
     const startValue = booking?.start_time || booking?.booking_date
     const endValue = booking?.end_time
 
-    if (!startValue) return { emoji: '📅', label: 'Not Scheduled', time: 'Select a time' }
+    if (!startValue) {
+      return { emoji: '📅', label: 'Not Scheduled', date: 'Not Scheduled', time: 'Select a time', referenceDate: null }
+    }
 
     const startDate = new Date(startValue)
     if (Number.isNaN(startDate.getTime())) {
-      return { emoji: '📅', label: 'Not Scheduled', time: 'Select a time' }
+      return { emoji: '📅', label: 'Not Scheduled', date: 'Not Scheduled', time: 'Select a time', referenceDate: null }
     }
 
     const startText = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     const endDate = endValue ? new Date(endValue) : null
+    const dateText = startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 
     if (endDate && !Number.isNaN(endDate.getTime())) {
       const endText = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      return { emoji: '⏰', label: 'Scheduled', time: `${startText} - ${endText}` }
+      return { emoji: '⏰', label: 'Scheduled', date: dateText, time: `${startText} - ${endText}`, referenceDate: startDate }
     }
 
-    return { emoji: '⏰', label: 'Scheduled', time: startText }
+    return { emoji: '⏰', label: 'Scheduled', date: dateText, time: startText, referenceDate: startDate }
   }
 
   function getProfileDisplayName(profileData, fallback = 'Unknown User') {
@@ -1677,6 +1899,10 @@ export default function BookingsPage() {
     ACTIVE_BOOKING_STATUSES.includes(b.status)
   )
   const hasBookingBlocked = hasGlobalActive || hasActiveOccupancy
+  const minPreferredScheduleDate = getTodayDateInputValue()
+  const isPreferredScheduleToday = preferredScheduleDate === minPreferredScheduleDate
+  const minPreferredScheduleTime = isPreferredScheduleToday ? new Date().toTimeString().slice(0, 5) : undefined
+  const minPreferredScheduleEndTime = preferredScheduleTime || minPreferredScheduleTime
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#F3F4F5] p-4 md:p-8 font-sans">
@@ -1761,13 +1987,17 @@ export default function BookingsPage() {
         ) : (
           <div className="space-y-4">
             {paginatedBookings.map((booking) => {
-              const timeInfo = getTimeSlotInfo(booking)
-              const bookingDate = new Date(booking.booking_date)
-              const isPast = booking.booking_date && bookingDate < new Date()
               const statusLower = (booking.status || '').toLowerCase()
               const propertyStatusLower = String(booking.property?.status || '').toLowerCase()
               const isPropertyUnavailable = Boolean(propertyStatusLower) && propertyStatusLower !== 'available'
               const roleLower = (profile.role || '').toLowerCase()
+              const preferredScheduleInfo = extractTenantPreferredSchedule(booking.notes)
+              const hasPreferredSchedule = Boolean(preferredScheduleInfo.preferredScheduleText)
+              const displayNotes = preferredScheduleInfo.cleanNotes
+              const timeInfo = getTimeSlotInfo(booking, preferredScheduleInfo.preferredScheduleText)
+              const bookingDate = new Date(booking.booking_date)
+              const scheduleReferenceDate = timeInfo.referenceDate || (Number.isNaN(bookingDate.getTime()) ? null : bookingDate)
+              const isPast = Boolean(scheduleReferenceDate) && scheduleReferenceDate < new Date()
 
               return (
                 <div key={booking.id} className="bg-white border border-gray-100 p-5 md:p-6 rounded-2xl shadow-sm transition-all">
@@ -1778,6 +2008,11 @@ export default function BookingsPage() {
                       <div className="flex flex-wrap items-center gap-3 mb-2">
                         <h3 className="text-lg font-bold text-gray-900">{booking.property?.title}</h3>
                         {getStatusBadge(booking.status, hasBookingBlocked)}
+                        {roleLower === 'landlord' && hasPreferredSchedule && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                            TENANTS PREFEREED SCHEDULE
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-col gap-1 text-sm text-gray-500 mb-4">
@@ -1792,9 +2027,9 @@ export default function BookingsPage() {
                         </div>
                       </div>
 
-                      {booking.notes && (
+                      {displayNotes && (
                         <div className="bg-gray-50 p-3 rounded-xl text-sm text-gray-600 border border-gray-100 italic">
-                          "{booking.notes}"
+                          "{displayNotes}"
                         </div>
                       )}
                     </div>
@@ -1810,9 +2045,9 @@ export default function BookingsPage() {
                         )
                       ) : (
                         <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-right w-full md:w-auto">
-                          <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Requested Time</p>
+                          <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">{hasPreferredSchedule ? 'Preferred Time' : 'Requested Time'}</p>
                           <p className="font-bold text-gray-900 text-lg">
-                            {bookingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {timeInfo.date}
                           </p>
                           <div className="flex items-center justify-end gap-2 text-sm text-gray-600">
                             <span>{timeInfo.time}</span>
@@ -1915,7 +2150,7 @@ export default function BookingsPage() {
 
                           {/* Case 3: Pending/Approved - "Reschedule" (with 12h rule) */}
                           {['pending', 'pending_approval', 'approved', 'accepted', ''].includes(statusLower) && (
-                            canModifyBooking(bookingDate) ? (
+                            canModifyBooking(scheduleReferenceDate || bookingDate) ? (
                               <>
                                 {['pending', 'pending_approval'].includes(statusLower) && (
                                   <button
@@ -1987,11 +2222,22 @@ export default function BookingsPage() {
             </div>
 
             <h3 className="text-lg font-bold text-gray-900 mb-2 text-center">Confirm Viewing Success</h3>
-            <p className="text-gray-600 text-sm text-center mb-5">
-              This property has <span className="font-bold text-gray-900">{sameDateConflictBookings.length + 1}</span> active booking request(s).
-              If you mark this request as viewing success, the other <span className="font-bold text-gray-900">{sameDateConflictBookings.length}</span> request(s)
-              will be automatically rejected.
-            </p>
+            {sameDateConflictBookings.length > 0 ? (
+              <p className="text-gray-600 text-sm text-center mb-5">
+                This property has <span className="font-bold text-gray-900">{sameDateConflictBookings.length + 1}</span> active booking request(s).
+                If you mark this request as viewing success, the other <span className="font-bold text-gray-900">{sameDateConflictBookings.length}</span> request(s)
+                will be automatically rejected.
+              </p>
+            ) : (
+              <p className="text-gray-600 text-sm text-center mb-5">
+                You are about to mark this viewing request as successful and proceed to tenant assignment.
+              </p>
+            )}
+
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-5">
+              <p className="text-xs uppercase tracking-wider font-bold text-red-600 mb-1">Warning</p>
+              <p className="text-sm text-red-700">This action cannot be undone.</p>
+            </div>
 
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-5">
               <p className="text-xs uppercase tracking-wider font-bold text-amber-700 mb-1">Selected Request</p>
@@ -2122,7 +2368,7 @@ export default function BookingsPage() {
             </div>
 
             <form onSubmit={submitBooking} className="space-y-5">
-              {availableTimeSlots.length > 0 ? (
+              {!showPreferredSchedulePicker && (availableTimeSlots.length > 0 ? (
                 (() => {
                   const slotsByDate = {}
                   const now = new Date()
@@ -2145,7 +2391,10 @@ export default function BookingsPage() {
                   today.setHours(0, 0, 0, 0)
 
                   const monthKey = `${bookingCalendarMonth.getFullYear()}-${String(bookingCalendarMonth.getMonth() + 1).padStart(2, '0')}`
-                  const hasSlotsInMonth = Object.keys(slotsByDate).some(key => key.startsWith(monthKey))
+                  const hasAvailableSlotsInMonth = Object.keys(slotsByDate).some((key) => {
+                    if (!key.startsWith(monthKey)) return false
+                    return (slotsByDate[key] || []).some((slot) => slot.is_available !== false)
+                  })
 
                   const selectedDateSlots = selectedBookingDate
                     ? (slotsByDate[selectedBookingDate] || []).slice().sort((a, b) => new Date(a.start_time) - new Date(b.start_time))
@@ -2202,8 +2451,12 @@ export default function BookingsPage() {
                               const dateKey = `${bookingCalendarMonth.getFullYear()}-${String(bookingCalendarMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
                               const dateObj = new Date(bookingCalendarMonth.getFullYear(), bookingCalendarMonth.getMonth(), day)
                               const isPastDate = dateObj < today
-                              const hasSlots = Boolean(slotsByDate[dateKey])
-                              const isDisabled = !hasSlots || isPastDate
+                              const dateSlots = slotsByDate[dateKey] || []
+                              const availableDateSlots = dateSlots.filter((slot) => slot.is_available !== false)
+                              const hasSlots = dateSlots.length > 0
+                              const hasAvailableSlots = availableDateSlots.length > 0
+                              const hasUnavailableOnly = hasSlots && !hasAvailableSlots
+                              const isDisabled = !hasAvailableSlots || isPastDate
                               const isSelected = selectedBookingDate === dateKey
                               const isToday = dateObj.getTime() === today.getTime()
 
@@ -2214,25 +2467,39 @@ export default function BookingsPage() {
                                   disabled={isDisabled}
                                   onClick={() => {
                                     setSelectedBookingDate(dateKey)
-                                    setSelectedTimeSlot('')
+                                    setSelectedTimeSlot(availableDateSlots[0]?.id || '')
                                   }}
                                   className={`h-9 rounded-lg text-xs font-bold transition-all relative ${isSelected
                                     ? 'bg-black text-white'
+                                    : hasUnavailableOnly && !isPastDate
+                                      ? 'text-red-600 cursor-not-allowed'
                                     : isDisabled
                                       ? 'text-gray-300 cursor-not-allowed'
-                                      : 'text-gray-800 hover:bg-gray-100 cursor-pointer'
+                                      : 'text-gray-800 hover:bg-green-50 cursor-pointer'
                                     } ${isToday && !isSelected ? 'ring-1 ring-black ring-offset-1' : ''}`}
                                 >
                                   {day}
-                                  {hasSlots && !isDisabled && !isSelected && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-black rounded-full"></span>}
+                                  {hasAvailableSlots && !isPastDate && !isSelected && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-green-600 rounded-full"></span>}
+                                  {hasUnavailableOnly && !isPastDate && !isSelected && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-red-600 rounded-full"></span>}
                                 </button>
                               )
                             })}
                           </div>
 
-                          {!hasSlotsInMonth && (
+                          {!hasAvailableSlotsInMonth && (
                             <p className="text-[11px] text-gray-500 text-center mt-3">No available dates in this month.</p>
                           )}
+
+                          <div className="mt-3 flex items-center gap-4 text-[10px] font-semibold text-gray-600">
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-green-600"></span>
+                              Available
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-red-600"></span>
+                              Fully Booked
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -2254,13 +2521,16 @@ export default function BookingsPage() {
                             {selectedDateSlots.map((slot) => {
                               const slotStart = new Date(slot.start_time)
                               const slotEnd = new Date(slot.end_time)
+                              const isAvailable = slot.is_available !== false
 
                               return (
                                 <label
                                   key={slot.id}
-                                  className={`block p-3 border rounded-xl cursor-pointer transition-all ${selectedTimeSlot === slot.id
+                                  className={`block p-3 border rounded-xl transition-all ${selectedTimeSlot === slot.id
                                     ? 'border-black bg-black text-white shadow-md'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                    : !isAvailable
+                                      ? 'border-red-200 bg-red-50 text-red-600 cursor-not-allowed'
+                                      : 'border-gray-200 bg-white hover:border-gray-300 cursor-pointer'
                                     }`}
                                 >
                                   <input
@@ -2268,6 +2538,7 @@ export default function BookingsPage() {
                                     name="timeSlot"
                                     value={slot.id}
                                     checked={selectedTimeSlot === slot.id}
+                                    disabled={!isAvailable}
                                     onChange={(e) => setSelectedTimeSlot(e.target.value)}
                                     className="hidden"
                                   />
@@ -2280,10 +2551,13 @@ export default function BookingsPage() {
                                       <div className="text-sm font-bold">
                                         {slotStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {slotEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                                       </div>
-                                      <div className={`text-xs ${selectedTimeSlot === slot.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                                      <div className={`text-xs ${selectedTimeSlot === slot.id ? 'text-gray-300' : !isAvailable ? 'text-red-500' : 'text-gray-500'}`}>
                                         {slotStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                                       </div>
                                     </div>
+                                    {!isAvailable && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wide text-red-600">Booked</span>
+                                    )}
                                   </div>
                                 </label>
                               )
@@ -2300,7 +2574,115 @@ export default function BookingsPage() {
                     No time slots available. Please contact the landlord directly.
                   </p>
                 </div>
-              )}
+              ))}
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">
+                    Preferred Schedule
+                  </label>
+                  {showPreferredSchedulePicker && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPreferredSchedulePicker(false)
+                        setPreferredScheduleDate('')
+                        setPreferredScheduleTime('')
+                        setPreferredScheduleEndTime('')
+                      }}
+                      className="text-[11px] font-semibold text-gray-500 hover:text-black cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                {!showPreferredSchedulePicker ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPreferredSchedulePicker(true)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-left text-gray-700 hover:border-black transition-colors cursor-pointer"
+                  >
+                    Click to set preferred schedule
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="date"
+                      value={preferredScheduleDate}
+                      min={minPreferredScheduleDate}
+                      onChange={(e) => {
+                        const nextPreferredDate = e.target.value
+                        if (nextPreferredDate && nextPreferredDate < minPreferredScheduleDate) {
+                          showToast.error('Past dates are not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                          setPreferredScheduleDate('')
+                          setPreferredScheduleTime('')
+                          setPreferredScheduleEndTime('')
+                          return
+                        }
+
+                        setPreferredScheduleDate(nextPreferredDate)
+                        setPreferredScheduleTime('')
+                        setPreferredScheduleEndTime('')
+                      }}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:border-black outline-none transition-colors"
+                    />
+
+                    {preferredScheduleDate ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="time"
+                          value={preferredScheduleTime}
+                          min={isPreferredScheduleToday ? minPreferredScheduleTime : undefined}
+                          onChange={(e) => {
+                            const nextStartTime = e.target.value
+
+                            if (isPreferredScheduleToday && minPreferredScheduleTime && nextStartTime && nextStartTime < minPreferredScheduleTime) {
+                              showToast.error('Past time is not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                              setPreferredScheduleTime('')
+                              setPreferredScheduleEndTime('')
+                              return
+                            }
+
+                            setPreferredScheduleTime(nextStartTime)
+                            if (preferredScheduleEndTime && nextStartTime && preferredScheduleEndTime <= nextStartTime) {
+                              setPreferredScheduleEndTime('')
+                            }
+                          }}
+                          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:border-black outline-none transition-colors"
+                          title="Preferred Start Time"
+                        />
+                        <input
+                          type="time"
+                          value={preferredScheduleEndTime}
+                          min={isPreferredScheduleToday ? minPreferredScheduleEndTime : preferredScheduleTime || undefined}
+                          onChange={(e) => {
+                            const nextEndTime = e.target.value
+
+                            if (isPreferredScheduleToday && minPreferredScheduleEndTime && nextEndTime && nextEndTime < minPreferredScheduleEndTime) {
+                              showToast.error('Past time is not allowed for preferred schedule.', { duration: 3000, transition: 'bounceIn' })
+                              setPreferredScheduleEndTime('')
+                              return
+                            }
+
+                            if (preferredScheduleTime && nextEndTime && nextEndTime <= preferredScheduleTime) {
+                              showToast.error('Preferred end time must be later than start time.', { duration: 3000, transition: 'bounceIn' })
+                              setPreferredScheduleEndTime('')
+                              return
+                            }
+
+                            setPreferredScheduleEndTime(nextEndTime)
+                          }}
+                          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:border-black outline-none transition-colors"
+                          title="Preferred End Time"
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-500">Choose a date first, then enter start and end time.</p>
+                    )}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-500 mt-1">Past schedules are not allowed.</p>
+              </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
