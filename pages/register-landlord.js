@@ -9,7 +9,6 @@ const STEPS = [
     { label: 'Personal', icon: '2' },
     { label: 'Account', icon: '3' },
     { label: 'Payments', icon: '4' },
-    { label: 'Verify Email', icon: '5' },
 ]
 
 // Defined OUTSIDE the component so React doesn't remount on every re-render
@@ -49,15 +48,7 @@ export default function RegisterLandlord() {
     const [gcashEnabled, setGcashEnabled] = useState(false)
     const [mayaEnabled, setMayaEnabled] = useState(false)
     const [gcashNumber, setGcashNumber] = useState('')
-    const [gcashVerified, setGcashVerified] = useState(false)
-    const [gcashOtpSent, setGcashOtpSent] = useState(false)
-    const [gcashOtp, setGcashOtp] = useState('')
-    const [gcashOtpLoading, setGcashOtpLoading] = useState(false)
     const [mayaNumber, setMayaNumber] = useState('')
-    const [mayaVerified, setMayaVerified] = useState(false)
-    const [mayaOtpSent, setMayaOtpSent] = useState(false)
-    const [mayaOtp, setMayaOtp] = useState('')
-    const [mayaOtpLoading, setMayaOtpLoading] = useState(false)
     const [mayaSameAsGcash, setMayaSameAsGcash] = useState(false)
 
     // Step 5 - Email OTP
@@ -89,7 +80,6 @@ export default function RegisterLandlord() {
     // ── STEP NAVIGATION ──
     const nextStep = () => {
         if (step === 0) {
-            if (!businessName.trim()) return toast('error', 'Business Name is required')
             if (!firstName.trim()) return toast('error', 'First Name is required')
             if (!lastName.trim()) return toast('error', 'Last Name is required')
             if (!termsAccepted) return toast('error', 'You must accept the Terms & Conditions')
@@ -104,8 +94,9 @@ export default function RegisterLandlord() {
             if (password !== confirmPassword) return toast('error', 'Passwords do not match')
         }
         if (step === 3) {
-            if (gcashEnabled && !gcashVerified) return toast('error', 'Please verify your GCash number')
-            if (mayaEnabled && !mayaVerified) return toast('error', 'Please verify your Maya number')
+            if (gcashEnabled && gcashNumber.replace(/\D/g, '').length < 10) return toast('error', 'Please enter a valid GCash number')
+            const mayaValue = mayaSameAsGcash ? gcashNumber : mayaNumber
+            if (mayaEnabled && mayaValue.replace(/\D/g, '').length < 10) return toast('error', 'Please enter a valid Maya number')
         }
         setStep(s => s + 1)
         // Auto-send email OTP when reaching step 5
@@ -114,54 +105,6 @@ export default function RegisterLandlord() {
         }
     }
     const prevStep = () => setStep(s => s - 1)
-
-    // ── PHONE OTP (GCash / Maya) ──
-    const handleSendPhoneOtp = async (type) => {
-        const phone = type === 'gcash' ? gcashNumber : mayaNumber
-        const setOtpLoading = type === 'gcash' ? setGcashOtpLoading : setMayaOtpLoading
-        const setOtpSent = type === 'gcash' ? setGcashOtpSent : setMayaOtpSent
-        if (!phone || phone.replace(/\D/g, '').length < 10) {
-            return toast('error', `Please enter a valid ${type === 'gcash' ? 'GCash' : 'Maya'} number`)
-        }
-        setOtpLoading(true)
-        try {
-            const res = await fetch('/api/verify-phone', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'send', phone })
-            })
-            const data = await res.json()
-            if (!res.ok) { toast('error', data.error || 'Failed to send code'); return }
-            setOtpSent(true)
-            toast('success', `Verification code sent to your ${type === 'gcash' ? 'GCash' : 'Maya'} number!`)
-        } catch { toast('error', 'Failed to send verification code') }
-        finally { setOtpLoading(false) }
-    }
-
-    const handleVerifyPhoneOtp = async (type) => {
-        const phone = type === 'gcash' ? gcashNumber : mayaNumber
-        const code = type === 'gcash' ? gcashOtp : mayaOtp
-        const setOtpLoading = type === 'gcash' ? setGcashOtpLoading : setMayaOtpLoading
-        const setVerified = type === 'gcash' ? setGcashVerified : setMayaVerified
-        const setOtpSent = type === 'gcash' ? setGcashOtpSent : setMayaOtpSent
-        const setOtp = type === 'gcash' ? setGcashOtp : setMayaOtp
-        if (!code || code.length < 6) { toast('error', 'Enter the 6-digit code'); return }
-        setOtpLoading(true)
-        try {
-            const res = await fetch('/api/verify-phone', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'verify', phone, code })
-            })
-            const data = await res.json()
-            if (!res.ok) { toast('error', data.error || 'Verification failed'); setOtp(''); return }
-            setVerified(true)
-            setOtpSent(false)
-            setOtp('')
-            toast('success', `${type === 'gcash' ? 'GCash' : 'Maya'} number verified!`)
-        } catch { toast('error', 'Verification failed') }
-        finally { setOtpLoading(false) }
-    }
 
     // ── EMAIL OTP ──
     const handleSendEmailOtp = async () => {
@@ -244,22 +187,24 @@ export default function RegisterLandlord() {
         if (!user) { toast('error', 'Registration failed. Please try again.'); return }
         // Build accepted_payments JSON
         const acceptedPayments = { cash: true }
-        if (gcashEnabled && gcashVerified) acceptedPayments.gcash = { number: gcashNumber, verified: true }
-        if (mayaEnabled && mayaVerified) acceptedPayments.maya = { number: mayaNumber, verified: true }
+        const cleanGcashNumber = gcashNumber.trim()
+        const cleanMayaNumber = (mayaSameAsGcash ? gcashNumber : mayaNumber).trim()
+        if (gcashEnabled && cleanGcashNumber) acceptedPayments.gcash = { number: cleanGcashNumber, verified: false }
+        if (mayaEnabled && cleanMayaNumber) acceptedPayments.maya = { number: cleanMayaNumber, verified: false }
 
         const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
         if (!existingProfile) {
             const { error: profileError } = await supabase.from('profiles').insert({
                 id: user.id, first_name: firstName, middle_name: middleName || 'N/A',
                 last_name: lastName, role: 'landlord', email, birthday, gender,
-                business_name: businessName, accepted_payments: acceptedPayments
+                business_name: businessName.trim() || null, accepted_payments: acceptedPayments
             })
             if (profileError && profileError.code !== '23505') {
                 toast('error', 'Email verified but profile setup failed. Please contact support.'); return
             }
         } else {
             await supabase.from('profiles').update({
-                role: 'landlord', business_name: businessName, accepted_payments: acceptedPayments
+                role: 'landlord', business_name: businessName.trim() || null, accepted_payments: acceptedPayments
             }).eq('id', user.id)
         }
         toast('success', 'Registration successful! Redirecting...')
@@ -274,13 +219,10 @@ export default function RegisterLandlord() {
 
     // Maya same-as-gcash toggle
     useEffect(() => {
-        if (mayaSameAsGcash && gcashVerified) {
+        if (mayaSameAsGcash) {
             setMayaNumber(gcashNumber)
-            setMayaVerified(true)
-        } else if (!mayaSameAsGcash) {
-            if (mayaNumber === gcashNumber) { setMayaNumber(''); setMayaVerified(false) }
         }
-    }, [mayaSameAsGcash])
+    }, [mayaSameAsGcash, gcashNumber])
 
     // ── STEP CONTENTS ──
     const renderStep = () => {
@@ -295,7 +237,7 @@ export default function RegisterLandlord() {
 
     const renderStep1 = () => (
         <div className="space-y-3">
-            <FormInput label="Business Name *" id="business-name" type="text" required value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Your business name" />
+            <FormInput label="Business Name" id="business-name" type="text" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="(Optional)" />
             <div className="flex gap-2">
                 <div className="w-1/2"><FormInput label="First Name *" id="first-name" type="text" required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" /></div>
                 <div className="w-1/2"><FormInput label="Middle Name" id="middle-name" type="text" value={middleName} onChange={e => setMiddleName(e.target.value)} placeholder="(Optional)" /></div>
@@ -356,34 +298,10 @@ export default function RegisterLandlord() {
         </div>
     )
 
-    const renderPhoneOtpBlock = (type, number, setNumber, verified, otpSent, otp, setOtp, otpLoading, label) => (
+    const renderPaymentNumberBlock = (type, number, setNumber, label) => (
         <div className="mt-2 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-            {!verified ? (
-                <>
-                    <FormInput label={`${label} Number *`} id={`${type}-number`} type="tel" value={number} onChange={e => setNumber(e.target.value)} placeholder="+63 9XX XXX XXXX" />
-                    {!otpSent ? (
-                        <button type="button" onClick={() => handleSendPhoneOtp(type)} disabled={otpLoading} className="w-full py-2 bg-gray-900 text-white rounded-lg font-bold text-sm hover:bg-gray-800 cursor-pointer disabled:opacity-50">
-                            {otpLoading ? 'Sending...' : `Send Verification Code`}
-                        </button>
-                    ) : (
-                        <div className="space-y-2">
-                            <p className="text-xs text-gray-500">Enter the 6-digit code sent to your phone.</p>
-                            <input type="text" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={6} className="w-full text-center tracking-widest text-lg font-bold py-2 border-2 border-gray-200 rounded-lg focus:border-gray-900 outline-none" placeholder="000000" />
-                            <div className="flex gap-2">
-                                <button type="button" onClick={() => handleVerifyPhoneOtp(type)} disabled={otpLoading} className="flex-1 py-2 bg-gray-900 text-white rounded-lg font-bold text-sm cursor-pointer disabled:opacity-50">
-                                    {otpLoading ? 'Verifying...' : 'Confirm'}
-                                </button>
-                                <button type="button" onClick={() => handleSendPhoneOtp(type)} disabled={otpLoading} className="px-3 py-2 text-sm text-gray-500 hover:underline cursor-pointer">Resend</button>
-                            </div>
-                        </div>
-                    )}
-                </>
-            ) : (
-                <div className="flex items-center gap-2 text-green-600 font-bold text-sm">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                    {number} — Verified ✓
-                </div>
-            )}
+            <FormInput label={`${label} Number *`} id={`${type}-number`} type="tel" value={number} onChange={e => setNumber(e.target.value)} placeholder="+63 9XX XXX XXXX" />
+            <p className="text-xs text-gray-500">This number will be saved now and can be verified later in Settings.</p>
         </div>
     )
 
@@ -403,7 +321,7 @@ export default function RegisterLandlord() {
 
             {/* GCash */}
             <div
-                onClick={() => { if (!gcashVerified) { setGcashEnabled(!gcashEnabled); if (gcashEnabled) { setGcashVerified(false); setGcashOtpSent(false); setGcashOtp(''); setGcashNumber('') } } }}
+                onClick={() => { setGcashEnabled(!gcashEnabled); if (gcashEnabled) { setGcashNumber(''); if (mayaSameAsGcash) setMayaNumber('') } }}
                 className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${gcashEnabled ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
             >
                 <div className="flex items-center gap-3">
@@ -412,14 +330,13 @@ export default function RegisterLandlord() {
                     </div>
                     <div className="w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold text-xs">G</div>
                     <div className="flex-1"><p className="font-bold text-sm text-gray-900">GCash</p><p className="text-xs text-gray-500">Mobile wallet</p></div>
-                    {gcashVerified && <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Verified ✓</span>}
                 </div>
-                {gcashEnabled && <div onClick={e => e.stopPropagation()}>{renderPhoneOtpBlock('gcash', gcashNumber, setGcashNumber, gcashVerified, gcashOtpSent, gcashOtp, setGcashOtp, gcashOtpLoading, 'GCash')}</div>}
+                {gcashEnabled && <div onClick={e => e.stopPropagation()}>{renderPaymentNumberBlock('gcash', gcashNumber, setGcashNumber, 'GCash')}</div>}
             </div>
 
             {/* Maya */}
             <div
-                onClick={() => { if (!mayaVerified) { setMayaEnabled(!mayaEnabled); if (mayaEnabled) { setMayaVerified(false); setMayaOtpSent(false); setMayaOtp(''); setMayaNumber(''); setMayaSameAsGcash(false) } } }}
+                onClick={() => { setMayaEnabled(!mayaEnabled); if (mayaEnabled) { setMayaNumber(''); setMayaSameAsGcash(false) } }}
                 className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer ${mayaEnabled ? 'border-green-500 bg-green-50/40 shadow-sm' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
             >
                 <div className="flex items-center gap-3">
@@ -428,23 +345,22 @@ export default function RegisterLandlord() {
                     </div>
                     <div className="w-8 h-8 bg-green-600 text-white rounded-lg flex items-center justify-center font-bold text-xs">M</div>
                     <div className="flex-1"><p className="font-bold text-sm text-gray-900">Maya</p><p className="text-xs text-gray-500">Digital payment</p></div>
-                    {mayaVerified && <span className="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Verified ✓</span>}
                 </div>
                 {mayaEnabled && (
                     <div onClick={e => e.stopPropagation()}>
-                        {gcashVerified && (
+                        {gcashEnabled && gcashNumber.trim() && (
                             <div className="mt-2 flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
                                 <input type="checkbox" id="maya-same" checked={mayaSameAsGcash} onChange={e => setMayaSameAsGcash(e.target.checked)} className="h-4 w-4 accent-gray-900 cursor-pointer" />
                                 <label htmlFor="maya-same" className="text-xs font-medium text-gray-700 cursor-pointer">Use same number as GCash ({gcashNumber})</label>
                             </div>
                         )}
-                        {!mayaSameAsGcash && renderPhoneOtpBlock('maya', mayaNumber, setMayaNumber, mayaVerified, mayaOtpSent, mayaOtp, setMayaOtp, mayaOtpLoading, 'Maya')}
-                        {mayaSameAsGcash && mayaVerified && (
+                        {!mayaSameAsGcash && renderPaymentNumberBlock('maya', mayaNumber, setMayaNumber, 'Maya')}
+                        {mayaSameAsGcash && (
                             <div className="mt-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                <div className="flex items-center gap-2 text-green-600 font-bold text-sm">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                    {mayaNumber} — Auto-verified ✓
+                                <div className="text-sm font-semibold text-gray-700">
+                                    Using GCash number: {mayaNumber || gcashNumber}
                                 </div>
+                                <p className="text-xs text-gray-500 mt-1">This will be saved and verified later in Settings.</p>
                             </div>
                         )}
                     </div>
@@ -506,18 +422,22 @@ export default function RegisterLandlord() {
                     </div>
 
                     {/* Stepper */}
-                    <div className="flex items-center justify-between px-2">
-                        {STEPS.map((s, i) => (
-                            <div key={i} className="flex items-center">
-                                <div className={`flex flex-col items-center`}>
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${i < step ? 'bg-green-500 text-white' : i === step ? 'bg-gray-900 text-white shadow-lg scale-110' : 'bg-gray-200 text-gray-500'}`}>
-                                        {i < step ? '✓' : ((loading || gcashOtpLoading || mayaOtpLoading) && i === step ? <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : s.icon)}
+                    <div className="px-1 sm:px-2">
+                        <div className="flex items-start">
+                            {STEPS.map((s, i) => (
+                                <div key={i} className="relative flex-1 flex flex-col items-center">
+                                    {i < STEPS.length - 1 && (
+                                        <div className={`absolute top-4 left-1/2 w-full h-0.5 z-0 transition-all duration-300 ${i < step ? 'bg-green-500' : 'bg-gray-200'}`} />
+                                    )}
+                                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${i < step ? 'bg-green-500 text-white' : i === step ? 'bg-gray-900 text-white shadow-lg scale-110' : 'bg-gray-200 text-gray-500'}`}>
+                                        {i < step ? '✓' : (loading && i === step ? <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : s.icon)}
                                     </div>
-                                    <span className={`text-[9px] font-bold mt-0.5 ${i === step ? 'text-gray-900' : 'text-gray-400'}`}>{s.label}</span>
+                                    <span className={`mt-2 min-h-[22px] text-[10px] leading-tight text-center font-bold ${i === step ? 'text-gray-900' : 'text-gray-400'}`}>
+                                        {s.label}
+                                    </span>
                                 </div>
-                                {i < STEPS.length - 1 && <div className={`w-6 sm:w-8 h-0.5 mx-0.5 mt-[-12px] transition-all ${i < step ? 'bg-green-500' : 'bg-gray-200'}`} />}
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
 
                     {/* Step Content */}

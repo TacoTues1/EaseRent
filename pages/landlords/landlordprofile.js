@@ -214,7 +214,7 @@ export default function LandlordProfile() {
               <h2 className="text-2xl font-semibold tracking-tight text-gray-900">Listings by {landlord.first_name}</h2>
               <Link href="/landlords/landlordlist" className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-2 bg-white border border-gray-200 px-4 py-2 rounded-full">
                 <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                View all hosts
+                View all Landlords
               </Link>
             </div>
             
@@ -253,11 +253,11 @@ export default function LandlordProfile() {
                         
                         <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-50 text-[13px] font-medium text-gray-600">
                           <div className="flex items-center gap-1.5">
-                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z" /></svg>
                              {p.bedrooms || 1} Bed
                           </div>
                           <div className="flex items-center gap-1.5">
-                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M21 10H7V7c0-1.103.897-2 2-2s2 .897 2 2h2c0-2.206-1.794-4-4-4S5 4.794 5 7v3H3a1 1 0 0 0-1 1v2c0 2.606 1.674 4.823 4 5.65V22h2v-3h8v3h2v-3.35c2.326-.827 4-3.044 4-5.65v-2a1 1 0 0 0-1-1z" /></svg>
                              {p.bathrooms || 1} Bath
                           </div>
                         </div>
