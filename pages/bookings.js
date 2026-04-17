@@ -2069,7 +2069,7 @@ export default function BookingsPage() {
                         {getStatusBadge(booking.status, hasBookingBlocked)}
                         {roleLower === 'landlord' && hasPreferredSchedule && (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                            TENANTS PREFEREED SCHEDULE
+                            TENANTS PREFERRED SCHEDULE
                           </span>
                         )}
                       </div>
