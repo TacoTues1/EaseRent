@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
@@ -66,38 +66,21 @@ export default function Home({ setHomeNavbarLoading }) {
   const chatMessagesRef = useRef(null)
   const [mounted, setMounted] = useState(false)
   const [showSplash, setShowSplash] = useState(true)
-
-  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAmenities, setSelectedAmenities] = useState([])
   const [priceRange, setPriceRange] = useState({ min: '', max: '' })
   const [sortBy, setSortBy] = useState('newest')
   const [isExpanded, setIsExpanded] = useState(false)
-
-  // Real-time search state
   const [searchResults, setSearchResults] = useState([])
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const searchRef = useRef(null)
-
-  // Suggested properties (shown on search focus with empty query)
   const [suggestedProperties, setSuggestedProperties] = useState([])
   const [suggestionsLoaded, setSuggestionsLoaded] = useState(false)
-
-  // --- Filter Dropdown State ---
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false)
-  const [showPriceDropdown, setShowPriceDropdown] = useState(false)
   const filterRef = useRef(null)
   const priceRef = useRef(null)
-
-  // --- Comparison Feature State ---
   const [comparisonList, setComparisonList] = useState([])
-
-  // --- Display limit for property sections ---
-  // Increased to 16 to ensure enough items for the 7-item wide carousel scrolling
-  const maxDisplayItems = 16
-
-  // --- Featured Sections State ---
+  const maxDisplayItems = 8
   const [guestFavorites, setGuestFavorites] = useState([])
   const [nearbyProperties, setNearbyProperties] = useState([])
   const [mostFavoriteProperties, setMostFavoriteProperties] = useState([])
@@ -106,32 +89,19 @@ export default function Home({ setHomeNavbarLoading }) {
   const [userLocationCity, setUserLocationCity] = useState('')
   const [userLocationCoords, setUserLocationCoords] = useState(null)
   const [locationPermission, setLocationPermission] = useState('prompt')
-
-  // --- Session & Favorites State ---
   const [session, setSession] = useState(null)
   const [favorites, setFavorites] = useState([])
 
-  // Common amenities to filter by
-  const filterAmenities = [
-    'Wifi', 'Pool', 'Gym', 'Parking', 'Air conditioning', 'Pet friendly'
-  ]
 
-  // Mount animation trigger + splash screen
-  // Mount animation trigger + splash screen
   useEffect(() => {
-    // Check if splash has already been shown in this session
     const hasSeenSplash = sessionStorage.getItem('hasSeenSplash')
 
     if (hasSeenSplash) {
       setShowSplash(false)
       setMounted(true)
     } else {
-      // Mark as seen for future visits in this session
       sessionStorage.setItem('hasSeenSplash', 'true')
-
-      // Delay setting mounted until after splash starts fading
       const mountTimer = setTimeout(() => setMounted(true), 1800)
-      // Remove splash from DOM after fade-out completes
       const splashTimer = setTimeout(() => setShowSplash(false), 2700)
 
       return () => {
@@ -157,7 +127,7 @@ export default function Home({ setHomeNavbarLoading }) {
         })
         return newIndex
       })
-    }, 1450) // Change image every 3 seconds
+    }, 2500)
 
     return () => clearInterval(interval)
   }, [properties, guestFavorites, nearbyProperties, mostFavoriteProperties, topRated])
@@ -593,65 +563,6 @@ export default function Home({ setHomeNavbarLoading }) {
     }
   }
 
-  // async function loadFeaturedSections() {
-  //   try {
-  //     const { data: allProps } = await supabase
-  //       .from('properties')
-  //       .select('*')
-  //       .eq('status', 'available')
-
-  //     const { data: stats, error: statsError } = await supabase
-  //       .from('property_stats')
-  //       .select('*')
-
-  //     if (statsError) {
-  //       return
-  //     }
-
-  //     if (allProps && stats) {
-  //       const statsMap = {}
-  //       stats.forEach(s => { 
-  //         statsMap[s.property_id] = {
-  //           favorite_count: s.favorite_count || 0,
-  //           avg_rating: s.avg_rating || 0,
-  //           review_count: s.review_count || 0
-  //         }
-  //       })
-  //       setPropertyStats(statsMap)
-
-  //       const favorites = allProps
-  //         .filter(p => statsMap[p.id]?.favorite_count >= 1)
-  //         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
-  //         .slice(0, 8)
-  //       setGuestFavorites(favorites)
-
-  //       const rated = allProps
-  //         .filter(p => statsMap[p.id]?.review_count > 0)
-  //         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
-  //         .slice(0, 8)
-  //       setTopRated(rated)
-  //     }
-  //   } catch (err) {
-  //     console.log(err)
-  //   }
-  // }
-
-  const handleSearch = () => {
-    const hasFilters = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
-    if (!hasFilters) return
-
-    const params = new URLSearchParams()
-    if (searchQuery.trim()) params.set('search', searchQuery.trim())
-    if (priceRange.min) params.set('minPrice', priceRange.min)
-    if (priceRange.max) params.set('maxPrice', priceRange.max)
-    if (selectedAmenities.length > 0) params.set('amenities', selectedAmenities.join(','))
-    if (sortBy !== 'newest') params.set('sort', sortBy)
-
-    router.push(`/properties${params.toString() ? '?' + params.toString() : ''}`)
-  }
-
-  const canSearch = searchQuery.trim() || priceRange.min || priceRange.max || selectedAmenities.length > 0 || sortBy !== 'newest'
-
   const handleSeeMore = () => {
     router.push('/properties/allProperties')
   }
@@ -661,20 +572,6 @@ export default function Home({ setHomeNavbarLoading }) {
       return property.images
     }
     return []
-  }
-
-  const nextImage = (propertyId, imagesLength) => {
-    setCurrentImageIndex(prev => ({
-      ...prev,
-      [propertyId]: ((prev[propertyId] || 0) + 1) % imagesLength
-    }))
-  }
-
-  const prevImage = (propertyId, imagesLength) => {
-    setCurrentImageIndex(prev => ({
-      ...prev,
-      [propertyId]: ((prev[propertyId] || 0) - 1 + imagesLength) % imagesLength
-    }))
   }
 
   const closePropertyModal = () => {
@@ -733,28 +630,6 @@ export default function Home({ setHomeNavbarLoading }) {
     router.push(`/compare?ids=${ids}`)
   }
 
-  const faqData = [
-    {
-      id: 1,
-      question: "How do I apply for a property?",
-      answer: "Click 'View Details' on any property listing, then click the 'Apply' button. Fill out the application form with your details, and the landlord will review and contact you directly."
-    },
-    {
-      id: 2,
-      question: "How do I schedule a viewing?",
-      answer: "On the property details page, you'll find the landlord's available time slots. Select your preferred date and time to book an appointment. You'll receive a confirmation in your dashboard."
-    },
-    {
-      id: 3,
-      question: "How do I pay rent?",
-      answer: "Once approved as a tenant, your landlord will send payment requests through the platform. Upload proof of payment in the Payments section of your dashboard and track your payment history."
-    },
-    {
-      id: 4,
-      question: "How do I contact the landlord?",
-      answer: "Use our built-in messaging system accessible from your dashboard. You can send text messages, share images, and exchange files for any property-related communication."
-    },
-  ]
 
   const carouselItemClass = "pl-2 basis-1/2 md:basis-1/4 lg:basis-[16.66%]"
   const skeletonSectionIndices = Array.from({ length: 3 }, (_, index) => index)
@@ -762,6 +637,48 @@ export default function Home({ setHomeNavbarLoading }) {
 
   const mostFavoriteId = Object.entries(propertyStats).filter(([_, s]) => (s.favorite_count || 0) > 0).sort((a, b) => b[1].favorite_count - a[1].favorite_count)?.[0]?.[0];
   const topRatedId = Object.entries(propertyStats).filter(([_, s]) => (s.review_count || 0) > 0).sort((a, b) => b[1].avg_rating - a[1].avg_rating || b[1].review_count - a[1].review_count)?.[0]?.[0];
+
+  const renderSeeAllCard = (items) => {
+    const defaultImg = 'https://images.unsplash.com/photo-1560518884-ce5882228f44?w=500&q=80';
+    let img1, img2, img3;
+
+    if (items && items.length > 0) {
+      const getImg = (idx) => {
+        const item = items[idx % items.length];
+        const imgs = getPropertyImages(item);
+        return imgs && imgs.length > 0 ? imgs[0] : defaultImg;
+      };
+      img1 = getImg(0);
+      img2 = getImg(1);
+      img3 = getImg(2);
+    } else {
+      img1 = img2 = img3 = defaultImg;
+    }
+
+    return (
+      <CarouselItem key="see-all" className={carouselItemClass}>
+        <div className="p-1 h-full">
+          <div
+            onClick={() => router.push('/properties/allProperties')}
+            className={`group bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer hover:shadow-md hover:border-gray-300 transition-all h-full min-h-[220px] aspect-[4/3] sm:aspect-auto ${mounted ? 'animate-slideInCard delay-200' : 'opacity-0'}`}
+          >
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 mb-6 mt-4 flex items-center justify-center">
+              <div className="absolute top-0 right-0 sm:-right-2 w-14 h-14 sm:w-16 sm:h-16 rounded-xl shadow-md border-4 border-white overflow-hidden rotate-12 transform group-hover:translate-x-3 group-hover:-translate-y-1 transition-all duration-300 z-0">
+                 <img src={img2} alt="" className="w-full h-full object-cover"/>
+              </div>
+              <div className="absolute top-2 left-0 sm:-left-2 w-14 h-14 sm:w-16 sm:h-16 rounded-xl shadow-md border-4 border-white overflow-hidden -rotate-6 transform group-hover:-translate-x-3 group-hover:translate-y-1 transition-all duration-300 z-10">
+                 <img src={img3} alt="" className="w-full h-full object-cover"/>
+              </div>
+              <div className="absolute top-5 left-3 sm:left-4 w-16 h-16 sm:w-20 sm:h-20 rounded-xl shadow-xl border-4 border-white overflow-hidden z-20 transform group-hover:scale-110 transition-all duration-300 bg-gray-100">
+                 <img src={img1} alt="" className="w-full h-full object-cover"/>
+              </div>
+            </div>
+            <span className="font-bold text-gray-900 mt-6 text-[13px] sm:text-base border-b-2 border-transparent group-hover:border-gray-900 transition-colors">See all</span>
+          </div>
+        </div>
+      </CarouselItem>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] from-gray-50 via-white to-gray-100 font-sans text-black flex flex-col scroll-smooth">
@@ -785,16 +702,6 @@ export default function Home({ setHomeNavbarLoading }) {
               <h2 className="text-2xl font-black text-black shrink-0">
                 Recommended Properties
               </h2>
-
-              <button
-                onClick={handleSeeMore}
-                className="ml-auto inline-flex items-center gap-1 text-sm font-bold text-gray-900 hover:text-gray-600 cursor-pointer transition-all duration-300 shrink-0"
-              >
-                See more properties
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
             </div>
           )}
 
@@ -946,6 +853,7 @@ export default function Home({ setHomeNavbarLoading }) {
                     </CarouselItem>
                   )
                 })}
+                {renderSeeAllCard(properties)}
               </CarouselContent>
               <CarouselPrevious />
               <CarouselNext />
@@ -1071,6 +979,7 @@ export default function Home({ setHomeNavbarLoading }) {
                     </CarouselItem>
                   )
                 })}
+                {renderSeeAllCard(guestFavorites)}
               </CarouselContent>
               <CarouselPrevious />
               <CarouselNext />
@@ -1189,6 +1098,7 @@ export default function Home({ setHomeNavbarLoading }) {
                     </CarouselItem>
                   )
                 })}
+                {renderSeeAllCard(mostFavoriteProperties)}
               </CarouselContent>
               <CarouselPrevious />
               <CarouselNext />
@@ -1314,6 +1224,7 @@ export default function Home({ setHomeNavbarLoading }) {
                     </CarouselItem>
                   )
                 })}
+                {renderSeeAllCard(nearbyProperties)}
               </CarouselContent>
               <CarouselPrevious />
               <CarouselNext />
@@ -1432,6 +1343,7 @@ export default function Home({ setHomeNavbarLoading }) {
                     </CarouselItem>
                   )
                 })}
+                {renderSeeAllCard(topRated)}
               </CarouselContent>
               <CarouselPrevious />
               <CarouselNext />

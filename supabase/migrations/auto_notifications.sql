@@ -1,9 +1,4 @@
--- =============================================================
--- SUPABASE: Create scheduled_reminders table
--- Run this in Supabase SQL Editor (Dashboard > SQL Editor)
--- =============================================================
 
--- Create table for scheduled reminders
 CREATE TABLE IF NOT EXISTS scheduled_reminders (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   type TEXT NOT NULL, -- 'unread_message', 'booking_reminder', etc.

@@ -248,7 +248,7 @@ export default function TenantDashboard({ session, profile }) {
       setActivePropertyImageIndex(prev =>
         (prev + 1) % tenantOccupancy.property.images.length
       )
-    }, 3000) 
+    }, 2500) 
 
     return () => clearInterval(interval)
   }, [tenantOccupancy])
@@ -1970,6 +1970,48 @@ export default function TenantDashboard({ session, profile }) {
   const nextWaterDueDate = isWaterFree ? 'Free' : getUpcomingDueDateByDay(tenantOccupancy?.water_due_day)
   const nextElectricityDueDate = isElectricityFree ? 'Free' : getUpcomingDueDateByDay(tenantOccupancy?.electricity_due_day)
 
+  const renderSeeAllCard = (items) => {
+    const defaultImg = 'https://images.unsplash.com/photo-1560518884-ce5882228f44?w=500&q=80';
+    let img1, img2, img3;
+
+    if (items && items.length > 0) {
+      const getImg = (idx) => {
+        const item = items[idx % items.length];
+        const imgs = getPropertyImages(item);
+        return imgs && imgs.length > 0 ? imgs[0] : defaultImg;
+      };
+      img1 = getImg(0);
+      img2 = getImg(1);
+      img3 = getImg(2);
+    } else {
+      img1 = img2 = img3 = defaultImg;
+    }
+
+    return (
+      <CarouselItem key="see-all" className={carouselItemClass}>
+        <div className="p-1 h-full">
+          <div
+            onClick={() => router.push('/properties/allProperties')}
+            className={`group bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center cursor-pointer hover:shadow-md hover:border-gray-300 transition-all h-full min-h-[220px] aspect-[4/3] sm:aspect-auto ${mounted ? 'animate-slideInCard delay-200' : 'opacity-0'}`}
+          >
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 mb-6 mt-4 flex items-center justify-center">
+              <div className="absolute top-0 right-0 sm:-right-2 w-14 h-14 sm:w-16 sm:h-16 rounded-xl shadow-md border-4 border-white overflow-hidden rotate-12 transform group-hover:translate-x-3 group-hover:-translate-y-1 transition-all duration-300 z-0">
+                 <img src={img2} alt="" className="w-full h-full object-cover"/>
+              </div>
+              <div className="absolute top-2 left-0 sm:-left-2 w-14 h-14 sm:w-16 sm:h-16 rounded-xl shadow-md border-4 border-white overflow-hidden -rotate-6 transform group-hover:-translate-x-3 group-hover:translate-y-1 transition-all duration-300 z-10">
+                 <img src={img3} alt="" className="w-full h-full object-cover"/>
+              </div>
+              <div className="absolute top-5 left-3 sm:left-4 w-16 h-16 sm:w-20 sm:h-20 rounded-xl shadow-xl border-4 border-white overflow-hidden z-20 transform group-hover:scale-110 transition-all duration-300 bg-gray-100">
+                 <img src={img1} alt="" className="w-full h-full object-cover"/>
+              </div>
+            </div>
+            <span className="font-bold text-gray-900 mt-6 text-[13px] sm:text-base border-b-2 border-transparent group-hover:border-gray-900 transition-colors">See all</span>
+          </div>
+        </div>
+      </CarouselItem>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F5F5] flex flex-col scroll-smooth">
       <div className="max-w-[1800px] w-full mx-auto mt-0 px-4 sm:px-6 lg:px-8 pt-2 relative z-10 flex-1">
@@ -2583,7 +2625,7 @@ export default function TenantDashboard({ session, profile }) {
           /* --- ALL PROPERTIES SECTION (DISCOVERY VIEW) --- */
           <div className="space-y-8">
             {/* All Properties Section */}
-            <div className={`mb-0 mt-4 transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+            <div className={`relative z-[60] mb-0 mt-4 transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
               <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4 gap-3">
                 <h2 className="text-2xl font-black text-black shrink-0">Recommended Properties</h2>
                 <div className="flex items-center gap-3 w-full sm:w-auto sm:flex-1 sm:max-w-md lg:max-w-lg">
@@ -2695,10 +2737,6 @@ export default function TenantDashboard({ session, profile }) {
                     )}
                   </div>
                 </div>
-
-                <span onClick={handleSeeMore} className="text-sm font-semibold text-black hover:text-gray-600 cursor-pointer flex items-center gap-1 hover:underline transition-all shrink-0 ml-auto">
-                  See More Properties<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </span>
               </div>
               {properties.length === 0 ? (
                 <div className="text-center py-20 h-[400px] flex items-center justify-center">No properties found.</div>
@@ -2718,6 +2756,7 @@ export default function TenantDashboard({ session, profile }) {
                         </div>
                       </CarouselItem>
                     ))}
+                    {renderSeeAllCard(properties)}
                   </CarouselContent>
                   <CarouselPrevious /><CarouselNext />
                 </Carousel>
@@ -2758,6 +2797,7 @@ export default function TenantDashboard({ session, profile }) {
                         </CarouselItem>
                       )
                     })}
+                    {renderSeeAllCard(guestFavorites)}
                   </CarouselContent>
                   <CarouselPrevious />
                   <CarouselNext />
@@ -2799,6 +2839,7 @@ export default function TenantDashboard({ session, profile }) {
                         </CarouselItem>
                       )
                     })}
+                    {renderSeeAllCard(mostFavoriteProperties)}
                   </CarouselContent>
                   <CarouselPrevious />
                   <CarouselNext />
@@ -2841,6 +2882,7 @@ export default function TenantDashboard({ session, profile }) {
                         </CarouselItem>
                       )
                     })}
+                    {renderSeeAllCard(nearbyProperties)}
                   </CarouselContent>
                   <CarouselPrevious />
                   <CarouselNext />
@@ -2882,6 +2924,7 @@ export default function TenantDashboard({ session, profile }) {
                         </CarouselItem>
                       )
                     })}
+                    {renderSeeAllCard(topRated)}
                   </CarouselContent>
                   <CarouselPrevious />
                   <CarouselNext />
