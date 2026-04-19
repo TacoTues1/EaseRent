@@ -210,6 +210,8 @@ export default function BookingsPage() {
   const [showViewingSuccessWarningModal, setShowViewingSuccessWarningModal] = useState(false)
   const [bookingToMarkSuccess, setBookingToMarkSuccess] = useState(null)
   const [sameDateConflictBookings, setSameDateConflictBookings] = useState([])
+  const [showLandlordCancelWarningModal, setShowLandlordCancelWarningModal] = useState(false)
+  const [bookingToCancelByLandlord, setBookingToCancelByLandlord] = useState(null)
   const [processingAction, setProcessingAction] = useState(null) // tracks which booking.id + action is in progress
   const [hasActiveOccupancy, setHasActiveOccupancy] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -1063,12 +1065,30 @@ export default function BookingsPage() {
           message: `Your viewing for ${booking.property?.title} has been cancelled by the landlord.`,
           link: '/bookings'
         })
-        showToast.success('Viewing cancelled', { duration: 4000, position: "top-center", transition: "bounceIn" });
+        showToast.success('Viewing cancelled. Tenant has been notified.', { duration: 4000, position: "top-center", transition: "bounceIn" });
         loadBookings()
       } else {
         showToast.error('Failed to cancel viewing', { duration: 4000, position: "top-center", transition: "bounceIn" });
       }
     } finally { setProcessingAction(null) }
+  }
+
+  function promptLandlordCancelViewing(booking) {
+    setBookingToCancelByLandlord(booking)
+    setShowLandlordCancelWarningModal(true)
+  }
+
+  async function confirmLandlordCancelViewing() {
+    if (!bookingToCancelByLandlord) return
+
+    await cancelViewing(bookingToCancelByLandlord)
+    setShowLandlordCancelWarningModal(false)
+    setBookingToCancelByLandlord(null)
+  }
+
+  function closeLandlordCancelWarningModal() {
+    setShowLandlordCancelWarningModal(false)
+    setBookingToCancelByLandlord(null)
   }
 
   // --- ASSIGN TENANT FUNCTIONS ---
@@ -2148,7 +2168,7 @@ export default function BookingsPage() {
                               {processingAction === `viewing-${booking.id}` ? (<><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Processing...</>) : 'Viewing Success'}
                             </button>
                             <button
-                              onClick={() => cancelViewing(booking)}
+                              onClick={() => promptLandlordCancelViewing(booking)}
                               disabled={processingAction === `cancel-viewing-${booking.id}`}
                               className={`flex-1 md:flex-none px-4 py-2.5 border text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2 ${processingAction === `cancel-viewing-${booking.id}` ? 'bg-red-50 text-red-300 border-red-100 cursor-not-allowed' : 'bg-white border-red-200 text-red-600 cursor-pointer hover:bg-red-50'}`}
                             >
@@ -2487,6 +2507,44 @@ export default function BookingsPage() {
                 className={`flex-1 py-2.5 text-white font-bold rounded-xl transition-colors shadow-lg shadow-red-100 flex items-center justify-center gap-2 ${processingAction ? 'bg-red-400 cursor-not-allowed' : 'bg-red-600 cursor-pointer hover:bg-red-700'}`}
               >
                 {processingAction ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Cancelling...</>) : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- LANDLORD CANCEL VIEWING WARNING MODAL --- */}
+      {showLandlordCancelWarningModal && bookingToCancelByLandlord && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white border border-gray-100 shadow-2xl rounded-2xl max-w-sm w-full p-6 text-center">
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel Viewing Request?</h3>
+            <p className="text-gray-500 text-sm mb-3">
+              You are about to cancel the viewing for <span className="font-semibold text-gray-900">{bookingToCancelByLandlord.property?.title}</span>.
+            </p>
+
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-6 text-left">
+              <p className="text-xs uppercase tracking-wider font-bold text-red-600 mb-1">Warning</p>
+              <p className="text-sm text-red-700">This action cannot be undone. The tenant will be notified that the viewing was cancelled.</p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={closeLandlordCancelWarningModal}
+                disabled={processingAction === `cancel-viewing-${bookingToCancelByLandlord.id}`}
+                className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Keep Viewing
+              </button>
+              <button
+                onClick={confirmLandlordCancelViewing}
+                disabled={processingAction === `cancel-viewing-${bookingToCancelByLandlord.id}`}
+                className={`flex-1 py-2.5 text-white font-bold rounded-xl transition-colors shadow-lg shadow-red-100 flex items-center justify-center gap-2 ${processingAction === `cancel-viewing-${bookingToCancelByLandlord.id}` ? 'bg-red-400 cursor-not-allowed' : 'bg-red-600 cursor-pointer hover:bg-red-700'}`}
+              >
+                {processingAction === `cancel-viewing-${bookingToCancelByLandlord.id}` ? (<><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Cancelling...</>) : 'Yes, Cancel Viewing'}
               </button>
             </div>
           </div>
