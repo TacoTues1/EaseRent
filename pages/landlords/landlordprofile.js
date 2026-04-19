@@ -12,10 +12,12 @@ export default function LandlordProfile() {
   const [landlord, setLandlord] = useState(null)
   const [properties, setProperties] = useState([])
   const [landlordReviewStats, setLandlordReviewStats] = useState({ avg: 0, count: 0 })
+  const [avatarFailed, setAvatarFailed] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (id) {
+      setAvatarFailed(false)
       loadLandlordProfile()
     }
   }, [id])
@@ -80,6 +82,12 @@ export default function LandlordProfile() {
   const formatJoinedYear = (dateString) => {
     if (!dateString) return ''
     return new Date(dateString).getFullYear()
+  }
+
+  const getAvatarLetter = () => {
+    const firstLetter = landlord?.first_name?.trim()?.[0]
+    const lastLetter = landlord?.last_name?.trim()?.[0]
+    return (firstLetter || lastLetter || 'L').toUpperCase()
   }
 
   if (loading) {
@@ -165,11 +173,16 @@ export default function LandlordProfile() {
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-gray-50 to-gray-100/50"></div>
             
             <div className="relative w-32 h-32 rounded-full overflow-hidden bg-white mx-auto mb-5 border-4 border-white shadow-sm flex-shrink-0">
-              {landlord.avatar_url ? (
-                <img src={landlord.avatar_url} alt={landlord.first_name} className="w-full h-full object-cover" />
+              {landlord.avatar_url && !avatarFailed ? (
+                <img
+                  src={landlord.avatar_url}
+                  alt={landlord.first_name}
+                  className="w-full h-full object-cover"
+                  onError={() => setAvatarFailed(true)}
+                />
               ) : (
-                <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-400">
-                  <svg className="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-700 text-4xl font-bold">
+                  {getAvatarLetter()}
                 </div>
               )}
             </div>

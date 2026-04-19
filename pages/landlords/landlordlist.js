@@ -9,6 +9,8 @@ export default function LandlordList() {
   const [landlords, setLandlords] = useState([])
   const [landlordReviewMap, setLandlordReviewMap] = useState({})
   const [search, setSearch] = useState('')
+  const [minRating, setMinRating] = useState('all-landlords')
+  const [brokenAvatars, setBrokenAvatars] = useState({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,6 +24,14 @@ export default function LandlordList() {
       .select('id, first_name, last_name, avatar_url, created_at')
       .eq('role', 'landlord')
       .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error loading landlords:', error)
+      setLandlords([])
+      setLandlordReviewMap({})
+      setLoading(false)
+      return
+    }
     
     if (data) {
       setLandlords(data)
@@ -62,9 +72,20 @@ export default function LandlordList() {
   }
 
   const filteredLandlords = landlords.filter(ll => {
+    const avgRating = landlordReviewMap[ll.id]?.avg || 0
+    const parsedMinRating = Number(minRating)
+    const minimum = minRating === 'all-landlords' || Number.isNaN(parsedMinRating) ? 0 : parsedMinRating
     const fullName = `${ll.first_name || ''} ${ll.last_name || ''}`.toLowerCase()
-    return fullName.includes(search.toLowerCase()) || (ll.city && ll.city.toLowerCase().includes(search.toLowerCase()))
+    const matchesSearch = fullName.includes(search.toLowerCase()) || (ll.city && ll.city.toLowerCase().includes(search.toLowerCase()))
+    const matchesRating = avgRating >= minimum
+    return matchesSearch && matchesRating
   })
+
+  const getAvatarLetter = (landlord) => {
+    const firstLetter = landlord?.first_name?.trim()?.[0]
+    const lastLetter = landlord?.last_name?.trim()?.[0]
+    return (firstLetter || lastLetter || 'L').toUpperCase()
+  }
 
   // Format joined date helper
   const getJoinedText = (dateString) => {
@@ -99,7 +120,7 @@ export default function LandlordList() {
             <p className="text-gray-500 max-w-xl mx-auto text-sm sm:text-base">Find trusted property owners in your area. Browse profiles to see their available properties and history.</p>
           </div>
 
-          <div className="mb-12 max-w-lg mx-auto">
+          <div className="mb-12 max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
             <div className="relative">
               <svg className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               <input
@@ -110,6 +131,18 @@ export default function LandlordList() {
                 className="w-full bg-white border border-gray-200 rounded-full pl-12 pr-4 py-3.5 text-sm focus:border-black outline-none transition-shadow hover:shadow-sm focus:shadow-md"
               />
             </div>
+            <select
+              value={minRating}
+              onChange={(e) => setMinRating(e.target.value)}
+              className="bg-white border border-gray-200 rounded-full px-4 py-3.5 text-sm font-medium text-gray-700 focus:border-black outline-none"
+              aria-label="Filter landlords by minimum rating"
+            >
+              <option value="all-landlords">All landlords</option>
+              <option value="4">4.0 and up</option>
+              <option value="3">3.0 and up</option>
+              <option value="2">2.0 and up</option>
+              <option value="1">1.0 and up</option>
+            </select>
           </div>
 
           {loading ? (
@@ -119,12 +152,15 @@ export default function LandlordList() {
           ) : filteredLandlords.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm max-w-lg mx-auto">
               <h3 className="text-lg font-bold text-gray-900 mb-2">No landlords found</h3>
-              <p className="text-gray-500">We couldn't find any landlords matching your search.</p>
+              <p className="text-gray-500">We couldn't find any landlords matching your search and rating filters.</p>
               <button 
-                onClick={() => setSearch('')}
+                onClick={() => {
+                  setSearch('')
+                  setMinRating('all-landlords')
+                }}
                 className="mt-6 text-sm font-bold bg-black text-white px-6 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
               >
-                Clear Search
+                Clear Filters
               </button>
             </div>
           ) : (
@@ -134,10 +170,17 @@ export default function LandlordList() {
                   <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
                     <div className="flex items-start gap-4">
                       <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 border-2 border-transparent shadow-sm flex-shrink-0">
-                        {ll.avatar_url ? (
-                          <img src={ll.avatar_url} alt={ll.first_name} className="w-full h-full object-cover" />
+                        {ll.avatar_url && !brokenAvatars[ll.id] ? (
+                          <img
+                            src={ll.avatar_url}
+                            alt={ll.first_name}
+                            className="w-full h-full object-cover"
+                            onError={() => setBrokenAvatars(prev => ({ ...prev, [ll.id]: true }))}
+                          />
                         ) : (
-                          <svg className="w-full h-full text-gray-400 p-3" fill="currentColor" viewBox="0 0 24 24"><path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                          <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-700 text-xl font-bold">
+                            {getAvatarLetter(ll)}
+                          </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
