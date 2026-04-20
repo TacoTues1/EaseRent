@@ -104,10 +104,6 @@ export default function MaintenancePage() {
   }, [session, profile, currentPage, statusFilter, searchId])
 
   useEffect(() => {
-    setCurrentPage(1)
-  }, [statusFilter, searchId])
-
-  useEffect(() => {
     if (!session || !profile) return
 
     const interval = setInterval(() => {
@@ -169,10 +165,7 @@ export default function MaintenancePage() {
       query = query.eq('status', selectedStatus)
     }
 
-    const trimmedSearch = (searchTerm || '').trim()
-    if (trimmedSearch) {
-      query = query.or(`id.ilike.%${trimmedSearch}%,primary_tenant_name.ilike.%${trimmedSearch}%`)
-    }
+    const trimmedSearch = (searchTerm || '').trim().toLowerCase()
 
     if (profile?.role === 'tenant') {
       let tenantIds = [session.user.id]
@@ -224,22 +217,49 @@ export default function MaintenancePage() {
       }
     }
 
-    const from = (page - 1) * MAINTENANCE_REQUESTS_PER_PAGE
-    const to = from + MAINTENANCE_REQUESTS_PER_PAGE - 1
-    const { data, count, error } = await query.range(from, to)
+    let requestRows = []
+    let requestCount = 0
 
-    if (error) {
-      console.error('Error loading maintenance requests:', error)
-      setRequests([])
-      setTotalRequestCount(0)
-      setLoading(false)
-      return
+    if (trimmedSearch) {
+      const { data, error } = await query
+
+      if (error) {
+        console.error('Error loading maintenance requests:', error)
+        setRequests([])
+        setTotalRequestCount(0)
+        setLoading(false)
+        return
+      }
+
+      const idMatchedRows = (data || []).filter((row) =>
+        String(row.id || '').toLowerCase().includes(trimmedSearch)
+      )
+
+      requestCount = idMatchedRows.length
+      const from = (page - 1) * MAINTENANCE_REQUESTS_PER_PAGE
+      const to = from + MAINTENANCE_REQUESTS_PER_PAGE
+      requestRows = idMatchedRows.slice(from, to)
+    } else {
+      const from = (page - 1) * MAINTENANCE_REQUESTS_PER_PAGE
+      const to = from + MAINTENANCE_REQUESTS_PER_PAGE - 1
+      const { data, count, error } = await query.range(from, to)
+
+      if (error) {
+        console.error('Error loading maintenance requests:', error)
+        setRequests([])
+        setTotalRequestCount(0)
+        setLoading(false)
+        return
+      }
+
+      requestRows = data || []
+      requestCount = count || 0
     }
 
-    setTotalRequestCount(count || 0)
+    setTotalRequestCount(requestCount)
 
-    if (data && data.length > 0) {
-      const tenantIdsInRequests = [...new Set(data.map(r => r.tenant))]
+    if (requestRows.length > 0) {
+      const tenantIdsInRequests = [...new Set(requestRows.map(r => r.tenant))]
       let fmMap = {}
 
       try {
@@ -252,7 +272,7 @@ export default function MaintenancePage() {
         fmMap = fData.membersMap || {}
       } catch (e) { console.error('Error fetching members lookup', e) }
 
-      const enrichedRequests = data.map(req => {
+      const enrichedRequests = requestRows.map(req => {
         // Freeze family member status directly from the table (new flow), or fallback to map (legacy)
         let isFam = req.is_family_member;
         let pName = req.primary_tenant_name;
@@ -1044,6 +1064,20 @@ export default function MaintenancePage() {
     setCurrentPage(nextPage)
   }
 
+  function handleSearchIdChange(event) {
+    setLoading(true)
+    setRequests([])
+    setCurrentPage(1)
+    setSearchId(event.target.value)
+  }
+
+  function handleStatusFilterChange(event) {
+    setLoading(true)
+    setRequests([])
+    setCurrentPage(1)
+    setStatusFilter(event.target.value)
+  }
+
   function promptCancel(request) {
     setRequestToCancel(request)
     setShowCancelModal(true)
@@ -1245,9 +1279,9 @@ export default function MaintenancePage() {
             </svg>
             <input
               type="text"
-              placeholder="Search ID, Tenant, or Family Name..."
+              placeholder="Search request ID..."
               value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
+              onChange={handleSearchIdChange}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
             />
           </div>
@@ -1257,7 +1291,7 @@ export default function MaintenancePage() {
             <span className="text-xs font-bold text-gray-500 uppercase">Status:</span>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={handleStatusFilterChange}
               className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
             >
               <option value="all">All Status</option>
@@ -1276,8 +1310,8 @@ export default function MaintenancePage() {
           {loading && filteredRequests.length === 0 ? (
             renderMaintenanceSkeletonList()
           ) : filteredRequests.length === 0 ? (
-          <div className="min-h-screen flex items-start justify-center bg-[#F5F5F5] px-4 pt-20">
-    <div className="w-full max-w-md rounded-[28px] border border-gray-200/80 bg-white/90 p-8 text-center shadow-[0_10px_30px_rgba(0,0,0,0.06)] backdrop-blur-sm">
+          <div className="min-h-screen flex items-start justify-center px-4 pt-20">
+    <div className="w-full max-w-md rounded-[28px] p-8 text-center ">
 
       <h2 className="text-2xl font-bold tracking-tight text-gray-800">
         No Maintenance Request
