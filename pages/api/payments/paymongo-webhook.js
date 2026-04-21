@@ -49,57 +49,57 @@ export default async function handler(req, res) {
                 return res.status(200).json({ received: true, error: 'Missing subscription metadata' });
             }
 
-            // Check if already processed
+            // Load current payment status
             const { data: existingPayment } = await supabase
                 .from('subscription_payments')
-                .select('status')
+                .select('status, subscription_id')
                 .eq('id', subscriptionPaymentId)
                 .single();
 
-            if (existingPayment?.status === 'paid') {
-                console.log('[PayMongo Webhook] Subscription payment already processed, skipping');
-                return res.status(200).json({ received: true, message: 'Already processed' });
-            }
-
-            // Mark subscription payment as paid
-            await supabase
-                .from('subscription_payments')
-                .update({
-                    status: 'paid',
-                    payment_method: 'paymongo_qrph',
-                    paid_at: new Date().toISOString()
-                })
-                .eq('id', subscriptionPaymentId);
-
-            // Upgrade the tenant's subscription (add 1 slot)
-            const { data: sub } = await supabase
-                .from('subscriptions')
-                .select('*')
-                .eq('id', subscriptionId)
-                .single();
-
-            if (sub) {
-                const newPaidSlots = sub.paid_slots + 1;
-                const newTotalSlots = 1 + newPaidSlots; // 1 free + paid
-
+            // Mark subscription payment as paid when needed.
+            if (existingPayment?.status !== 'paid') {
                 await supabase
-                    .from('subscriptions')
+                    .from('subscription_payments')
                     .update({
-                        paid_slots: newPaidSlots,
-                        total_slots: newTotalSlots,
-                        plan_type: 'paid'
+                        status: 'paid',
+                        payment_method: 'paymongo',
+                        paid_at: new Date().toISOString()
                     })
-                    .eq('id', subscriptionId);
-
-                console.log(`[PayMongo Webhook] ✅ Subscription upgraded: ${newTotalSlots} total slots for tenant ${tenantId}`);
+                    .eq('id', subscriptionPaymentId);
             }
+
+            const resolvedSubscriptionId = existingPayment?.subscription_id || subscriptionId;
+            const FREE_SLOTS = 1;
+            const MAX_FAMILY_MEMBERS = 4;
+
+            // Reconcile slots from paid payments to prevent missed increments on retries/races.
+            const { count: paidCount } = await supabase
+                .from('subscription_payments')
+                .select('id', { count: 'exact', head: true })
+                .eq('subscription_id', resolvedSubscriptionId)
+                .eq('status', 'paid');
+
+            const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS);
+            const newPaidSlots = Math.min(paidCount || 0, maxPaidSlots);
+            const newTotalSlots = Math.min(MAX_FAMILY_MEMBERS, FREE_SLOTS + newPaidSlots);
+
+            await supabase
+                .from('subscriptions')
+                .update({
+                    paid_slots: newPaidSlots,
+                    total_slots: newTotalSlots,
+                    plan_type: newPaidSlots > 0 ? 'paid' : 'free'
+                })
+                .eq('id', resolvedSubscriptionId);
+
+            console.log(`[PayMongo Webhook] ✅ Subscription reconciled: ${newTotalSlots} total slots for tenant ${tenantId}`);
 
             // Send in-app notification to tenant
             if (tenantId) {
                 await supabase.from('notifications').insert({
                     recipient: tenantId,
                     type: 'subscription_upgraded',
-                    message: `Your family member slot has been unlocked! You now have ${sub ? (1 + sub.paid_slots + 1) : 2} slot(s).`,
+                    message: `Your family member slot has been unlocked! You now have ${newTotalSlots} slot(s).`,
                     data: { subscription_id: subscriptionId },
                     read: false
                 });

@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabaseClient'
 
 const BOOKINGS_PER_PAGE = 5
 const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'completed']
 const PENDING_BOOKING_STATUSES = ['pending', 'pending_approval']
 const ASSIGNMENT_RELATED_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned']
 const TENANT_PREFERRED_SCHEDULE_LABEL = 'TENANTS PREFEREED SCHEDULE'
@@ -380,31 +380,66 @@ export default function BookingsPage() {
     }
   }
 
-  async function syncTimeSlotBookedFlags(slotIds = []) {
+  async function syncTimeSlotBookedFlags(slotIds = [], bookingStartTimes = []) {
     const uniqueSlotIds = [...new Set((slotIds || []).filter(Boolean))]
-    if (uniqueSlotIds.length === 0) return
+    const uniqueStartTimes = [...new Set((bookingStartTimes || []).filter(Boolean))]
 
-    const { data: slotLockingRows, error: activeRowsError } = await supabase
-      .from('bookings')
-      .select('time_slot_id')
-      .in('time_slot_id', uniqueSlotIds)
-      .in('status', SLOT_LOCKING_BOOKING_STATUSES)
+    if (uniqueSlotIds.length === 0 && uniqueStartTimes.length === 0) return
 
-    if (activeRowsError) {
-      console.error('Failed to sync slot booking flags:', activeRowsError)
-      return
+    // --- Sync by time_slot_id (existing logic) ---
+    if (uniqueSlotIds.length > 0) {
+      const { data: slotLockingRows, error: activeRowsError } = await supabase
+        .from('bookings')
+        .select('time_slot_id')
+        .in('time_slot_id', uniqueSlotIds)
+        .in('status', SLOT_LOCKING_BOOKING_STATUSES)
+
+      if (activeRowsError) {
+        console.error('Failed to sync slot booking flags:', activeRowsError)
+        return
+      }
+
+      const bookedSet = new Set((slotLockingRows || []).map(row => row.time_slot_id).filter(Boolean))
+      const bookedIds = uniqueSlotIds.filter(slotId => bookedSet.has(slotId))
+      const freeIds = uniqueSlotIds.filter(slotId => !bookedSet.has(slotId))
+
+      if (bookedIds.length > 0) {
+        await supabase.from('available_time_slots').update({ is_booked: true }).in('id', bookedIds)
+      }
+
+      if (freeIds.length > 0) {
+        await supabase.from('available_time_slots').update({ is_booked: false }).in('id', freeIds)
+      }
     }
 
-    const bookedSet = new Set((slotLockingRows || []).map(row => row.time_slot_id).filter(Boolean))
-    const bookedIds = uniqueSlotIds.filter(slotId => bookedSet.has(slotId))
-    const freeIds = uniqueSlotIds.filter(slotId => !bookedSet.has(slotId))
+    // --- Sync by start_time for preferred schedule bookings (no time_slot_id) ---
+    if (uniqueStartTimes.length > 0) {
+      for (const startTimeIso of uniqueStartTimes) {
+        // Find the available_time_slot matching this start_time
+        const { data: matchingSlots, error: matchError } = await supabase
+          .from('available_time_slots')
+          .select('id')
+          .eq('start_time', startTimeIso)
+          .limit(5)
 
-    if (bookedIds.length > 0) {
-      await supabase.from('available_time_slots').update({ is_booked: true }).in('id', bookedIds)
-    }
+        if (matchError || !matchingSlots || matchingSlots.length === 0) continue
 
-    if (freeIds.length > 0) {
-      await supabase.from('available_time_slots').update({ is_booked: false }).in('id', freeIds)
+        const matchedSlotIds = matchingSlots.map(s => s.id)
+
+        // Check if any active booking is still referencing this time
+        const { data: activeForTime } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('booking_date', startTimeIso)
+          .in('status', SLOT_LOCKING_BOOKING_STATUSES)
+          .limit(1)
+
+        if (activeForTime && activeForTime.length > 0) {
+          await supabase.from('available_time_slots').update({ is_booked: true }).in('id', matchedSlotIds)
+        } else {
+          await supabase.from('available_time_slots').update({ is_booked: false }).in('id', matchedSlotIds)
+        }
+      }
     }
   }
 
@@ -728,12 +763,15 @@ export default function BookingsPage() {
         .update({ status: 'cancelled' })
         .in('id', pastIds)
 
-      // Free up their time slots
+      // Free up their time slots (by time_slot_id and by start_time for preferred schedule bookings)
       const slotIds = pastPendingBookings
         .map(b => b.time_slot_id)
         .filter(Boolean)
-      if (slotIds.length > 0) {
-        await syncTimeSlotBookedFlags(slotIds)
+      const startTimes = pastPendingBookings
+        .filter(b => !b.time_slot_id && b.booking_date)
+        .map(b => b.booking_date)
+      if (slotIds.length > 0 || startTimes.length > 0) {
+        await syncTimeSlotBookedFlags(slotIds, startTimes)
       }
 
       // Send notifications to tenants about auto-cancellation
@@ -823,7 +861,10 @@ export default function BookingsPage() {
         .eq('id', booking.id)
 
       if (!error) {
-        await syncTimeSlotBookedFlags([booking.time_slot_id])
+        // Sync slot flags by time_slot_id OR by start_time for preferred schedule bookings
+        const slotIds = booking.time_slot_id ? [booking.time_slot_id] : []
+        const startTimes = !booking.time_slot_id && booking.booking_date ? [booking.booking_date] : []
+        await syncTimeSlotBookedFlags(slotIds, startTimes)
 
         await createNotification({
           recipient: booking.tenant,
@@ -1020,7 +1061,13 @@ export default function BookingsPage() {
           ...rejectedBookings.map(item => item.time_slot_id)
         ].filter(Boolean)
 
-        await syncTimeSlotBookedFlags(affectedSlotIds)
+        // Also collect start_times for preferred schedule bookings without time_slot_id
+        const affectedStartTimes = [
+          !selectedBooking.time_slot_id && selectedBooking.booking_date ? selectedBooking.booking_date : null,
+          ...rejectedBookings.filter(item => !item.time_slot_id && item.booking_date).map(item => item.booking_date)
+        ].filter(Boolean)
+
+        await syncTimeSlotBookedFlags(affectedSlotIds, affectedStartTimes)
 
         await createNotification({
           recipient: selectedBooking.tenant,
@@ -1056,8 +1103,11 @@ export default function BookingsPage() {
         .eq('id', booking.id)
 
       if (!error) {
-        if (booking.time_slot_id) {
-          await syncTimeSlotBookedFlags([booking.time_slot_id])
+        // Sync slot flags by time_slot_id OR by start_time for preferred schedule bookings
+        const slotIds = booking.time_slot_id ? [booking.time_slot_id] : []
+        const startTimes = !booking.time_slot_id && booking.booking_date ? [booking.booking_date] : []
+        if (slotIds.length > 0 || startTimes.length > 0) {
+          await syncTimeSlotBookedFlags(slotIds, startTimes)
         }
         await createNotification({
           recipient: booking.tenant,
@@ -1301,8 +1351,11 @@ export default function BookingsPage() {
         .eq('id', booking.id)
 
       if (!error) {
-        if (booking.time_slot_id) {
-          await syncTimeSlotBookedFlags([booking.time_slot_id])
+        // Sync slot flags by time_slot_id OR by start_time for preferred schedule bookings
+        const slotIds = booking.time_slot_id ? [booking.time_slot_id] : []
+        const startTimes = !booking.time_slot_id && booking.booking_date ? [booking.booking_date] : []
+        if (slotIds.length > 0 || startTimes.length > 0) {
+          await syncTimeSlotBookedFlags(slotIds, startTimes)
         }
 
         await createNotification({
@@ -1755,6 +1808,7 @@ export default function BookingsPage() {
     }
 
     const affectedSlotIds = bookingTimeSlotId ? [bookingTimeSlotId] : []
+    const affectedStartTimes = !bookingTimeSlotId && bookingStartIso ? [bookingStartIso] : []
 
     // 3. Handle Status Updates
     if (!selectedApplication.is_application) {
@@ -1763,11 +1817,13 @@ export default function BookingsPage() {
 
         if (selectedApplication.time_slot_id) {
           affectedSlotIds.push(selectedApplication.time_slot_id)
+        } else if (selectedApplication.booking_date) {
+          affectedStartTimes.push(selectedApplication.booking_date)
         }
       }
     }
 
-    await syncTimeSlotBookedFlags(affectedSlotIds)
+    await syncTimeSlotBookedFlags(affectedSlotIds, affectedStartTimes)
 
     if (newBooking) {
       fetch('/api/notify', {

@@ -885,13 +885,15 @@ export default function Settings() {
         body: JSON.stringify({
           action: 'confirm-payment',
           payment_id: paymentId,
-          payment_method: 'paymongo_qrph'
+          payment_method: 'paymongo'
         })
       })
       const data = await res.json()
       if (data.success) {
         showToast.success(data.message || 'Slot purchased successfully!')
         loadSubscription()
+      } else {
+        showToast.error(data.error || 'Failed to confirm slot purchase')
       }
     } catch (err) {
       console.error('Error confirming subscription payment:', err)

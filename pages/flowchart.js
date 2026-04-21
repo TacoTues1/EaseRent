@@ -78,10 +78,8 @@ const systemFlows = {
             { id: 'pay_cash', label: 'Cash', type: 'process', x: 0, y: 1320, icon: '💵' },
             { id: 'pay_qr', label: 'QR Code', type: 'process', x: 140, y: 1320, icon: '📱' },
             { id: 'pay_pm', label: 'PayMongo\n(GCash/Maya/\nQR PH/Card)', type: 'process', x: 280, y: 1320, icon: '🏦' },
-            { id: 'pay_stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 420, y: 1320, icon: '💳' },
-            { id: 'pay_paypal', label: 'PayPal', type: 'process', x: 560, y: 1320, icon: '🅿️' },
             { id: 'pay_manual', label: 'Landlord\nConfirms', type: 'process', x: 70, y: 1440, icon: '👍' },
-            { id: 'pay_auto', label: 'Auto-Verified\n(Webhook/API)', type: 'process', x: 420, y: 1440, icon: '⚡' },
+            { id: 'pay_auto', label: 'Auto-Verified\n(Webhook/API)', type: 'process', x: 280, y: 1440, icon: '⚡' },
             { id: 'pay_done', label: 'Bill Marked\nas Paid', type: 'process', x: 250, y: 1540, icon: '✅' },
             { id: 'pay_payout', label: 'Auto Payout\n100% → Landlord', type: 'process', x: 250, y: 1640, icon: '💸' },
             { id: 'pay_end', label: 'Payment\nComplete', type: 'end', x: 250, y: 1750, icon: '✅' },
@@ -185,13 +183,9 @@ const systemFlows = {
             { from: 'pay_method', to: 'pay_cash', label: 'Cash' },
             { from: 'pay_method', to: 'pay_qr', label: 'QR' },
             { from: 'pay_method', to: 'pay_pm', label: 'Online' },
-            { from: 'pay_method', to: 'pay_stripe', label: 'Card' },
-            { from: 'pay_method', to: 'pay_paypal', label: 'PayPal' },
             { from: 'pay_cash', to: 'pay_manual' },
             { from: 'pay_qr', to: 'pay_manual' },
             { from: 'pay_pm', to: 'pay_auto' },
-            { from: 'pay_stripe', to: 'pay_auto' },
-            { from: 'pay_paypal', to: 'pay_auto' },
             { from: 'pay_manual', to: 'pay_done' },
             { from: 'pay_auto', to: 'pay_done' },
             { from: 'pay_done', to: 'pay_payout' },
@@ -325,15 +319,11 @@ const systemFlows = {
             { id: 'cash', label: 'Cash Payment', type: 'process', x: 60, y: 340, icon: '💵' },
             { id: 'qr', label: 'QR Code Payment', type: 'process', x: 220, y: 340, icon: '📱' },
             { id: 'paymongo', label: 'PayMongo\n(GCash, Maya, Card,\nQR PH, GrabPay)', type: 'process', x: 400, y: 340, icon: '🏦' },
-            { id: 'stripe', label: 'Stripe\n(Credit Card)', type: 'process', x: 590, y: 340, icon: '💳' },
-            { id: 'paypal', label: 'PayPal', type: 'process', x: 740, y: 340, icon: '🅿️' },
             { id: 'cash_confirm', label: 'Tenant Confirms\n→ Landlord Verifies', type: 'process', x: 60, y: 460, icon: '✋' },
             { id: 'qr_proof', label: 'Upload Proof\n+ Reference #', type: 'process', x: 220, y: 460, icon: '📸' },
             { id: 'pm_checkout', label: 'PayMongo Checkout\n→ Webhook/Polling', type: 'process', x: 400, y: 460, icon: '🔄' },
-            { id: 'stripe_pay', label: 'Stripe Form\n→ Auto-Processes', type: 'process', x: 590, y: 460, icon: '✅' },
-            { id: 'paypal_pay', label: 'PayPal Checkout\n→ Capture Order', type: 'process', x: 740, y: 460, icon: '✅' },
             { id: 'landlord_confirm', label: 'Landlord Confirms\nPayment', type: 'process', x: 150, y: 570, icon: '👍' },
-            { id: 'auto_confirm', label: 'Auto-Confirmed\nby Gateway', type: 'process', x: 550, y: 570, icon: '⚡' },
+            { id: 'auto_confirm', label: 'Auto-Confirmed\nby Gateway', type: 'process', x: 400, y: 570, icon: '⚡' },
             { id: 'paid', label: 'Bill Marked as Paid', type: 'process', x: 350, y: 660, icon: '✅' },
             { id: 'payout', label: 'Auto Payout\n100% → Landlord', type: 'process', x: 350, y: 750, icon: '💸' },
             { id: 'notify', label: 'Email + SMS + In-App\nNotifications Sent', type: 'end', x: 350, y: 840, icon: '🔔' },
@@ -344,18 +334,12 @@ const systemFlows = {
             { from: 'method', to: 'cash', label: 'Cash' },
             { from: 'method', to: 'qr', label: 'QR' },
             { from: 'method', to: 'paymongo', label: 'Online' },
-            { from: 'method', to: 'stripe', label: 'Card' },
-            { from: 'method', to: 'paypal', label: 'PayPal' },
             { from: 'cash', to: 'cash_confirm' },
             { from: 'qr', to: 'qr_proof' },
             { from: 'paymongo', to: 'pm_checkout' },
-            { from: 'stripe', to: 'stripe_pay' },
-            { from: 'paypal', to: 'paypal_pay' },
             { from: 'cash_confirm', to: 'landlord_confirm' },
             { from: 'qr_proof', to: 'landlord_confirm' },
             { from: 'pm_checkout', to: 'auto_confirm' },
-            { from: 'stripe_pay', to: 'auto_confirm' },
-            { from: 'paypal_pay', to: 'auto_confirm' },
             { from: 'landlord_confirm', to: 'paid' },
             { from: 'auto_confirm', to: 'paid' },
             { from: 'paid', to: 'payout' },
@@ -454,14 +438,12 @@ const systemFlows = {
             { id: 'services', label: 'External Services', type: 'decision', x: 400, y: 260, icon: '🔌' },
             { id: 'supabase', label: 'Supabase\nDB + Auth + Storage\n+ Realtime + RLS', type: 'process', x: 80, y: 380, icon: '🗄️' },
             { id: 'paymongo', label: 'PayMongo\nGCash, Maya, QR PH\nCards, GrabPay', type: 'process', x: 260, y: 380, icon: '🏦' },
-            { id: 'stripe', label: 'Stripe\nCredit Card\nPayments', type: 'process', x: 430, y: 380, icon: '💳' },
-            { id: 'paypal', label: 'PayPal\nOnline\nPayments', type: 'process', x: 590, y: 380, icon: '🅿️' },
-            { id: 'brevo', label: 'Brevo\nEmail Service\n+ OTP Resets', type: 'process', x: 750, y: 380, icon: '📧' },
+            { id: 'brevo', label: 'Brevo\nEmail Service\n+ OTP Resets', type: 'process', x: 430, y: 380, icon: '📧' },
             { id: 'sms_gw', label: 'SMS Gateway\n(15+ SMS types)', type: 'process', x: 80, y: 510, icon: '📱' },
-            { id: 'leaflet', label: 'Leaflet WebView\nMaps + Navigation', type: 'process', x: 260, y: 510, icon: '�️' },
+            { id: 'leaflet', label: 'Leaflet WebView\nMaps + Navigation', type: 'process', x: 260, y: 510, icon: '🗺️' },
             { id: 'vercel', label: 'Vercel\nHosting + Serverless\n+ Analytics', type: 'process', x: 430, y: 510, icon: '▲' },
-            { id: 'webhooks', label: 'Webhooks\nPayMongo + Stripe\n(Real-time)', type: 'process', x: 590, y: 510, icon: '🔄' },
-            { id: 'pdfkit', label: 'PDFKit\nMonthly Statements\n+ Reports', type: 'process', x: 750, y: 510, icon: '�' },
+            { id: 'webhooks', label: 'Webhooks\nPayMongo\n(Real-time)', type: 'process', x: 590, y: 510, icon: '🔄' },
+            { id: 'pdfkit', label: 'PDFKit\nMonthly Statements\n+ Reports', type: 'process', x: 750, y: 510, icon: '📄' },
             { id: 'realtime', label: 'Supabase Realtime\nLive Notifications\n+ Chat + Presence', type: 'end', x: 400, y: 620, icon: '⚡' },
         ],
         edges: [
@@ -469,13 +451,11 @@ const systemFlows = {
             { from: 'api', to: 'services' },
             { from: 'services', to: 'supabase' },
             { from: 'services', to: 'paymongo' },
-            { from: 'services', to: 'stripe' },
-            { from: 'services', to: 'paypal' },
-            { id: 'services', to: 'brevo' },
+            { from: 'services', to: 'brevo' },
             { from: 'supabase', to: 'sms_gw' },
             { from: 'supabase', to: 'leaflet' },
             { from: 'paymongo', to: 'vercel' },
-            { from: 'stripe', to: 'webhooks' },
+            { from: 'paymongo', to: 'webhooks' },
             { from: 'brevo', to: 'pdfkit' },
             { from: 'sms_gw', to: 'realtime' },
             { from: 'leaflet', to: 'realtime' },
@@ -566,18 +546,45 @@ const systemFlows = {
 // FLOWCHART RENDERER COMPONENT
 // ==========================================
 function FlowchartCanvas({ flow }) {
-    const canvasRef = useRef(null)
+    const containerRef = useRef(null)
     const [hoveredNode, setHoveredNode] = useState(null)
-    const [scale, setScale] = useState(1)
+    const [scale, setScale] = useState(0.5)
 
-    // Calculate canvas dimensions from nodes
-    const maxX = Math.max(...flow.nodes.map(n => n.x)) + 200
-    const maxY = Math.max(...flow.nodes.map(n => n.y)) + 100
+    // Spacing multipliers to give arrows more breathing room
+    const spX = 1.5
+    const spY = 1.7
+
+    // Calculate canvas dimensions from nodes (with spacing applied)
+    const maxX = Math.max(...flow.nodes.map(n => n.x * spX)) + 200
+    const maxY = Math.max(...flow.nodes.map(n => n.y * spY)) + 100
+
+    const contentW = maxX + 60
+    const contentH = maxY + 80
+
+    // Auto-fit: measure container and calculate scale to fit
+    const fitToContainer = () => {
+        if (!containerRef.current) return
+        const cw = containerRef.current.clientWidth - 32 // account for padding
+        const fitScale = cw / contentW
+        setScale(Math.max(0.2, Math.min(1, Math.round(fitScale * 100) / 100)))
+    }
+
+    useEffect(() => {
+        // Auto-fit on mount and when flow changes
+        const timer = setTimeout(fitToContainer, 50)
+        return () => clearTimeout(timer)
+    }, [flow, contentW])
+
+    useEffect(() => {
+        // Re-fit on window resize
+        window.addEventListener('resize', fitToContainer)
+        return () => window.removeEventListener('resize', fitToContainer)
+    }, [contentW])
 
     const nodeW = 160
     const getNodeCenter = (node) => {
         const h = node.type === 'decision' ? 90 : 70
-        return { x: node.x + nodeW / 2, y: node.y + h / 2 }
+        return { x: node.x * spX + nodeW / 2, y: node.y * spY + h / 2 }
     }
 
     const getNodeById = (id) => flow.nodes.find(n => n.id === id)
@@ -600,32 +607,28 @@ function FlowchartCanvas({ flow }) {
     }
 
     return (
-        <div className="relative overflow-x-auto overflow-y-auto rounded-2xl bg-white border border-gray-200">
+        <div ref={containerRef} className="relative rounded-2xl" style={{ height: contentH * scale + 60, overflow: 'hidden' }}>
             {/* Zoom Controls */}
             <div className="sticky top-3 right-3 z-20 flex justify-end px-3">
                 <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl shadow-sm px-2 py-1">
-                    <button onClick={() => setScale(s => Math.max(0.3, s - 0.1))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
+                    <button onClick={() => setScale(s => Math.max(0.2, +(s - 0.05).toFixed(2)))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
                     </button>
                     <span className="text-xs font-mono text-gray-400 w-10 text-center">{Math.round(scale * 100)}%</span>
-                    <button onClick={() => setScale(s => Math.min(1.5, s + 0.1))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
+                    <button onClick={() => setScale(s => Math.min(1.5, +(s + 0.05).toFixed(2)))} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 cursor-pointer">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                     </button>
-                    <button onClick={() => setScale(1)} className="p-1.5 hover:bg-gray-100 rounded-lg text-xs text-gray-400 cursor-pointer">Reset</button>
+                    <button onClick={fitToContainer} className="p-1.5 hover:bg-gray-100 rounded-lg text-xs text-gray-500 font-semibold cursor-pointer">Fit</button>
+                    <button onClick={() => setScale(1)} className="p-1.5 hover:bg-gray-100 rounded-lg text-xs text-gray-400 cursor-pointer">100%</button>
                 </div>
             </div>
 
             <div
-                className="relative p-8 min-w-[860px]"
-                style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: maxX + 60, height: maxY + 80 }}
+                className="relative p-4"
+                style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: contentW, height: contentH }}
             >
                 {/* SVG Arrows */}
-                <svg className="absolute inset-0 pointer-events-none" style={{ width: maxX + 60, height: maxY + 80 }}>
-                    <defs>
-                        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
-                        </marker>
-                    </defs>
+                <svg className="absolute inset-0 pointer-events-none z-10" style={{ width: maxX + 60, height: maxY + 80 }}>
                     {flow.edges.map((edge, i) => {
                         const fromNode = getNodeById(edge.from)
                         const toNode = getNodeById(edge.to)
@@ -637,6 +640,7 @@ function FlowchartCanvas({ flow }) {
                         const dy = to.y - from.y
                         const dist = Math.sqrt(dx * dx + dy * dy)
                         if (dist === 0) return null
+
                         const offsetStart = fromNode.type === 'decision' ? 50 : 40
                         const offsetEnd = toNode.type === 'decision' ? 50 : 40
                         const sx = from.x + (dx / dist) * offsetStart
@@ -644,22 +648,85 @@ function FlowchartCanvas({ flow }) {
                         const ex = to.x - (dx / dist) * offsetEnd
                         const ey = to.y - (dy / dist) * offsetEnd
 
-                        const mx = (sx + ex) / 2
-                        const my = (sy + ey) / 2
+                        // Build a smooth cubic bezier path
+                        const absDx = Math.abs(ex - sx)
+                        const absDy = Math.abs(ey - sy)
+                        let pathD
+                        if (absDy > absDx * 0.4) {
+                            // Mostly vertical: S-curve with vertical emphasis
+                            const cy1 = sy + (ey - sy) * 0.35
+                            const cy2 = sy + (ey - sy) * 0.65
+                            pathD = `M ${sx} ${sy} C ${sx} ${cy1}, ${ex} ${cy2}, ${ex} ${ey}`
+                        } else {
+                            // Mostly horizontal: S-curve with horizontal emphasis
+                            const cx1 = sx + (ex - sx) * 0.35
+                            const cx2 = sx + (ex - sx) * 0.65
+                            pathD = `M ${sx} ${sy} C ${cx1} ${sy}, ${cx2} ${ey}, ${ex} ${ey}`
+                        }
+
+                        // Calculate arrowhead at the end of the path
+                        const arrowLen = 10
+                        const arrowWidth = 5
+                        // Direction vector at endpoint
+                        const adx = ex - sx
+                        const ady = ey - sy
+                        const aDist = Math.sqrt(adx * adx + ady * ady)
+                        const ux = adx / (aDist || 1)
+                        const uy = ady / (aDist || 1)
+                        // Arrowhead points
+                        const tipX = ex
+                        const tipY = ey
+                        const baseX1 = ex - ux * arrowLen + uy * arrowWidth
+                        const baseY1 = ey - uy * arrowLen - ux * arrowWidth
+                        const baseX2 = ex - ux * arrowLen - uy * arrowWidth
+                        const baseY2 = ey - uy * arrowLen + ux * arrowWidth
+
+                        const lineColor = edge.label ? '#6366f1' : '#94a3b8'
+                        const arrowColor = edge.label ? '#6366f1' : '#64748b'
+
+                        // Label position at midpoint of the curve
+                        const mt = 0.5
+                        const labelX = (1 - mt) * (1 - mt) * (1 - mt) * sx + 3 * (1 - mt) * (1 - mt) * mt * (absDy > absDx * 0.4 ? sx : sx + (ex - sx) * 0.35) + 3 * (1 - mt) * mt * mt * (absDy > absDx * 0.4 ? ex : sx + (ex - sx) * 0.65) + mt * mt * mt * ex
+                        const labelY = (1 - mt) * (1 - mt) * (1 - mt) * sy + 3 * (1 - mt) * (1 - mt) * mt * (absDy > absDx * 0.4 ? sy + (ey - sy) * 0.35 : sy) + 3 * (1 - mt) * mt * mt * (absDy > absDx * 0.4 ? sy + (ey - sy) * 0.65 : ey) + mt * mt * mt * ey
+
+                        const labelWidth = edge.label ? Math.max(edge.label.length * 7 + 16, 44) : 0
 
                         return (
                             <g key={i}>
-                                <line
-                                    x1={sx} y1={sy} x2={ex} y2={ey}
-                                    stroke="#cbd5e1"
-                                    strokeWidth="2"
-                                    markerEnd="url(#arrowhead)"
-                                    strokeDasharray={edge.label ? "6,3" : "none"}
+                                {/* Glow / shadow line behind for depth */}
+                                <path
+                                    d={pathD}
+                                    fill="none"
+                                    stroke={edge.label ? 'rgba(99,102,241,0.15)' : 'rgba(148,163,184,0.15)'}
+                                    strokeWidth="8"
+                                    strokeLinecap="round"
                                 />
+                                {/* Main path */}
+                                <path
+                                    d={pathD}
+                                    fill="none"
+                                    stroke={lineColor}
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeDasharray={edge.label ? "8,4" : "none"}
+                                />
+                                {/* Arrowhead triangle */}
+                                <polygon
+                                    points={`${tipX},${tipY} ${baseX1},${baseY1} ${baseX2},${baseY2}`}
+                                    fill={arrowColor}
+                                />
+                                {/* Label badge */}
                                 {edge.label && (
                                     <>
-                                        <rect x={mx - 22} y={my - 10} width="44" height="20" rx="6" fill="white" stroke="#e2e8f0" strokeWidth="1" />
-                                        <text x={mx} y={my + 4} textAnchor="middle" fontSize="10" fontWeight="600" fill="#64748b">
+                                        <rect
+                                            x={labelX - labelWidth / 2}
+                                            y={labelY - 11}
+                                            width={labelWidth}
+                                            height="22"
+                                            rx="11"
+                                            fill="#6366f1"
+                                        />
+                                        <text x={labelX} y={labelY + 4} textAnchor="middle" fontSize="10" fontWeight="700" fill="white">
                                             {edge.label}
                                         </text>
                                     </>
@@ -680,7 +747,7 @@ function FlowchartCanvas({ flow }) {
                         <div
                             key={node.id}
                             className={`absolute transition-all duration-200 cursor-default select-none ${isHovered ? 'z-10 scale-105' : 'z-0'}`}
-                            style={{ left: node.x, top: node.y, width: nodeW }}
+                            style={{ left: node.x * spX, top: node.y * spY, width: nodeW }}
                             onMouseEnter={() => setHoveredNode(node.id)}
                             onMouseLeave={() => setHoveredNode(null)}
                         >
@@ -779,7 +846,7 @@ export default function FlowchartPage() {
                         <div className="flex flex-wrap justify-center gap-6 mt-10">
                             {[
                                 { label: 'User Roles', value: '3', icon: '👥' },
-                                { label: 'Payment Methods', value: '7+', icon: '💳' },
+                                { label: 'Payment Methods', value: '5+', icon: '💳' },
                                 { label: 'Notification Types', value: '20+', icon: '🔔' },
                                 { label: 'API Endpoints', value: '35+', icon: '⚙️' },
                                 { label: 'Family Members', value: '✓', icon: '👨‍👩‍👧' },
@@ -842,12 +909,19 @@ export default function FlowchartPage() {
                                 </div>
                             ))}
                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-0.5 border-t-2 border-dashed border-gray-400" />
+                                <div className="w-8 h-0.5 border-t-2 border-dashed" style={{ borderColor: '#6366f1' }} />
                                 <span className="text-xs font-medium text-gray-600">Conditional Path</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-0.5 bg-gray-400" />
+                                <div className="flex items-center">
+                                    <div className="w-6 h-0.5 bg-gray-400" />
+                                    <div className="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-l-[6px] border-l-gray-500" />
+                                </div>
                                 <span className="text-xs font-medium text-gray-600">Direct Path</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="px-2 py-0.5 rounded-full text-[9px] font-bold text-white" style={{ backgroundColor: '#6366f1' }}>Yes</div>
+                                <span className="text-xs font-medium text-gray-600">Label Badge</span>
                             </div>
                         </div>
                     </div>
@@ -865,7 +939,7 @@ export default function FlowchartPage() {
                             },
                             {
                                 icon: '💰', title: 'Payment Processing',
-                                items: ['PayMongo (GCash, Maya, QR PH, Card)', 'Stripe (Credit Card)', 'PayPal (Online)', 'Cash + QR Code (manual)', 'Auto payout', 'Family member payments']
+                                items: ['PayMongo (GCash, Maya, QR PH, Card)', 'Cash + QR Code (manual)', 'Auto payout', 'Family member payments']
                             },
                             {
                                 icon: '🔔', title: 'Notifications',
@@ -900,7 +974,7 @@ export default function FlowchartPage() {
                     {/* Footer */}
                     <div className="mt-12 text-center">
                         <p className="text-xs text-gray-400">
-                            Abalay Rental Management System — Built with Next.js, Supabase, PayMongo, Stripe & Brevo
+                            Abalay Rental Management System — Built with Next.js, Supabase, PayMongo & Brevo
                         </p>
                     </div>
                 </div>

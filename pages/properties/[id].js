@@ -9,7 +9,7 @@ import { showToast } from 'nextjs-toast-notify'
 import Footer from '@/components/Footer'
 
 const ACTIVE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'completed']
 const TENANT_PREFERRED_SCHEDULE_LABEL = 'TENANTS PREFEREED SCHEDULE'
 
 function getTodayDateInputValue() {
@@ -1389,6 +1389,7 @@ export default function PropertyDetail() {
   const hasFreeElectricity = propertyAmenities.some(a => String(a).toLowerCase() === 'free electricity')
   const apartmentTypeLabel = String(property.property_type || 'Apartment').trim() || 'Apartment'
   const parsedMaxOccupancy = Number(property.max_occupancy)
+  const hasNoOccupancyLimit = Number.isFinite(parsedMaxOccupancy) && parsedMaxOccupancy <= 0
   const maxOccupancy = Number.isFinite(parsedMaxOccupancy) && parsedMaxOccupancy > 0
     ? Math.floor(parsedMaxOccupancy)
     : null
@@ -1815,7 +1816,7 @@ export default function PropertyDetail() {
                       <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Capacity</p>
                       <p className="mt-1 text-sm font-bold text-gray-900 flex items-center gap-1.5">
                         <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                        {maxOccupancy ? `Good for ${maxOccupancy} ${maxOccupancy === 1 ? 'person' : 'people'}` : 'Not specified'}
+                        {hasNoOccupancyLimit ? 'No Limits' : (maxOccupancy ? `Good for ${maxOccupancy} ${maxOccupancy === 1 ? 'person' : 'people'}` : 'Not specified')}
                       </p>
                     </div>
 

@@ -36,7 +36,7 @@ export default async function handler(req, res) {
         }
 
         // Always look up by tenant_id — subscription is permanent per tenant
-        const { data: subscription, error } = await supabaseAdmin
+        let { data: subscription, error } = await supabaseAdmin
             .from('subscriptions')
             .select('*')
             .eq('tenant_id', tenant_id)
@@ -68,6 +68,39 @@ export default async function handler(req, res) {
                     max_slots: MAX_FAMILY_MEMBERS
                 }
             })
+        }
+
+        // Self-heal: reconcile slots from paid payments in case prior confirmation/webhook was missed.
+        const { count: paidCount, error: paidCountErr } = await supabaseAdmin
+            .from('subscription_payments')
+            .select('id', { count: 'exact', head: true })
+            .eq('subscription_id', subscription.id)
+            .eq('status', 'paid')
+
+        if (paidCountErr) return res.status(500).json({ error: paidCountErr.message })
+
+        const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
+        const reconciledPaidSlots = Math.min(paidCount || 0, maxPaidSlots)
+        const reconciledTotalSlots = Math.min(MAX_FAMILY_MEMBERS, FREE_SLOTS + reconciledPaidSlots)
+
+        if (
+            subscription.paid_slots !== reconciledPaidSlots ||
+            subscription.total_slots !== reconciledTotalSlots ||
+            subscription.plan_type !== (reconciledPaidSlots > 0 ? 'paid' : 'free')
+        ) {
+            const { data: reconciledSub, error: reconcileErr } = await supabaseAdmin
+                .from('subscriptions')
+                .update({
+                    paid_slots: reconciledPaidSlots,
+                    total_slots: reconciledTotalSlots,
+                    plan_type: reconciledPaidSlots > 0 ? 'paid' : 'free'
+                })
+                .eq('id', subscription.id)
+                .select()
+                .single()
+
+            if (reconcileErr) return res.status(500).json({ error: reconcileErr.message })
+            subscription = reconciledSub
         }
 
         return res.status(200).json({
@@ -227,42 +260,61 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: 'payment_id required' })
             }
 
-            // Get the pending payment
-            const { data: payment } = await supabaseAdmin
+            // Get payment (allow pending OR already-paid to keep this endpoint idempotent)
+            const { data: payment, error: paymentErr } = await supabaseAdmin
                 .from('subscription_payments')
                 .select('*, subscription:subscriptions(*)')
                 .eq('id', payment_id)
-                .eq('status', 'pending')
-                .single()
+                .maybeSingle()
 
-            if (!payment) {
-                return res.status(404).json({ error: 'Pending payment not found' })
+            if (paymentErr) {
+                return res.status(500).json({ error: paymentErr.message })
             }
 
-            // Mark payment as paid
-            await supabaseAdmin
-                .from('subscription_payments')
-                .update({
-                    status: 'paid',
-                    payment_method: payment_method || 'paymongo',
-                    payment_reference: payment_reference || null,
-                    paid_at: new Date().toISOString()
-                })
-                .eq('id', payment_id)
+            if (!payment) {
+                return res.status(404).json({ error: 'Payment not found' })
+            }
 
-            // Upgrade subscription
-            const sub = payment.subscription
-            const newPaidSlots = sub.paid_slots + 1
-            const newTotalSlots = FREE_SLOTS + newPaidSlots
+            if (!payment.subscription?.id) {
+                return res.status(400).json({ error: 'Subscription not found for payment' })
+            }
+
+            // Mark as paid if still pending.
+            if (payment.status !== 'paid') {
+                await supabaseAdmin
+                    .from('subscription_payments')
+                    .update({
+                        status: 'paid',
+                        payment_method: payment_method || 'paymongo',
+                        payment_reference: payment_reference || payment.payment_reference || null,
+                        paid_at: new Date().toISOString()
+                    })
+                    .eq('id', payment_id)
+            }
+
+            // Reconcile slots from the source of truth: all paid subscription payments.
+            const { count: paidCount, error: paidCountErr } = await supabaseAdmin
+                .from('subscription_payments')
+                .select('id', { count: 'exact', head: true })
+                .eq('subscription_id', payment.subscription.id)
+                .eq('status', 'paid')
+
+            if (paidCountErr) {
+                return res.status(500).json({ error: paidCountErr.message })
+            }
+
+            const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
+            const newPaidSlots = Math.min(paidCount || 0, maxPaidSlots)
+            const newTotalSlots = Math.min(MAX_FAMILY_MEMBERS, FREE_SLOTS + newPaidSlots)
 
             const { data: updatedSub, error: updateErr } = await supabaseAdmin
                 .from('subscriptions')
                 .update({
                     paid_slots: newPaidSlots,
                     total_slots: newTotalSlots,
-                    plan_type: 'paid'
+                    plan_type: newPaidSlots > 0 ? 'paid' : 'free'
                 })
-                .eq('id', sub.id)
+                .eq('id', payment.subscription.id)
                 .select()
                 .single()
 

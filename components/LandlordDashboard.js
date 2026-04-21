@@ -107,6 +107,8 @@ export default function LandlordDashboard({ session, profile }) {
   // Landlord data states
   const [occupancies, setOccupancies] = useState([])
   const [pendingEndRequests, setPendingEndRequests] = useState([])
+  const [incomingEnds, setIncomingEnds] = useState([])
+  const [pendingCancelEndRequests, setPendingCancelEndRequests] = useState([])
   const [pendingRenewalRequests, setPendingRenewalRequests] = useState([])
   const [dashboardTasks, setDashboardTasks] = useState({ maintenance: [], payments: [] })
   const [scheduledTodayBookings, setScheduledTodayBookings] = useState([])
@@ -163,6 +165,8 @@ export default function LandlordDashboard({ session, profile }) {
         loadProperties(),
         loadOccupancies(),
         loadPendingEndRequests(),
+        loadIncomingEnds(),
+        loadPendingCancelEndRequests(),
         loadDashboardTasks(),
         loadScheduledTodayBookings(),
         loadAvailabilityScheduleCount(),
@@ -946,6 +950,61 @@ export default function LandlordDashboard({ session, profile }) {
     setPendingEndRequests(data || [])
   }
 
+  async function loadPendingCancelEndRequests() {
+    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone), property:properties(id, title, address)`).eq('landlord_id', session.user.id).eq('end_request_status', 'cancel_pending')
+    setPendingCancelEndRequests(data || [])
+  }
+
+  async function loadIncomingEnds() {
+    // Fetch all active occupancies and filter in JS for better compatibility and logic
+    const { data, error } = await supabase
+      .from('tenant_occupancies')
+      .select(`
+        *,
+        tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, phone, avatar_url),
+        property:properties(id, title, images, price, address, city)
+      `)
+      .eq('landlord_id', session.user.id)
+      .eq('status', 'active')
+
+    if (error) {
+      console.error('Error loading incoming ends:', error)
+      return
+    }
+
+    if (data) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const thirtyDaysFromNow = new Date()
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
+
+      const filtered = data.filter(item => {
+        // Case 1: Approved move-out
+        if (item.end_request_status === 'approved' && item.end_request_date) {
+          return true // Show all approved move-outs until they are processed/archived
+        }
+
+        // Case 2: Contract ending soon OR already ended but still active status
+        if (!item.end_request_status && item.contract_end_date) {
+          const endDate = new Date(item.contract_end_date)
+          // Show if it ends within the next 30 days OR if it's already past the end date but still marked as active
+          return endDate <= thirtyDaysFromNow
+        }
+
+        return false
+      })
+
+      // Sort by end date
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.end_request_date || a.contract_end_date)
+        const dateB = new Date(b.end_request_date || b.contract_end_date)
+        return dateA - dateB
+      })
+
+      setIncomingEnds(filtered)
+    }
+  }
+
   async function loadPendingRenewalRequests() {
     setPendingRenewalRequests([])
   }
@@ -1261,7 +1320,7 @@ export default function LandlordDashboard({ session, profile }) {
       loadDashboardTasks()
     }
 
-    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, email, phone, avatar_url), property:properties(id, title, images, price, amenities)`).eq('landlord_id', session.user.id).eq('status', 'active')
+    const { data } = await supabase.from('tenant_occupancies').select(`*, tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, email, phone, avatar_url), property:properties(id, title, images, price, amenities)`).eq('landlord_id', session.user.id).in('status', ['active', 'pending_end'])
     setOccupancies(data || [])
   }
 
@@ -2015,6 +2074,10 @@ export default function LandlordDashboard({ session, profile }) {
         await approveEndRequest(confirmationModal.requestId)
       } else if (confirmationModal.type === 'reject') {
         await rejectEndRequest(confirmationModal.requestId)
+      } else if (confirmationModal.type === 'cancel_end') {
+        await cancelEndStay(confirmationModal.requestId)
+      } else if (confirmationModal.type === 'approve_cancel_end') {
+        await approveCancelEndRequest(confirmationModal.requestId)
       }
       setConfirmationModal({ isOpen: false, type: null, requestId: null })
     } finally {
@@ -2104,10 +2167,6 @@ export default function LandlordDashboard({ session, profile }) {
       : "Move-out approved. Contract ended and property is now available.", 
       { duration: 5000, transition: "bounceIn" }
     )
-    loadPendingEndRequests()
-    loadOccupancies()
-    loadDashboardTasks()
-    loadProperties()
 
     // Notification Message
     const message = `Your request to move out of "${occupancy.property?.title}" has been APPROVED. The contract is now ${isFutureDate ? 'scheduled to end on ' + endRequestDateValue.toLocaleDateString() : 'ended'}.`
@@ -2141,8 +2200,57 @@ export default function LandlordDashboard({ session, profile }) {
       console.error('Family cleanup error:', err)
     }
 
-    showToast.success('Approved successfully', { duration: 4000, transition: "bounceIn" });
-    loadPendingEndRequests(); loadOccupancies(); loadProperties(); loadScheduledTodayBookings()
+    loadPendingEndRequests()
+    loadOccupancies()
+    loadProperties()
+    loadIncomingEnds()
+    loadPendingCancelEndRequests()
+    loadScheduledTodayBookings()
+  }
+
+  async function cancelEndStay(occupancyId) {
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({
+        end_request_status: null,
+        end_request_date: null,
+        end_request_reason: null,
+        status: 'active'
+      })
+      .eq('id', occupancyId)
+
+    if (error) {
+      showToast.error(`Failed to cancel: ${error.message}`)
+      return
+    }
+
+    showToast.success('End-of-stay request cancelled. Tenant stay is back to normal.')
+    loadPendingEndRequests()
+    loadOccupancies()
+    loadIncomingEnds()
+    loadPendingCancelEndRequests()
+  }
+
+  async function approveCancelEndRequest(occupancyId) {
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({
+        end_request_status: null,
+        end_request_date: null,
+        end_request_reason: null,
+        status: 'active'
+      })
+      .eq('id', occupancyId)
+
+    if (error) {
+      showToast.error(`Failed to approve cancellation: ${error.message}`)
+      return
+    }
+
+    showToast.success('Cancellation approved. Tenant stay is now active again.')
+    loadPendingCancelEndRequests()
+    loadOccupancies()
+    loadIncomingEnds()
   }
 
   async function rejectEndRequest(occupancyId) {
@@ -2191,11 +2299,12 @@ export default function LandlordDashboard({ session, profile }) {
 
   const isBillingRowsScrollable = filteredBillingSchedule.length > 10
   const nonOccupiedProperties = properties.filter((property) => property.status !== 'occupied')
-  const activeOccupancies = occupancies.filter((occupancy) => occupancy.status === 'active')
+  const activeOccupancies = occupancies.filter((occupancy) => ['active', 'pending_end'].includes(occupancy.status))
   const metricsToolCount = properties.length
   const billingToolCount = billingSchedule.length
   const propertiesToolCount = activeOccupancies.length
-  const actionsToolCount = pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length
+  const terminationsToolCount = incomingEnds.length + pendingCancelEndRequests.length
+  const actionsToolCount = pendingEndRequests.length + pendingRenewalRequests.length + pendingCancelEndRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length
   const scheduledToolCount = scheduledTodayBookings.length
   const hasNoAvailabilitySchedule = availabilityScheduleCount === 0
 
@@ -2269,7 +2378,8 @@ export default function LandlordDashboard({ session, profile }) {
 
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
+    <>
+      <div className="min-h-screen bg-gray-50 flex flex-col scroll-smooth">
       <div className="max-w-[1800px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 relative z-10 flex-1 w-full">
 
         <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 lg:gap-8 pb-24 items-start">
@@ -2328,13 +2438,19 @@ export default function LandlordDashboard({ session, profile }) {
               </button>
               <button onClick={() => setActivePanel('actions')} className={`w-auto lg:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 sm:gap-3 cursor-pointer ${activePanel === 'actions' ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                <span className="hidden sm:inline">Action Center</span>
+                <span className="hidden sm:inline">Pending Tasks</span>
                 <span className="sm:hidden">Actions</span>
                 <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black border inline-flex items-center justify-center ${activePanel === 'actions' ? 'bg-white/15 text-white border-white/25' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{actionsToolCount}</span>
               </button>
+              <button onClick={() => setActivePanel('terminations')} className={`w-auto lg:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 sm:gap-3 cursor-pointer ${activePanel === 'terminations' ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                <span className="hidden sm:inline">Property Ends</span>
+                <span className="sm:hidden">Ends</span>
+                <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black border inline-flex items-center justify-center ${activePanel === 'terminations' ? 'bg-white/15 text-white border-white/25' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{terminationsToolCount}</span>
+              </button>
               <button onClick={() => setActivePanel('scheduled')} className={`w-auto lg:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 sm:gap-3 cursor-pointer ${activePanel === 'scheduled' ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2v2m-6 0h6" /></svg>
-                <span className="hidden sm:inline">Scheduled Today</span>
+                <span className="hidden sm:inline">Scheduled Booking Today</span>
                 <span className="sm:hidden">Scheduled</span>
                 <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black border inline-flex items-center justify-center ${activePanel === 'scheduled' ? 'bg-white/15 text-white border-white/25' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{scheduledToolCount}</span>
               </button>
@@ -2403,13 +2519,14 @@ export default function LandlordDashboard({ session, profile }) {
                   <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Total Income</p>
                 </div>
 
+
                 <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
                   <div className="flex items-center justify-between mb-2 sm:mb-4">
                     <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-xl sm:rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
                       <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     </div>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? (pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) : 0} /></h3>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? actionsToolCount : 0} /></h3>
                   <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Pending Tasks</p>
                 </div>
               </div>
@@ -2428,18 +2545,18 @@ export default function LandlordDashboard({ session, profile }) {
                         + Add New Apartment
                     </button>
                   </div>
-
-                  {nonOccupiedProperties.length === 0 ? (
+ 
+                  {properties.length === 0 ? (
                     <div className="text-center py-12 bg-gray-50/50 border border-dashed border-gray-200 rounded-2xl">
                         <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-gray-400">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                         </div>
-                      <p className="text-gray-900 font-bold text-sm">No available apartments</p>
-                      <p className="text-gray-500 text-sm mt-1">Occupied apartments are hidden from this list.</p>
+                      <p className="text-gray-900 font-bold text-sm">No apartments found</p>
+                      <p className="text-gray-500 text-sm mt-1">Start by adding your first property to the platform.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
-                      {nonOccupiedProperties.map(property => {
+                      {properties.map(property => {
                         const imgs = (property.images && Array.isArray(property.images) && property.images.length > 0) ? property.images : ['/placeholder-property.jpg']
                         const currentIndex = currentImageIndex[property.id] || 0
                         return (
@@ -2826,7 +2943,7 @@ export default function LandlordDashboard({ session, profile }) {
                   <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                     <div>
                       <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
-                        Action Center
+                        Pending Tasks
                         {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
                           <span className="flex h-2.5 w-2.5 relative">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -2837,8 +2954,29 @@ export default function LandlordDashboard({ session, profile }) {
                     </div>
                   </div>
 
-                  {(pendingEndRequests.length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 ? (
+                  {(pendingEndRequests.length + pendingRenewalRequests.length + pendingCancelEndRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                      {pendingCancelEndRequests.map(req => (
+                        <div key={req.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group" onClick={() => openEndConfirmation('approve_cancel_end', req.id)}>
+                          <div className="flex items-start gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                              <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-md cursor-pointer">Cancel Move-Out</span>
+                                <span className="text-[10px] text-gray-400 font-medium">Tenant Request</span>
+                              </div>
+                              <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors truncate">{req.property?.title}</h4>
+                              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                {req.tenant?.first_name} {req.tenant?.last_name}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
                       {pendingEndRequests.map(req => (
                         <div key={req.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-orange-300 hover:shadow-md transition-all cursor-pointer group" onClick={() => openEndConfirmation('approve', req.id)}>
                           <div className="flex items-start gap-4">
@@ -2888,6 +3026,7 @@ export default function LandlordDashboard({ session, profile }) {
                           </div>
                         </div>
                       ))}
+                      {/* ... rest of actions ... */}
 
                       {dashboardTasks.maintenance.length > 0 && (
                         <div onClick={() => router.push('/maintenance')} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-rose-300 hover:shadow-md transition-all cursor-pointer group">
@@ -2930,6 +3069,83 @@ export default function LandlordDashboard({ session, profile }) {
                       <p className="text-gray-400 text-sm font-medium">All caught up! No pending tasks.</p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* PROPERTY TERMINATIONS / ENDS */}
+              {activePanel === 'terminations' && (
+                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm">
+                  <div className="flex items-center justify-between mb-4 sm:mb-6">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Property Ends</h3>
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">Pending terminations</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+
+                    {/* INCOMING / SCHEDULED ENDS */}
+                    <div>
+                      <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-3 px-1">Upcoming End of List ({incomingEnds.length})</h4>
+                      {incomingEnds.length === 0 ? (
+                        <div className="py-4 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                          <p className="text-gray-400 text-xs font-medium">No upcoming terminations</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-3">
+                          {incomingEnds.map(req => {
+                            const isApprovedMoveOut = req.end_request_status === 'approved'
+                            const rawEndDate = isApprovedMoveOut ? req.end_request_date : req.contract_end_date
+                            const endDateObj = new Date(rawEndDate)
+                            const isOverdue = endDateObj < new Date().setHours(0,0,0,0)
+                            
+                            return (
+                              <div key={req.id} className="p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-200 hover:shadow-sm transition-all group">
+                                <div className="flex items-start gap-3">
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isApprovedMoveOut ? 'bg-emerald-100 text-emerald-600' : (isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600')}`}>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      {isApprovedMoveOut ? (
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      ) : (
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      )}
+                                    </svg>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                                      <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isApprovedMoveOut ? 'bg-emerald-50 text-emerald-700' : (isOverdue ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700')}`}>
+                                        {isApprovedMoveOut ? 'Scheduled Move-Out' : (isOverdue ? 'Contract Expired' : 'Expiring Soon')}
+                                      </span>
+                                      <span className="text-[9px] text-gray-400 font-medium">Incoming</span>
+                                    </div>
+                                    <h4 className="font-bold text-xs text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
+                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                      <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                        {req.tenant?.first_name} {req.tenant?.last_name}
+                                      </p>
+                                      <p className={`text-[10px] font-bold flex items-center gap-1 ${isOverdue && !isApprovedMoveOut ? 'text-rose-600' : 'text-gray-700'}`}>
+                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                        Ends: {new Date(rawEndDate).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                    <div className="mt-2 flex justify-end">
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); openEndConfirmation('cancel_end', req.id); }}
+                                        className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg text-[9px] font-black uppercase hover:bg-rose-600 hover:text-white hover:border-rose-600 hover:shadow-md hover:shadow-rose-100 active:scale-95 transition-all shadow-sm cursor-pointer"
+                                      >
+                                        Cancel Move-Out
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2984,8 +3200,14 @@ export default function LandlordDashboard({ session, profile }) {
         {
           typeof window !== 'undefined' && confirmationModal.isOpen && createPortal(
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[120] p-4 animate-in fade-in duration-200">
-              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-200">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${confirmationModal.type === 'approve' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-200 relative">
+                <button 
+                  onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto ${confirmationModal.type === 'approve' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                   {confirmationModal.type === 'approve' ? (
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   ) : (
@@ -2993,54 +3215,114 @@ export default function LandlordDashboard({ session, profile }) {
                   )}
                 </div>
 
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  {confirmationModal.type === 'approve' ? 'Approve Move-Out?' : 'Reject Request?'}
+                <h3 className="text-lg font-bold text-gray-900 mb-2 text-center">
+                  {confirmationModal.type === 'approve' ? 'Approve Move-Out?' : 
+                   confirmationModal.type === 'approve_cancel_end' ? 'Approve Cancellation?' :
+                   confirmationModal.type === 'cancel_end' ? 'Cancel Stay Termination?' : 'Reject Request?'}
                 </h3>
 
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-gray-500 mb-4 text-center">
                   {confirmationModal.type === 'approve'
                     ? 'Are you sure you want to approve this request? The contract will be ended and the property will be marked as available.'
+                    : confirmationModal.type === 'approve_cancel_end'
+                    ? 'The tenant has requested to cancel their move-out. Approving this will keep the lease active.'
+                    : confirmationModal.type === 'cancel_end'
+                    ? 'Are you sure you want to cancel this termination? The tenant will stay and the lease will remain active.'
                     : 'Are you sure you want to reject this request? The tenant will remain in the property and the contract will continue.'}
                 </p>
 
-                {(() => {
-                  const req = pendingEndRequests.find(r => r.id === confirmationModal.requestId)
+                {/* Shared logic for displaying dates ... */}
+                {(confirmationModal.type === 'approve' || confirmationModal.type === 'cancel_end' || confirmationModal.type === 'approve_cancel_end') && (() => {
+                  const req = pendingEndRequests.find(r => r.id === confirmationModal.requestId) || 
+                              pendingCancelEndRequests.find(r => r.id === confirmationModal.requestId) ||
+                              incomingEnds.find(r => r.id === confirmationModal.requestId)
                   if (!req) return null
                   return (
                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 mb-6 space-y-2 text-xs">
                       <div className="flex justify-between items-center pb-2 border-b border-gray-200">
-                        <span className="text-gray-400 font-bold uppercase tracking-wider">Leave Date</span>
-                        <span className="text-gray-900 font-black">{req.end_request_date ? new Date(req.end_request_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Not Specified'}</span>
+                        <span className="text-gray-400 font-bold uppercase tracking-wider">Target Stay End</span>
+                        <span className="text-gray-900 font-black">
+                          {req.end_request_date || req.contract_end_date ? new Date(req.end_request_date || req.contract_end_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Not Specified'}
+                        </span>
                       </div>
-                      {req.end_request_reason && (
-                        <div className="pt-1">
-                          <span className="text-gray-400 font-bold uppercase tracking-wider block mb-1">Reason</span>
-                          <span className="text-gray-700 italic">"{req.end_request_reason}"</span>
-                        </div>
-                      )}
                     </div>
                   )
                 })()}
 
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
-                    className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleConfirmEndAction}
-                    disabled={processingEndRequest}
-                    className={`flex-1 px-4 py-2 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 ${processingEndRequest ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'} ${confirmationModal.type === 'approve' ? 'bg-black hover:bg-gray-800' : 'bg-red-600 hover:bg-red-700'}`}
-                  >
-                    {processingEndRequest ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                        Processing...
-                      </>
-                    ) : 'Confirm'}
-                  </button>
+                  {confirmationModal.type === 'approve' ? (
+                    <>
+                      <button
+                        onClick={async () => {
+                          setProcessingEndRequest(true)
+                          try {
+                            await rejectEndRequest(confirmationModal.requestId)
+                            setConfirmationModal({ isOpen: false, type: null, requestId: null })
+                          } finally {
+                            setProcessingEndRequest(false)
+                          }
+                        }}
+                        disabled={processingEndRequest}
+                        className="flex-1 px-4 py-2 border border-rose-200 text-rose-600 font-bold rounded-xl hover:bg-rose-50 cursor-pointer disabled:opacity-50 transition-all font-bold"
+                      >
+                        {processingEndRequest ? '...' : 'Reject Request'}
+                      </button>
+                      <button
+                        onClick={handleConfirmEndAction}
+                        disabled={processingEndRequest}
+                        className="flex-1 px-4 py-2 text-white font-bold rounded-xl shadow-lg bg-black hover:bg-gray-800 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+                      >
+                        {processingEndRequest ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                            Wait...
+                          </>
+                        ) : 'Approve Move-Out'}
+                      </button>
+                    </>
+                  ) : confirmationModal.type === 'approve_cancel_end' ? (
+                    <>
+                      <button
+                        onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
+                        className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={handleConfirmEndAction}
+                        disabled={processingEndRequest}
+                        className="flex-1 px-4 py-2 text-white font-bold rounded-xl shadow-lg bg-emerald-600 hover:bg-emerald-700 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 transition-all"
+                      >
+                        {processingEndRequest ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                            Wait...
+                          </>
+                        ) : 'Approve Stay'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setConfirmationModal({ isOpen: false, type: null, requestId: null })}
+                        className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 cursor-pointer"
+                      >
+                        {confirmationModal.type === 'reject' ? 'Cancel' : 'No, Keep'}
+                      </button>
+                      <button
+                        onClick={handleConfirmEndAction}
+                        disabled={processingEndRequest}
+                        className={`flex-1 px-4 py-2 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 ${processingEndRequest ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'} ${confirmationModal.type === 'cancel_end' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-red-600 hover:bg-red-700'}`}
+                      >
+                        {processingEndRequest ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                            Wait...
+                          </>
+                        ) : (confirmationModal.type === 'cancel_end' ? 'Yes, Cancel Move-Out' : 'Confirm Rejection')}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>,
@@ -3925,5 +4207,6 @@ export default function LandlordDashboard({ session, profile }) {
       </footer>
 
     </div>
+    </>
   )
 }

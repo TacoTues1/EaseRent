@@ -8,14 +8,14 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: `Method ${req.method} Not Allowed` })
     }
 
-    const { tenant_id, occupancy_id } = req.body
+    const { tenant_id, occupancy_id, allowedMethods } = req.body
 
     if (!tenant_id) {
         return res.status(400).json({ error: 'tenant_id required' })
     }
 
-    if (!process.env.PAYMONGO_SECRET_KEY_LIVE) {
-        return res.status(500).json({ error: 'PayMongo Live Secret Key is missing. Set PAYMONGO_SECRET_KEY_LIVE in .env.local' })
+    if (!process.env.PAYMONGO_SECRET_KEY) {
+        return res.status(500).json({ error: 'PayMongo Test Secret Key is missing. Set PAYMONGO_SECRET_KEY in .env.local' })
     }
 
     const { data: tenant } = await supabaseAdmin
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
             occupancy_id: occupancy_id || null,
             amount: SLOT_PRICE,
             currency: 'PHP',
-            payment_method: 'paymongo_qrph',
+            payment_method: 'paymongo',
             status: 'pending'
         })
         .select()
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
 
     if (payErr) return res.status(500).json({ error: payErr.message })
 
-    const encoded = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY_LIVE}:`).toString('base64')
+    const encoded = Buffer.from(`${process.env.PAYMONGO_SECRET_KEY}:`).toString('base64')
     const amountInCentavos = Math.round(SLOT_PRICE * 100)
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL
@@ -84,6 +84,9 @@ export default async function handler(req, res) {
     const cancelUrl = `${cleanBaseUrl}/settings?subscription_cancelled=true`
 
     const tenantName = `${tenant.first_name || ''} ${tenant.last_name || ''}`.trim()
+    const paymentMethodTypes = allowedMethods && allowedMethods.length > 0
+        ? allowedMethods
+        : ['gcash', 'paymaya', 'card', 'qrph', 'grab_pay']
 
     try {
         const checkoutResponse = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
@@ -109,7 +112,7 @@ export default async function handler(req, res) {
                                 quantity: 1
                             }
                         ],
-                        payment_method_types: ['qrph'],
+                        payment_method_types: paymentMethodTypes,
                         success_url: successUrl,
                         cancel_url: cancelUrl,
                         metadata: {

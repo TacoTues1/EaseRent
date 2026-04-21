@@ -89,6 +89,8 @@ export default function TenantDashboard({ session, profile }) {
   const [endRequestDate, setEndRequestDate] = useState('')
   const [endRequestReason, setEndRequestReason] = useState('')
   const [submittingEndRequest, setSubmittingEndRequest] = useState(false)
+  const [showCancelEndModal, setShowCancelEndModal] = useState(false)
+  const [submittingCancelEnd, setSubmittingCancelEnd] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewTarget, setReviewTarget] = useState(null)
   const [reviewComment, setReviewComment] = useState('')
@@ -1624,6 +1626,38 @@ export default function TenantDashboard({ session, profile }) {
     setShowEndRequestModal(false); setEndRequestReason(''); setEndRequestDate(''); setSubmittingEndRequest(false); loadTenantOccupancy()
   }
 
+  async function cancelEndOccupancyRequest() {
+    if (!tenantOccupancy) return
+    setSubmittingCancelEnd(true)
+
+    // Set status to cancel_pending for landlord approval
+    const { error } = await supabase
+      .from('tenant_occupancies')
+      .update({ 
+        end_request_status: 'cancel_pending' 
+      })
+      .eq('id', tenantOccupancy.id)
+
+    if (error) {
+      showToast.error(`Failed to submit cancellation: ${error.message}`)
+      setSubmittingCancelEnd(false)
+      return
+    }
+
+    await createNotification({ 
+      recipient: tenantOccupancy.landlord_id, 
+      actor: session.user.id, 
+      type: 'payment_pending', // Using a generic type or creating a new one if available
+      message: `${profile.first_name} ${profile.last_name} requested to CANCEL their move-out for ${tenantOccupancy.property?.title}.`, 
+      link: '/dashboard' 
+    })
+
+    showToast.success("Cancellation request submitted to landlord.")
+    setShowCancelEndModal(false)
+    setSubmittingCancelEnd(false)
+    loadTenantOccupancy()
+  }
+
   // ─── FAMILY MEMBERS FUNCTIONS ───
   async function loadFamilyMembers(occupancyOverride = null) {
     const occupancySource = occupancyOverride || tenantOccupancy
@@ -2063,7 +2097,27 @@ export default function TenantDashboard({ session, profile }) {
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={() => router.push(`/properties/${tenantOccupancy.property?.id}`)} className="py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer items-center justify-center flex text-center">Details</button>
                         {tenantOccupancy.property?.terms_conditions && <a href={tenantOccupancy.property.terms_conditions.startsWith('http') ? tenantOccupancy.property.terms_conditions : '/terms'} target="_blank" rel="noopener noreferrer" className="col-span-1 py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Terms</a>}
-                        {!isFamilyMember && <button onClick={() => setShowEndRequestModal(true)} className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-red-500 font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors cursor-pointer text-center">End Stay</button>}
+                        {!isFamilyMember && (
+                          tenantOccupancy.end_request_status === 'cancel_pending' ? (
+                            <div className="col-span-1 py-1.5 px-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center justify-center">
+                              <span className="text-[9px] font-black uppercase text-amber-700 text-center leading-tight">Cancellation Request Pending Approval</span>
+                            </div>
+                          ) : (tenantOccupancy.end_request_status === 'approved' || tenantOccupancy.status === 'pending_end') ? (
+                            <button 
+                              onClick={() => setShowCancelEndModal(true)} 
+                              className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-orange-600 font-bold rounded-xl border border-orange-100 hover:bg-orange-50 hover:border-orange-200 transition-colors cursor-pointer text-center"
+                            >
+                              Cancel Move-Out
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => setShowEndRequestModal(true)} 
+                              className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-red-500 font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors cursor-pointer text-center"
+                            >
+                              Request to leave
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2983,6 +3037,45 @@ export default function TenantDashboard({ session, profile }) {
                       Submitting...
                     </>
                   ) : 'Submit'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Cancel End-of-Stay Request Modal */}
+      {
+        showCancelEndModal && (
+          <div className="fixed inset-0 bg-black/55 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowCancelEndModal(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Cancel Move-Out?</h3>
+              <p className="text-sm text-gray-600 mb-5">
+                Are you sure you want to cancel your move-out request? This will require your landlord's approval again to keep your stay active.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCancelEndModal(false)}
+                  disabled={submittingCancelEnd}
+                  className="flex-1 py-2 bg-gray-100 rounded-xl cursor-pointer hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Hold on
+                </button>
+                <button
+                  onClick={cancelEndOccupancyRequest}
+                  disabled={submittingCancelEnd}
+                  className={`flex-1 py-2 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${submittingCancelEnd ? 'bg-orange-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700 cursor-pointer'}`}
+                >
+                  {submittingCancelEnd ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      Wait...
+                    </>
+                  ) : 'Yes, Cancel Move-Out'}
                 </button>
               </div>
             </div>

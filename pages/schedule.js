@@ -3,6 +3,15 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import { showToast } from 'nextjs-toast-notify'
 
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'completed']
+
+function parseTimestamp(value) {
+  if (!value) return null
+  const parsed = new Date(value)
+  const timestamp = parsed.getTime()
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
 export default function SchedulePage() {
   const router = useRouter()
   const [session, setSession] = useState(null)
@@ -161,19 +170,95 @@ export default function SchedulePage() {
   async function loadTimeSlots() {
     if (!session) return
 
-    const { data, error } = await supabase
-      .from('available_time_slots')
-      .select('*')
-      .eq('landlord_id', session.user.id)
-      .gte('start_time', new Date().toISOString())
-      .order('start_time', { ascending: true })
+    const nowIso = new Date().toISOString()
 
-    if (error) {
-      console.error('Error loading time slots:', error)
+    const [{ data: slotsData, error: slotsError }, { data: landlordProperties, error: propertiesError }] = await Promise.all([
+      supabase
+        .from('available_time_slots')
+        .select('*')
+        .eq('landlord_id', session.user.id)
+        .gte('start_time', nowIso)
+        .order('start_time', { ascending: true }),
+      supabase
+        .from('properties')
+        .select('id')
+        .eq('landlord', session.user.id)
+        .eq('is_deleted', false)
+    ])
+
+    if (slotsError || propertiesError) {
+      console.error('Error loading schedule data:', slotsError || propertiesError)
       showToast.error("Failed to load time slots", { duration: 4000 })
-    } else {
-      setTimeSlots(data || [])
+      return
     }
+
+    const slots = slotsData || []
+    const landlordPropertyIds = (landlordProperties || []).map((property) => property.id).filter(Boolean)
+
+    let activeBookings = []
+    if (landlordPropertyIds.length > 0) {
+      const { data: bookingRows, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('id, time_slot_id, booking_date, start_time, status, property_id, landlord')
+        .in('property_id', landlordPropertyIds)
+        .in('status', SLOT_LOCKING_BOOKING_STATUSES)
+
+      if (bookingsError) {
+        console.error('Error loading active bookings for schedule:', bookingsError)
+        showToast.error("Failed to load time slots", { duration: 4000 })
+        return
+      }
+
+      activeBookings = bookingRows || []
+    }
+
+    const takenSlotIds = new Set(activeBookings.map((row) => row.time_slot_id).filter(Boolean))
+    const takenScheduleTimes = new Set(
+      activeBookings
+        .map((row) => parseTimestamp(row.booking_date) ?? parseTimestamp(row.start_time))
+        .filter((value) => value !== null)
+    )
+
+    const reconciledSlots = slots.map((slot) => {
+      const slotTime = parseTimestamp(slot.start_time)
+      const isBooked = takenSlotIds.has(slot.id)
+        || (slotTime !== null && takenScheduleTimes.has(slotTime))
+
+      return {
+        ...slot,
+        is_booked: isBooked
+      }
+    })
+
+    const staleBookedIds = reconciledSlots
+      .filter((slot) => slot.is_booked === true && slots.find((raw) => raw.id === slot.id)?.is_booked !== true)
+      .map((slot) => slot.id)
+
+    const staleFreeIds = reconciledSlots
+      .filter((slot) => slot.is_booked === false && slots.find((raw) => raw.id === slot.id)?.is_booked !== false)
+      .map((slot) => slot.id)
+
+    if (staleBookedIds.length > 0) {
+      const { error: markBookedError } = await supabase
+        .from('available_time_slots')
+        .update({ is_booked: true })
+        .in('id', staleBookedIds)
+      if (markBookedError) {
+        console.error('Failed to sync booked slot flags:', markBookedError)
+      }
+    }
+
+    if (staleFreeIds.length > 0) {
+      const { error: markFreeError } = await supabase
+        .from('available_time_slots')
+        .update({ is_booked: false })
+        .in('id', staleFreeIds)
+      if (markFreeError) {
+        console.error('Failed to sync free slot flags:', markFreeError)
+      }
+    }
+
+    setTimeSlots(reconciledSlots)
   }
 
   // --- Calendar Logic ---

@@ -16,6 +16,7 @@ export default function EditProperty() {
   const [uploadingImages, setUploadingImages] = useState({})
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [uploadingTerms, setUploadingTerms] = useState(false)
+  const [noOccupancyLimit, setNoOccupancyLimit] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -168,6 +169,9 @@ export default function EditProperty() {
       return
     }
 
+    const parsedMaxOccupancy = Number(data.max_occupancy)
+    const hasNoOccupancyLimit = Number.isFinite(parsedMaxOccupancy) && parsedMaxOccupancy <= 0
+
     setFormData({
       title: data.title || '',
       description: data.description || '',
@@ -194,7 +198,7 @@ export default function EditProperty() {
       property_type: ['House Apartment', 'Studio Type', 'Solo Room', 'Boarding House'].includes(data.property_type) ? (data.property_type || 'House Apartment') : 'Other',
       custom_property_type: ['House Apartment', 'Studio Type', 'Solo Room', 'Boarding House'].includes(data.property_type) ? '' : (data.property_type || ''),
       bed_type: data.bed_type || 'Single Bed',
-      max_occupancy: data.max_occupancy || 1,
+      max_occupancy: hasNoOccupancyLimit ? 0 : (data.max_occupancy ?? 1),
       terms_conditions: data.terms_conditions || '',
       amenities: normalizeAmenities(data.amenities || []),
       has_security_deposit: data.has_security_deposit !== false,
@@ -204,6 +208,8 @@ export default function EditProperty() {
       advance_amount: data.advance_amount || '',
       advance_same_as_rent: data.advance_amount ? (Number(data.advance_amount) === Number(data.price)) : true
     })
+
+    setNoOccupancyLimit(hasNoOccupancyLimit)
 
     if (data.images && data.images.length > 0) {
       setImageUrls(data.images)
@@ -223,6 +229,17 @@ export default function EditProperty() {
     setFormData(prev => ({
       ...prev,
       country: value
+    }))
+  }
+
+  function handleNoOccupancyLimitChange(e) {
+    const checked = e.target.checked
+    setNoOccupancyLimit(checked)
+    setFormData(prev => ({
+      ...prev,
+      max_occupancy: checked
+        ? 0
+        : (Number(prev.max_occupancy) > 0 ? prev.max_occupancy : 1)
     }))
   }
 
@@ -770,14 +787,32 @@ export default function EditProperty() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500 ml-1">Good for (People)</label>
-                    <input
-                      type="number"
-                      name="max_occupancy"
-                      min="1"
-                      className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none"
-                      value={formData.max_occupancy}
-                      onChange={handleChange}
-                    />
+                    {noOccupancyLimit ? (
+                      <input
+                        type="text"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 focus:border-black outline-none"
+                        value="No Limits"
+                        readOnly
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        name="max_occupancy"
+                        min="1"
+                        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none"
+                        value={formData.max_occupancy}
+                        onChange={handleChange}
+                      />
+                    )}
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 mt-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={noOccupancyLimit}
+                        onChange={handleNoOccupancyLimitChange}
+                        className="accent-black cursor-pointer"
+                      />
+                      No limits
+                    </label>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500 ml-1">Status</label>

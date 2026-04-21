@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../../lib/supabaseAdmin'
 
-const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected']
-const EXCLUDABLE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'rejected']
+const SLOT_LOCKING_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted', 'viewing_done', 'assigned', 'completed']
+const EXCLUDABLE_BOOKING_STATUSES = ['pending', 'pending_approval', 'approved', 'accepted']
 
 function parseTimestamp(value) {
   if (!value) return null
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       supabaseAdmin
         .from('bookings')
         .select('id, time_slot_id, booking_date, start_time, status')
-        .eq('property_id', propertyId)
+        .eq('landlord', landlordId)
         .in('status', SLOT_LOCKING_BOOKING_STATUSES)
     ])
 

@@ -29,6 +29,7 @@ export default function NewProperty() {
   const [uploadingImages, setUploadingImages] = useState({})
   const [uploadingTerms, setUploadingTerms] = useState(false)
   const [step, setStep] = useState(1)
+  const [noOccupancyLimit, setNoOccupancyLimit] = useState(false)
 
   const [formData, setFormData] = useState({
     title: '',
@@ -181,6 +182,17 @@ export default function NewProperty() {
     setFormData(prev => ({
       ...prev,
       country: value
+    }))
+  }
+
+  function handleNoOccupancyLimitChange(e) {
+    const checked = e.target.checked
+    setNoOccupancyLimit(checked)
+    setFormData(prev => ({
+      ...prev,
+      max_occupancy: checked
+        ? 0
+        : (Number(prev.max_occupancy) > 0 ? prev.max_occupancy : 1)
     }))
   }
 
@@ -654,7 +666,32 @@ export default function NewProperty() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500 ml-1">Good for (People)</label>
-                    <input type="number" name="max_occupancy" min="1" className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none" value={formData.max_occupancy} onChange={handleChange} />
+                    {noOccupancyLimit ? (
+                      <input
+                        type="text"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 focus:border-black outline-none"
+                        value="No Limits"
+                        readOnly
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        name="max_occupancy"
+                        min="1"
+                        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-black outline-none"
+                        value={formData.max_occupancy}
+                        onChange={handleChange}
+                      />
+                    )}
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 mt-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={noOccupancyLimit}
+                        onChange={handleNoOccupancyLimitChange}
+                        className="accent-black cursor-pointer"
+                      />
+                      No limits
+                    </label>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-gray-500 ml-1">Status</label>
