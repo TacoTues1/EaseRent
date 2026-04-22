@@ -2968,25 +2968,43 @@ export default function LandlordDashboard({ session, profile }) {
                         <p className="text-gray-400 text-sm font-medium">No occupied properties</p>
                       </div>
                     ) : (
-                      activeOccupancies.map(occ => (
-                        <div key={occ.id} className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
-                          <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 shadow-inner">
-                            <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
+                      activeOccupancies.map(occ => {
+                        const occStartDate = occ.start_date ? new Date(occ.start_date) : null;
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        if (occStartDate) occStartDate.setHours(0, 0, 0, 0);
+                        const hasStarted = !occStartDate || today >= occStartDate;
+
+                        return (
+                          <div key={occ.id} className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
+                            <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 shadow-inner">
+                              <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-sm text-gray-900 truncate group-hover:text-black transition-colors">{occ.property?.title}</p>
+                              <p className="text-xs font-medium text-gray-500 mt-0.5 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                            </div>
+                            {hasStarted ? (
+                              <>
+                                <button onClick={(e) => { e.stopPropagation(); openFamilyModal(occ) }}
+                                  className="text-xs text-white font-bold text-blue-600 bg-blue-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
+                                  Show Details
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
+                                  className="text-xs text-white font-bold text-red-600 bg-red-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
+                                  End
+                                </button>
+                              </>
+                            ) : (
+                              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
+                                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                                  Start on {new Date(occ.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm text-gray-900 truncate group-hover:text-black transition-colors">{occ.property?.title}</p>
-                            <p className="text-xs font-medium text-gray-500 mt-0.5 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
-                          </div>
-                          <button onClick={(e) => { e.stopPropagation(); openFamilyModal(occ) }}
-                            className="text-xs text-white font-bold text-blue-600 bg-blue-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                            Show Details
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
-                            className="text-xs text-white font-bold text-red-600 bg-red-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                            End
-                          </button>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>

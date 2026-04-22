@@ -1984,6 +1984,12 @@ export default function TenantDashboard({ session, profile }) {
   const nextWaterDueDate = isWaterFree ? 'Free' : getUpcomingDueDateByDay(tenantOccupancy?.water_due_day)
   const nextElectricityDueDate = isElectricityFree ? 'Free' : getUpcomingDueDateByDay(tenantOccupancy?.electricity_due_day)
 
+  const occupancyStartDateObj = tenantOccupancy?.start_date ? new Date(tenantOccupancy.start_date) : null
+  const todayDateOnly = new Date()
+  todayDateOnly.setHours(0, 0, 0, 0)
+  if (occupancyStartDateObj) occupancyStartDateObj.setHours(0, 0, 0, 0)
+  const hasOccupancyStarted = !occupancyStartDateObj || todayDateOnly >= occupancyStartDateObj
+
   const renderSeeAllCard = (items, targetUrl = '/properties/allProperties') => {
     const defaultImg = 'https://images.unsplash.com/photo-1560518884-ce5882228f44?w=500&q=80';
     let img1, img2, img3;
@@ -2101,31 +2107,39 @@ export default function TenantDashboard({ session, profile }) {
 
                     {/* Buttons Grid */}
                     <div className="flex flex-col gap-2 mt-1">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => router.push(`/properties/${tenantOccupancy.property?.id}`)} className="py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer items-center justify-center flex text-center">Details</button>
-                        {tenantOccupancy.property?.terms_conditions && <a href={tenantOccupancy.property.terms_conditions.startsWith('http') ? tenantOccupancy.property.terms_conditions : '/terms'} target="_blank" rel="noopener noreferrer" className="col-span-1 py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Terms</a>}
-                        {!isFamilyMember && (
-                          tenantOccupancy.end_request_status === 'cancel_pending' ? (
-                            <div className="col-span-1 py-1.5 px-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center justify-center">
-                              <span className="text-[9px] font-black uppercase text-amber-700 text-center leading-tight">Cancellation Request Pending Approval</span>
-                            </div>
-                          ) : (tenantOccupancy.end_request_status === 'approved' || tenantOccupancy.status === 'pending_end') ? (
-                            <button 
-                              onClick={() => setShowCancelEndModal(true)} 
-                              className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-orange-600 font-bold rounded-xl border border-orange-100 hover:bg-orange-50 hover:border-orange-200 transition-colors cursor-pointer text-center"
-                            >
-                              Cancel Move-Out
-                            </button>
-                          ) : (
-                            <button 
-                              onClick={() => setShowEndRequestModal(true)} 
-                              className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-red-500 font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors cursor-pointer text-center"
-                            >
-                              Request to leave
-                            </button>
-                          )
-                        )}
-                      </div>
+                      {hasOccupancyStarted ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => router.push(`/properties/${tenantOccupancy.property?.id}`)} className="py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer items-center justify-center flex text-center">Details</button>
+                          {tenantOccupancy.property?.terms_conditions && <a href={tenantOccupancy.property.terms_conditions.startsWith('http') ? tenantOccupancy.property.terms_conditions : '/terms'} target="_blank" rel="noopener noreferrer" className="col-span-1 py-2.5 text-xs bg-white text-gray-800 font-bold rounded-xl border border-gray-200 hover:bg-gray-50 shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> Terms</a>}
+                          {!isFamilyMember && (
+                            tenantOccupancy.end_request_status === 'cancel_pending' ? (
+                              <div className="col-span-1 py-1.5 px-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center justify-center">
+                                <span className="text-[9px] font-black uppercase text-amber-700 text-center leading-tight">Cancellation Request Pending Approval</span>
+                              </div>
+                            ) : (tenantOccupancy.end_request_status === 'approved' || tenantOccupancy.status === 'pending_end') ? (
+                              <button 
+                                onClick={() => setShowCancelEndModal(true)} 
+                                className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-orange-600 font-bold rounded-xl border border-orange-100 hover:bg-orange-50 hover:border-orange-200 transition-colors cursor-pointer text-center"
+                              >
+                                Cancel Move-Out
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => setShowEndRequestModal(true)} 
+                                className="col-span-1 py-2.5 text-[11px] uppercase tracking-wider bg-white text-red-500 font-bold rounded-xl border border-red-100 hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors cursor-pointer text-center"
+                              >
+                                Request to leave
+                              </button>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+                            Start on {new Date(tenantOccupancy.start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
