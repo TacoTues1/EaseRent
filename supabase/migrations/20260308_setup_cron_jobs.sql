@@ -17,7 +17,7 @@
 DO $$
 BEGIN
     PERFORM vault.create_secret(
-        'https://tessynted.vercel.app',
+        'https://www.abalay-rent.me',
         'site_url'
     );
 EXCEPTION

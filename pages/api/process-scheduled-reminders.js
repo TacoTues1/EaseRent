@@ -81,6 +81,11 @@ function getDayOffsetFromToday(date, timeZone = REMINDER_TIME_ZONE) {
     return targetSerial - todaySerial
 }
 
+function getTimeZoneDateString(date = new Date(), timeZone = REMINDER_TIME_ZONE) {
+    const parts = getTimeZoneDateParts(date, timeZone)
+    return `${parts.year.toString().padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+}
+
 function extractTenantPreferredScheduleText(notesValue) {
     if (!notesValue) return ''
 
@@ -187,7 +192,6 @@ function getBookingScheduleDisplay(booking) {
 // This runs server-side (cron/API), so it works even when no user is logged in.
 async function autoStartDueMaintenanceRequests() {
     const summary = { updated: 0, notified: 0 }
-    const nowISO = new Date().toISOString()
 
     const { data: dueRequests, error: dueError } = await supabaseAdmin
         .from('maintenance_requests')
@@ -250,6 +254,87 @@ async function autoStartDueMaintenanceRequests() {
     return summary
 }
 
+// Auto-process approved move-outs even when no landlord is logged in.
+// Any approved move-out due today (Asia/Manila) or earlier is ended automatically.
+async function autoProcessDueMoveOuts() {
+    const summary = { ended: 0 }
+    const todayDate = getTimeZoneDateString(new Date())
+
+    const { data: candidates, error: candidatesError } = await supabaseAdmin
+        .from('tenant_occupancies')
+        .select('id, tenant_id, property_id, end_request_date')
+        .eq('end_request_status', 'approved')
+        .in('status', ['active', 'pending_end'])
+        .lte('end_request_date', todayDate)
+        .limit(500)
+
+    if (candidatesError) {
+        throw new Error(`Failed to fetch move-out candidates: ${candidatesError.message}`)
+    }
+
+    if (!candidates || candidates.length === 0) {
+        return summary
+    }
+
+    for (const occupancy of candidates) {
+        const { data: endedRows, error: endError } = await supabaseAdmin
+            .from('tenant_occupancies')
+            .update({ status: 'ended' })
+            .eq('id', occupancy.id)
+            .eq('end_request_status', 'approved')
+            .in('status', ['active', 'pending_end'])
+            .select('id')
+
+        if (endError) {
+            console.error('[Move-out Auto-Process] Failed to end occupancy:', endError)
+            continue
+        }
+
+        if (!endedRows || endedRows.length === 0) {
+            continue
+        }
+
+        summary.ended++
+
+        if (occupancy.property_id) {
+            const { error: propertyError } = await supabaseAdmin
+                .from('properties')
+                .update({ status: 'available' })
+                .eq('id', occupancy.property_id)
+
+            if (propertyError) {
+                console.error('[Move-out Auto-Process] Failed to mark property available:', propertyError)
+            }
+        }
+
+        if (occupancy.tenant_id && occupancy.property_id) {
+            const { error: bookingError } = await supabaseAdmin
+                .from('bookings')
+                .update({ status: 'completed' })
+                .eq('tenant', occupancy.tenant_id)
+                .eq('property_id', occupancy.property_id)
+                .in('status', ['pending', 'pending_approval', 'approved', 'accepted'])
+
+            if (bookingError) {
+                console.error('[Move-out Auto-Process] Failed to finalize bookings:', bookingError)
+            }
+
+            const { error: applicationError } = await supabaseAdmin
+                .from('applications')
+                .update({ status: 'completed' })
+                .eq('tenant', occupancy.tenant_id)
+                .eq('property_id', occupancy.property_id)
+                .eq('status', 'accepted')
+
+            if (applicationError) {
+                console.error('[Move-out Auto-Process] Failed to finalize applications:', applicationError)
+            }
+        }
+    }
+
+    return summary
+}
+
 // Increase timeout for Vercel serverless
 export const config = {
     maxDuration: 30,
@@ -271,7 +356,10 @@ export default async function handler(req, res) {
         bookings: 0,
         errors: 0,
         maintenanceAutoStarted: 0,
-        maintenanceNotified: 0
+        maintenanceNotified: 0,
+        occupancyAutoEnded: 0,
+        occupancyAutoCancelledForBills: 0,
+        occupancyAutoBlockedByBills: 0
     }
 
     try {
@@ -282,6 +370,15 @@ export default async function handler(req, res) {
             results.maintenanceNotified = maintenance.notified
         } catch (maintenanceErr) {
             console.error('[Maintenance Auto-Start] Failed:', maintenanceErr)
+            results.errors++
+        }
+
+        // 0.5. Auto-process due approved move-outs regardless of user activity.
+        try {
+            const moveOuts = await autoProcessDueMoveOuts()
+            results.occupancyAutoEnded = moveOuts.ended
+        } catch (moveOutErr) {
+            console.error('[Move-out Auto-Process] Failed:', moveOutErr)
             results.errors++
         }
 
@@ -299,8 +396,16 @@ export default async function handler(req, res) {
         }
 
         if (!dueReminders || dueReminders.length === 0) {
-            const message = results.maintenanceAutoStarted > 0
-                ? `No due reminders. Auto-started ${results.maintenanceAutoStarted} maintenance request(s).`
+            const autoActions = []
+            if (results.maintenanceAutoStarted > 0) {
+                autoActions.push(`auto-started ${results.maintenanceAutoStarted} maintenance request(s)`)
+            }
+            if (results.occupancyAutoEnded > 0) {
+                autoActions.push(`auto-ended ${results.occupancyAutoEnded} occupancy record(s)`)
+            }
+
+            const message = autoActions.length > 0
+                ? `No due reminders. ${autoActions.join(', ')}.`
                 : 'No due reminders'
 
             return res.status(200).json({ success: true, message, results })
