@@ -6,17 +6,23 @@ import { showToast } from 'nextjs-toast-notify'
 import { useRouter } from 'next/router'
 
 async function adminFetch(table, select = '*', filters = [], order = null, pagination = null, includeCount = false) {
-  const res = await fetch('/api/admin/list-data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ table, select, filters, order, pagination, includeCount })
-  })
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.error || 'Failed to fetch data')
-  if (includeCount) {
-    return { data: json.data || [], count: json.count || 0 }
+  try {
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const res = await fetch(`${baseUrl}/api/admin/list-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, select, filters, order, pagination, includeCount })
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error || 'Failed to fetch data')
+    if (includeCount) {
+      return { data: json.data || [], count: json.count || 0 }
+    }
+    return json.data || []
+  } catch (err) {
+    console.error(`adminFetch failed for ${table}:`, err)
+    throw err
   }
-  return json.data || []
 }
 
 function useRealTimeClock() {
@@ -50,7 +56,87 @@ export default function AdminDashboard({ session, profile }) {
     { id: 'payments', label: 'Payment History', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
     { id: 'bookings', label: 'Bookings List', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
     { id: 'schedules', label: 'Schedule Days', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { id: 'maintenance', label: 'Maintenance', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+    { id: 'leaves', label: 'Leave Pending', icon: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' },
   ]
+
+  // Management Modals State
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [editingPayment, setEditingPayment] = useState(null)
+  const [paymentForm, setPaymentForm] = useState({
+    tenant_id: '',
+    property_id: '',
+    landlord_id: '',
+    rent_amount: 0,
+    water_bill: 0,
+    electrical_bill: 0,
+    wifi_bill: 0,
+    other_bills: 0,
+    bills_description: '',
+    due_date: '',
+    status: 'pending'
+  })
+
+  const [showBookingEditModal, setShowBookingEditModal] = useState(false)
+  const [editingBooking, setEditingBooking] = useState(null)
+  const [bookingForm, setBookingForm] = useState({
+    booking_date: '',
+    status: 'pending'
+  })
+
+  const [showScheduleFormModal, setShowScheduleFormModal] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState(null)
+  const [scheduleForm, setScheduleForm] = useState({
+    landlord_id: '',
+    start_time: '',
+    end_time: '',
+    is_booked: false
+  })
+
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
+  const [editingMaintenance, setEditingMaintenance] = useState(null)
+  const [maintenanceForm, setMaintenanceForm] = useState({
+    title: '',
+    description: '',
+    status: 'pending',
+    priority: 'medium',
+    category: 'general',
+    attachment_urls: []
+  })
+  const [maintenanceUploading, setMaintenanceUploading] = useState(false)
+
+  const [showLeaveModal, setShowLeaveModal] = useState(false)
+  const [editingLeave, setEditingLeave] = useState(null)
+  const [leaveForm, setLeaveForm] = useState({
+    end_request_status: 'pending',
+    end_request_reason: '',
+    end_request_date: ''
+  })
+
+  const [showEndOccupancyConfirm, setShowEndOccupancyConfirm] = useState(false)
+  const [occToEnd, setOccToEnd] = useState(null)
+  const [landlords, setLandlords] = useState([])
+  const [tenants, setTenants] = useState([])
+  const [properties, setProperties] = useState([])
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  const refresh = useCallback(() => setRefreshTrigger(prev => prev + 1), [])
+
+  useEffect(() => {
+    async function loadResources() {
+      try {
+        const { data: lData } = await supabase.from('profiles').select('id, first_name, last_name').eq('role', 'landlord').eq('is_deleted', false).order('first_name')
+        setLandlords((lData || []).map(l => ({ id: l.id, name: `${l.first_name} ${l.last_name}` })))
+        
+        const { data: tData } = await supabase.from('profiles').select('id, first_name, last_name').eq('role', 'tenant').eq('is_deleted', false).order('first_name')
+        setTenants((tData || []).map(t => ({ id: t.id, name: `${t.first_name} ${t.last_name}` })))
+
+        const { data: pData } = await supabase.from('properties').select('id, title').order('title')
+        setProperties(pData || [])
+      } catch (e) { console.error(e) }
+    }
+    loadResources()
+  }, [])
 
   async function handleLogout() {
     setShowLogoutModal(false)
@@ -61,10 +147,248 @@ export default function AdminDashboard({ session, profile }) {
         sessionStorage.clear()
       }
       showToast.success("Logged out successfully")
-      window.location.href = '/'
+      router.push('/')
     } catch (error) {
-      console.error("Logout error:", error)
-      window.location.href = '/'
+      showToast.error("Logout failed")
+    }
+  }
+
+  // Action Handlers
+  async function handleSavePayment() {
+    try {
+      const payload = {
+        ...paymentForm,
+        landlord: paymentForm.landlord_id,
+        tenant: paymentForm.tenant_id,
+        rent_amount: parseFloat(paymentForm.rent_amount) || 0,
+        water_bill: parseFloat(paymentForm.water_bill) || 0,
+        electrical_bill: parseFloat(paymentForm.electrical_bill) || 0,
+        wifi_bill: parseFloat(paymentForm.wifi_bill) || 0,
+        other_bills: parseFloat(paymentForm.other_bills) || 0,
+        amount: (parseFloat(paymentForm.rent_amount) || 0) + 
+                (parseFloat(paymentForm.water_bill) || 0) + 
+                (parseFloat(paymentForm.electrical_bill) || 0) + 
+                (parseFloat(paymentForm.wifi_bill) || 0) + 
+                (parseFloat(paymentForm.other_bills) || 0)
+      }
+      delete payload.landlord_id
+      delete payload.tenant_id
+
+      let err;
+      if (editingPayment) {
+        const { error } = await supabase.from('payment_requests').update(payload).eq('id', editingPayment.id)
+        err = error
+      } else {
+        const { error } = await supabase.from('payment_requests').insert([payload])
+        err = error
+      }
+
+      if (err) throw err
+      showToast.success(editingPayment ? "Payment updated" : "Payment created")
+      setShowPaymentModal(false)
+      setEditingPayment(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleCancelPayment(id, currentStatus) {
+    if (['paid', 'completed', 'cancelled'].includes(currentStatus)) {
+      showToast.error(`Cannot cancel a payment that is already ${currentStatus}`)
+      return
+    }
+    try {
+      const { error } = await supabase.from('payment_requests').update({ status: 'cancelled' }).eq('id', id)
+      if (error) throw error
+      showToast.success("Payment cancelled")
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleDeletePayment(id) {
+    try {
+      const { error } = await supabase.from('payment_requests').delete().eq('id', id)
+      if (error) throw error
+      showToast.success("Payment deleted")
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleSaveBooking() {
+    try {
+      const { error } = await supabase.from('bookings').update({
+        booking_date: bookingForm.booking_date,
+        status: bookingForm.status
+      }).eq('id', editingBooking.id)
+      if (error) throw error
+      showToast.success("Booking updated/rescheduled successfully")
+      setShowBookingEditModal(false)
+      setEditingBooking(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleCancelBooking(id, currentStatus) {
+    if (['completed', 'cancelled'].includes(currentStatus)) {
+      showToast.error(`Cannot cancel a booking that is already ${currentStatus}`)
+      return
+    }
+    try {
+      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id)
+      if (error) throw error
+      showToast.success("Booking cancelled")
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleSaveSchedule() {
+    try {
+      const payload = { ...scheduleForm }
+      let err;
+      if (editingSchedule) {
+        const { error } = await supabase.from('available_time_slots').update(payload).eq('id', editingSchedule.id)
+        err = error
+      } else {
+        const { error } = await supabase.from('available_time_slots').insert([payload])
+        err = error
+      }
+      if (err) throw err
+      showToast.success(editingSchedule ? "Schedule updated" : "Schedule created")
+      setShowScheduleFormModal(false)
+      setEditingSchedule(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleSaveMaintenance() {
+    try {
+      setMaintenanceUploading(true)
+      const payload = { ...maintenanceForm }
+      let err;
+      if (editingMaintenance) {
+        const { error } = await supabase.from('maintenance_requests').update(payload).eq('id', editingMaintenance.id)
+        err = error
+      } else {
+        const { error } = await supabase.from('maintenance_requests').insert([payload])
+        err = error
+      }
+      if (err) throw err
+      showToast.success(editingMaintenance ? "Request updated" : "Request created")
+      setShowMaintenanceModal(false)
+      setEditingMaintenance(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    } finally {
+      setMaintenanceUploading(false)
+    }
+  }
+
+  async function handleMaintenanceFileUpload(e) {
+    const files = Array.from(e.target.files)
+    if (files.length === 0) return
+
+    setMaintenanceUploading(true)
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
+        const filePath = `${session.user.id}/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('maintenance-uploads')
+          .upload(filePath, file)
+
+        if (uploadError) throw uploadError
+
+        const { data } = supabase.storage
+          .from('maintenance-uploads')
+          .getPublicUrl(filePath)
+
+        return data.publicUrl
+      })
+
+      const newUrls = await Promise.all(uploadPromises)
+      setMaintenanceForm(prev => ({
+        ...prev,
+        attachment_urls: [...(prev.attachment_urls || []), ...newUrls]
+      }))
+      showToast.success("Files uploaded")
+    } catch (error) {
+      showToast.error("Upload failed: " + error.message)
+    } finally {
+      setMaintenanceUploading(false)
+    }
+  }
+
+  async function handleCancelMaintenance(id, currentStatus) {
+    if (currentStatus === 'completed') {
+      showToast.error("Cannot cancel a completed maintenance request")
+      return
+    }
+    try {
+      const { error } = await supabase.from('maintenance_requests').update({ status: 'cancelled' }).eq('id', id)
+      if (error) throw error
+      showToast.success("Request cancelled")
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleDeleteMaintenance(id) {
+    try {
+      const { error } = await supabase.from('maintenance_requests').delete().eq('id', id)
+      if (error) throw error
+      showToast.success("Request deleted")
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleSaveLeave() {
+    try {
+      const { error } = await supabase.from('tenant_occupancies').update(leaveForm).eq('id', editingLeave.id)
+      if (error) throw error
+      showToast.success("Move-out request updated")
+      setShowLeaveModal(false)
+      setEditingLeave(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
+    }
+  }
+
+  async function handleEndOccupancyConfirm() {
+    if (!occToEnd) return
+    try {
+      // 1. Update occupancy status to 'ended'
+      const { error: occError } = await supabase.from('tenant_occupancies').update({ status: 'ended', end_date: new Date().toISOString() }).eq('id', occToEnd.id)
+      if (occError) throw occError
+
+      // 2. Mark property as available if it's not deleted
+      if (occToEnd.property_id) {
+        await supabase.from('properties').update({ status: 'available' }).eq('id', occToEnd.property_id)
+      }
+
+      showToast.success("Occupancy ended successfully")
+      setShowEndOccupancyConfirm(false)
+      setOccToEnd(null)
+      refresh()
+    } catch (error) {
+      showToast.error(error.message)
     }
   }
 
@@ -80,8 +404,8 @@ export default function AdminDashboard({ session, profile }) {
         <div className={`p-6 ${sidebarCollapsed ? 'px-4' : ''} flex items-center justify-between`}>
           {!sidebarCollapsed && (
             <h1 className="text-xl font-black tracking-tighter uppercase flex items-center gap-2">
-              <span className="w-2 h-8 rounded-full bg-white"></span>
-              <span className="text-white">Admin</span><span className="text-gray-400">Panel</span>
+              <span className="w-1 h-8 rounded-full bg-white"></span>
+              <span className="text-white">Admin</span><span className="text-gray-400">TOOLS</span>
             </h1>
           )}
           <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 transition-all cursor-pointer">
@@ -155,16 +479,306 @@ export default function AdminDashboard({ session, profile }) {
         </header>
 
         <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full max-w-[1400px] mx-auto">
-          {activeTab === 'overview' && <OverviewView />}
-          {activeTab === 'users' && <UsersView />}
-          {activeTab === 'properties' && <PropertiesView />}
-          {activeTab === 'occupancies' && <ActiveOccupanciesView />}
-          {activeTab === 'payments' && <PaymentsView />}
-          {activeTab === 'bookings' && <BookingsView />}
-          {activeTab === 'schedules' && <SchedulesView />}
+          {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} />}
+          {activeTab === 'users' && <UsersView refreshTrigger={refreshTrigger} />}
+          {activeTab === 'properties' && <PropertiesView refreshTrigger={refreshTrigger} />}
+          {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} />}
+          {activeTab === 'payments' && (
+            <PaymentsView 
+              refreshTrigger={refreshTrigger} 
+              setPaymentForm={setPaymentForm}
+              setEditingPayment={setEditingPayment}
+              setShowPaymentModal={setShowPaymentModal}
+              handleCancelPayment={handleCancelPayment}
+              handleDeletePayment={handleDeletePayment}
+            />
+          )}
+          {activeTab === 'bookings' && (
+            <BookingsView 
+              refreshTrigger={refreshTrigger} 
+              setBookingForm={setBookingForm}
+              setEditingBooking={setEditingBooking}
+              setShowBookingEditModal={setShowBookingEditModal}
+              handleCancelBooking={handleCancelBooking}
+            />
+          )}
+          {activeTab === 'schedules' && (
+            <SchedulesView 
+              refreshTrigger={refreshTrigger} 
+              setScheduleForm={setScheduleForm}
+              setEditingSchedule={setEditingSchedule}
+              setShowScheduleFormModal={setShowScheduleFormModal}
+            />
+          )}
+          {activeTab === 'maintenance' && (
+            <MaintenanceMonitoringView 
+              refreshTrigger={refreshTrigger} 
+              setMaintenanceForm={setMaintenanceForm}
+              setEditingMaintenance={setEditingMaintenance}
+              setShowMaintenanceModal={setShowMaintenanceModal}
+              handleCancelMaintenance={handleCancelMaintenance}
+              handleDeleteMaintenance={handleDeleteMaintenance}
+            />
+          )}
+          {activeTab === 'leaves' && (
+            <LeaveMonitoringView 
+              refreshTrigger={refreshTrigger} 
+              setLeaveForm={setLeaveForm}
+              setEditingLeave={setEditingLeave}
+              setShowLeaveModal={setShowLeaveModal}
+            />
+          )}
           {activeTab === 'profile' && <AdminProfileView session={session} profile={profile} />}
         </main>
       </div>
+
+      {/* MODALS */}
+      {showPaymentModal && (
+        <ManagementModal 
+          title={editingPayment ? "Edit Payment Bill" : "Create Payment Bill"} 
+          onClose={() => { setShowPaymentModal(false); setEditingPayment(null); }}
+          onSave={handleSavePayment}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Tenant</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.tenant_id} onChange={e => setPaymentForm({...paymentForm, tenant_id: e.target.value})}>
+                  <option value="">Select Tenant</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Property</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.property_id} onChange={e => setPaymentForm({...paymentForm, property_id: e.target.value})}>
+                  <option value="">Select Property</option>
+                  {properties.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Landlord</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.landlord_id} onChange={e => setPaymentForm({...paymentForm, landlord_id: e.target.value})}>
+                  <option value="">Select Landlord</option>
+                  {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Due Date</label>
+                <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.due_date} onChange={e => setPaymentForm({...paymentForm, due_date: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Rent</label>
+                <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.rent_amount} onChange={e => setPaymentForm({...paymentForm, rent_amount: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Water</label>
+                <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.water_bill} onChange={e => setPaymentForm({...paymentForm, water_bill: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Electric</label>
+                <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.electrical_bill} onChange={e => setPaymentForm({...paymentForm, electrical_bill: e.target.value})} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Description</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.bills_description} onChange={e => setPaymentForm({...paymentForm, bills_description: e.target.value})} rows={3}></textarea>
+            </div>
+          </div>
+        </ManagementModal>
+      )}
+
+      {showBookingEditModal && (
+        <ManagementModal 
+          title="Edit/Reschedule Booking" 
+          onClose={() => { setShowBookingEditModal(false); setEditingBooking(null); }}
+          onSave={handleSaveBooking}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Booking Date & Time</label>
+              <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.booking_date ? new Date(bookingForm.booking_date).toISOString().slice(0, 16) : ''} onChange={e => setBookingForm({...bookingForm, booking_date: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Status</label>
+              <select className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.status} onChange={e => setBookingForm({...bookingForm, status: e.target.value})}>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+        </ManagementModal>
+      )}
+
+      {showScheduleFormModal && (
+        <ManagementModal 
+          title={editingSchedule ? "Edit Schedule Slot" : "Create Schedule Slot"} 
+          onClose={() => { setShowScheduleFormModal(false); setEditingSchedule(null); }}
+          onSave={handleSaveSchedule}
+        >
+          <div className="space-y-4">
+            {!editingSchedule && (
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Landlord</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={scheduleForm.landlord_id} onChange={e => setScheduleForm({...scheduleForm, landlord_id: e.target.value})}>
+                  <option value="">Select Landlord</option>
+                  {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Start Time</label>
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={scheduleForm.start_time ? new Date(scheduleForm.start_time).toISOString().slice(0, 16) : ''} onChange={e => setScheduleForm({...scheduleForm, start_time: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">End Time</label>
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={scheduleForm.end_time ? new Date(scheduleForm.end_time).toISOString().slice(0, 16) : ''} onChange={e => setScheduleForm({...scheduleForm, end_time: e.target.value})} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="is_booked" checked={scheduleForm.is_booked} onChange={e => setScheduleForm({...scheduleForm, is_booked: e.target.checked})} />
+              <label htmlFor="is_booked" className="text-sm font-bold text-gray-700">Mark as Booked</label>
+            </div>
+          </div>
+        </ManagementModal>
+      )}
+
+      {showMaintenanceModal && (
+        <ManagementModal 
+          title={editingMaintenance ? "Edit Maintenance Request" : "Create Maintenance Request"} 
+          onClose={() => { setShowMaintenanceModal(false); setEditingMaintenance(null); }}
+          onSave={handleSaveMaintenance}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Title</label>
+              <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.title} onChange={e => setMaintenanceForm({...maintenanceForm, title: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Status</label>
+              <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.status} onChange={e => setMaintenanceForm({...maintenanceForm, status: e.target.value})}>
+                <option value="pending">Pending</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Priority</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.priority} onChange={e => setMaintenanceForm({...maintenanceForm, priority: e.target.value})}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Category</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.category} onChange={e => setMaintenanceForm({...maintenanceForm, category: e.target.value})}>
+                  <option value="general">General</option>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="appliance">Appliance</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Description</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.description} onChange={e => setMaintenanceForm({...maintenanceForm, description: e.target.value})} rows={3}></textarea>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Proof Files (Images/Videos)</label>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {maintenanceForm.attachment_urls?.map((url, idx) => (
+                  <div key={idx} className="relative group aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                    {url.toLowerCase().match(/\.(mp4|webm|ogg|mov)$/) ? (
+                      <video src={url} className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={url} className="w-full h-full object-cover" alt="proof" />
+                    )}
+                    <button 
+                      onClick={() => {
+                        const newUrls = [...maintenanceForm.attachment_urls];
+                        newUrls.splice(idx, 1);
+                        setMaintenanceForm({...maintenanceForm, attachment_urls: newUrls});
+                      }}
+                      className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                    <a href={url} target="_blank" rel="noreferrer" className="absolute bottom-1 right-1 bg-black/50 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3">
+                <label className="relative flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-100 hover:border-gray-300 transition-all cursor-pointer">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  {maintenanceUploading ? 'Uploading...' : 'Add More Images/Videos'}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    multiple 
+                    accept="image/*,video/*" 
+                    onChange={handleMaintenanceFileUpload} 
+                    disabled={maintenanceUploading}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        </ManagementModal>
+      )}
+
+      {showLeaveModal && (
+        <ManagementModal 
+          title="Edit Move-out Request" 
+          onClose={() => { setShowLeaveModal(false); setEditingLeave(null); }}
+          onSave={handleSaveLeave}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Status</label>
+              <select className="w-full border rounded-xl px-3 py-2 text-sm" value={leaveForm.end_request_status} onChange={e => setLeaveForm({...leaveForm, end_request_status: e.target.value})}>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancel_pending">Cancellation Requested</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Scheduled Move-out Date</label>
+              <input type="date" className="w-full border rounded-xl px-3 py-2 text-sm" value={leaveForm.end_request_date} onChange={e => setLeaveForm({...leaveForm, end_request_date: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Reason</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm" value={leaveForm.end_request_reason} onChange={e => setLeaveForm({...leaveForm, end_request_reason: e.target.value})} rows={4}></textarea>
+            </div>
+          </div>
+        </ManagementModal>
+      )}
+
+      {showEndOccupancyConfirm && (
+        <DeleteModal 
+          isOpen={showEndOccupancyConfirm} 
+          onClose={() => setShowEndOccupancyConfirm(false)} 
+          onConfirm={handleEndOccupancyConfirm} 
+          title="End Occupancy" 
+          message={`Are you sure you want to end the occupancy for ${occToEnd?.tenant?.first_name} ${occToEnd?.tenant?.last_name}? This will mark the property as available.`} 
+        />
+      )}
 
       <DeleteModal
         isOpen={showLogoutModal}
@@ -217,7 +831,7 @@ function EmptyStateRow({ colSpan, message }) {
 
 // --- SUB-VIEWS ---
 
-function OverviewView() {
+function OverviewView({ refreshTrigger }) {
   const [stats, setStats] = useState({ users: 0, properties: 0, bookings: 0 })
   const [recentUsers, setRecentUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -233,7 +847,7 @@ function OverviewView() {
   const [bulkEmailBody, setBulkEmailBody] = useState('')
   const [sendingBulkEmail, setSendingBulkEmail] = useState(false)
 
-  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); }, [])
+  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); }, [refreshTrigger])
 
   async function checkReminderStatus() {
     try {
@@ -366,19 +980,24 @@ function OverviewView() {
 
   async function loadStats() {
     setLoading(true)
-    const [usersRes, propsRes, bookingsData] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, role, created_at', { count: 'exact' }).eq('is_deleted', false).order('created_at', { ascending: false }).limit(5),
-      supabase.from('properties').select('id', { count: 'exact' }).eq('is_deleted', false),
-      adminFetch('bookings', 'id')
-    ])
+    try {
+      const [usersRes, propsRes, bookingsData] = await Promise.all([
+        supabase.from('profiles').select('id, first_name, last_name, role, created_at', { count: 'exact' }).eq('is_deleted', false).order('created_at', { ascending: false }).limit(5),
+        supabase.from('properties').select('id', { count: 'exact' }).eq('is_deleted', false),
+        adminFetch('bookings', 'id')
+      ])
 
-    setStats({
-      users: usersRes.count || 0,
-      properties: propsRes.count || 0,
-      bookings: bookingsData.length || 0
-    })
-    setRecentUsers(usersRes.data || [])
-    setLoading(false)
+      setStats({
+        users: usersRes.count || 0,
+        properties: propsRes.count || 0,
+        bookings: bookingsData.length || 0
+      })
+      setRecentUsers(usersRes.data || [])
+    } catch (err) {
+      console.error("Overview stats load failed:", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const statCards = [
@@ -682,7 +1301,7 @@ function OverviewView() {
   )
 }
 
-function UsersView() {
+function UsersView({ refreshTrigger }) {
   const USERS_PAGE_SIZE = 10
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -701,7 +1320,7 @@ function UsersView() {
   const [addingSlotForUserId, setAddingSlotForUserId] = useState(null)
 
   useEffect(() => { setCurrentPage(1) }, [search, roleFilter])
-  useEffect(() => { fetchUsers() }, [currentPage, search, roleFilter])
+  useEffect(() => { fetchUsers() }, [currentPage, search, roleFilter, refreshTrigger])
 
   async function fetchUsers() {
     setLoading(true)
@@ -1238,7 +1857,7 @@ function UsersView() {
   )
 }
 
-function PropertiesView() {
+function PropertiesView({ refreshTrigger }) {
   const PROPERTIES_PAGE_SIZE = 10
   const router = useRouter()
   const [properties, setProperties] = useState([])
@@ -1254,7 +1873,7 @@ function PropertiesView() {
   const [statusFilter, setStatusFilter] = useState('all')
 
   useEffect(() => { setCurrentPage(1) }, [search, statusFilter])
-  useEffect(() => { loadProperties() }, [currentPage, search, statusFilter])
+  useEffect(() => { loadProperties() }, [currentPage, search, statusFilter, refreshTrigger])
 
   async function loadProperties() {
     setLoading(true)
@@ -1747,7 +2366,7 @@ function PropertiesView() {
   )
 }
 
-function ActiveOccupanciesView() {
+function ActiveOccupanciesView({ refreshTrigger }) {
   const ACTIVE_OCCUPANCIES_PAGE_SIZE = 10
   const [activeOccupancies, setActiveOccupancies] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1757,7 +2376,7 @@ function ActiveOccupanciesView() {
   const [occupancyDetails, setOccupancyDetails] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
 
-  useEffect(() => { loadActiveOccupancies() }, [currentPage])
+  useEffect(() => { loadActiveOccupancies() }, [currentPage, refreshTrigger])
 
   async function loadActiveOccupancies() {
     setLoading(true)
@@ -1962,6 +2581,23 @@ function ActiveOccupanciesView() {
                     </div>
                   )}
                 </div>
+
+                <div className="pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => {
+                      setOccToEnd({
+                        id: selectedOccupancy.id,
+                        property_id: selectedOccupancy.property?.id,
+                        tenant: selectedOccupancy.tenant
+                      });
+                      setShowEndOccupancyConfirm(true);
+                    }}
+                    className="w-full py-4 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    End Occupancy
+                  </button>
+                </div>
               </div>
             )}
           </aside>
@@ -1971,7 +2607,7 @@ function ActiveOccupanciesView() {
   )
 }
 
-function PaymentsView() {
+function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setShowPaymentModal, handleCancelPayment, handleDeletePayment }) {
   const PAYMENTS_PAGE_SIZE = 10
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1985,7 +2621,7 @@ function PaymentsView() {
 
   useEffect(() => { loadLandlords() }, [])
   useEffect(() => { setCurrentPage(1) }, [statusFilter, selectedLandlordId])
-  useEffect(() => { loadData() }, [currentPage, statusFilter, selectedLandlordId])
+  useEffect(() => { loadData() }, [currentPage, statusFilter, selectedLandlordId, refreshTrigger])
 
   async function loadLandlords() {
     try {
@@ -2218,7 +2854,30 @@ function PaymentsView() {
       <div>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
           <div><h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Transaction History</h2><p className="text-gray-500 text-sm">Full log of payments.</p></div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-center">
+            <button 
+              onClick={() => {
+                setPaymentForm({
+                  tenant_id: '',
+                  property_id: '',
+                  landlord_id: '',
+                  rent_amount: 0,
+                  water_bill: 0,
+                  electrical_bill: 0,
+                  wifi_bill: 0,
+                  other_bills: 0,
+                  bills_description: '',
+                  due_date: new Date().toISOString().split('T')[0],
+                  status: 'pending'
+                });
+                setEditingPayment(null);
+                setShowPaymentModal(true);
+              }}
+              className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all cursor-pointer flex items-center gap-2 text-sm whitespace-nowrap order-last sm:order-first"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              Send Payment
+            </button>
             <Input placeholder="Search transaction..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
               <option value="all">All Status</option>
@@ -2360,6 +3019,52 @@ function PaymentsView() {
                     <p className="text-sm text-gray-700">{r.bills_description || r.description || '-'}</p>
                   </div>
                 </div>
+
+                <div className="pt-6 border-t border-gray-100 grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      setPaymentForm({
+                        tenant_id: r.tenant,
+                        property_id: r.property_id,
+                        landlord_id: r.landlord,
+                        rent_amount: r.rent_amount,
+                        water_bill: r.water_bill,
+                        electrical_bill: r.electrical_bill,
+                        wifi_bill: r.wifi_bill,
+                        other_bills: r.other_bills,
+                        bills_description: r.bills_description || r.description,
+                        due_date: r.due_date,
+                        status: r.status
+                      });
+                      setEditingPayment(r);
+                      setShowPaymentModal(true);
+                    }}
+                    className="flex-1 py-3 bg-gray-100 text-gray-900 font-bold rounded-xl hover:bg-gray-200 transition-all cursor-pointer flex items-center justify-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    Edit
+                  </button>
+                  {!['paid', 'completed', 'cancelled'].includes(r.status) && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Cancel this payment?')) handleCancelPayment(r.id, r.status);
+                      }}
+                      className="flex-1 py-3 bg-yellow-50 text-yellow-700 font-bold rounded-xl border border-yellow-100 hover:bg-yellow-100 transition-all cursor-pointer flex items-center justify-center gap-2 text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm('Permanently delete this payment record?')) handleDeletePayment(r.id);
+                    }}
+                    className="col-span-2 py-3 bg-red-50 text-red-600 font-bold rounded-xl border border-red-100 hover:bg-red-100 transition-all cursor-pointer flex items-center justify-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    Delete Record
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2369,7 +3074,7 @@ function PaymentsView() {
   )
 }
 
-function BookingsView() {
+function BookingsView({ refreshTrigger, setBookingForm, setEditingBooking, setShowBookingEditModal, handleCancelBooking }) {
   const BOOKINGS_PAGE_SIZE = 10
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2380,7 +3085,7 @@ function BookingsView() {
   const [totalBookings, setTotalBookings] = useState(0)
 
   useEffect(() => { setCurrentPage(1) }, [statusFilter])
-  useEffect(() => { loadBookings() }, [currentPage, statusFilter])
+  useEffect(() => { loadBookings() }, [currentPage, statusFilter, refreshTrigger])
 
   async function loadBookings() {
     setLoading(true)
@@ -2489,8 +3194,29 @@ function BookingsView() {
                     <td className="p-4 md:p-5 text-sm text-gray-600 whitespace-nowrap">{b.landlord_name}</td>
                     <td className="p-4 md:p-5 text-sm text-gray-600 whitespace-nowrap">{b.booking_date ? new Date(b.booking_date).toLocaleDateString() : 'N/A'}</td>
                     <td className="p-4 md:p-5"><Badge variant='default'>{b.status}</Badge></td>
-                    <td className="p-4 md:p-5 text-right">
-                      <button onClick={() => setDeleteId(b.id)} className="text-gray-700 font-bold text-xs cursor-pointer px-3 py-1.5 bg-gray-100 rounded-lg transition-colors whitespace-nowrap">Delete</button>
+                    <td className="p-4 md:p-5 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setBookingForm({ booking_date: b.booking_date, status: b.status });
+                          setEditingBooking(b);
+                          setShowBookingEditModal(true);
+                        }} 
+                        className="text-black bg-gray-100 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                        title="Edit or Reschedule Booking"
+                      >
+                        Edit/Reschedule
+                      </button>
+                      {!['completed', 'cancelled'].includes(b.status) && (
+                        <button 
+                          onClick={() => {
+                            if (confirm('Cancel this booking?')) handleCancelBooking(b.id, b.status);
+                          }} 
+                          className="text-yellow-700 bg-yellow-50 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button onClick={() => setDeleteId(b.id)} className="text-gray-700 font-bold text-[10px] cursor-pointer px-2 py-1.5 bg-gray-100 rounded-lg transition-colors whitespace-nowrap">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -2513,7 +3239,7 @@ function BookingsView() {
 }
 
 
-function SchedulesView() {
+function SchedulesView({ refreshTrigger, setScheduleForm, setEditingSchedule, setShowScheduleFormModal }) {
   const SLOTS_PAGE_SIZE = 10
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2521,7 +3247,7 @@ function SchedulesView() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalSlots, setTotalSlots] = useState(0)
 
-  useEffect(() => { loadSlots() }, [currentPage])
+  useEffect(() => { loadSlots() }, [currentPage, refreshTrigger])
 
   async function loadSlots() {
     setLoading(true)
@@ -2570,7 +3296,25 @@ function SchedulesView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Active Schedule Slots</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Active Schedule Slots</h2>
+        <button 
+          onClick={() => {
+            setScheduleForm({
+              landlord_id: '',
+              start_time: '',
+              end_time: '',
+              is_booked: false
+            });
+            setEditingSchedule(null);
+            setShowScheduleFormModal(true);
+          }}
+          className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all cursor-pointer flex items-center gap-2 text-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          Create Slot
+        </button>
+      </div>
       {loading ? <Spinner /> : (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -2591,8 +3335,37 @@ function SchedulesView() {
                     <td className="p-4 md:p-5 text-sm text-gray-600 whitespace-nowrap">{s.formatted_date}</td>
                     <td className="p-4 md:p-5 text-sm text-gray-600 whitespace-nowrap">{s.formatted_time}</td>
                     <td className="p-4 md:p-5"><Badge variant='default'>{s.is_booked ? 'Booked' : 'Available'}</Badge></td>
-                    <td className="p-4 md:p-5 text-right">
-                      <button onClick={() => setDeleteId(s.id)} className="text-gray-700 font-bold text-xs cursor-pointer px-3 py-1 bg-gray-100 rounded-lg transition-colors whitespace-nowrap">Delete</button>
+                    <td className="p-4 md:p-5 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setScheduleForm({
+                            landlord_id: s.landlord_id,
+                            start_time: s.start_time,
+                            end_time: s.end_time,
+                            is_booked: s.is_booked
+                          });
+                          setEditingSchedule(s);
+                          setShowScheduleFormModal(true);
+                        }}
+                        className="text-black bg-gray-100 font-bold text-xs cursor-pointer px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      {!s.is_booked && (
+                        <button 
+                          onClick={async () => {
+                            if (confirm('Cancel this slot? (Mark as unavailable/booked)')) {
+                              const { error } = await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', s.id)
+                              if (error) showToast.error("Failed to cancel slot")
+                              else { showToast.success("Slot cancelled (marked as booked)"); loadSlots() }
+                            }
+                          }}
+                          className="text-yellow-700 bg-yellow-50 font-bold text-xs cursor-pointer px-3 py-1.5 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors whitespace-nowrap"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button onClick={() => setDeleteId(s.id)} className="text-gray-700 font-bold text-xs cursor-pointer px-3 py-1.5 bg-gray-100 rounded-lg transition-colors whitespace-nowrap">Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -2749,6 +3522,327 @@ function AdminProfileView({ session, profile }) {
             className="px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {savingPassword ? 'Updating...' : 'Update Password'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MaintenanceMonitoringView({ refreshTrigger, setMaintenanceForm, setEditingMaintenance, setShowMaintenanceModal, handleCancelMaintenance, handleDeleteMaintenance }) {
+  const MAINTENANCE_PAGE_SIZE = 10
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalRequests, setTotalRequests] = useState(0)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => { setCurrentPage(1) }, [statusFilter, search])
+  useEffect(() => { loadRequests() }, [currentPage, statusFilter, search, refreshTrigger])
+
+  async function loadRequests() {
+    setLoading(true)
+    try {
+      const filters = []
+      if (statusFilter !== 'all') {
+        filters.push({ type: 'eq', column: 'status', value: statusFilter })
+      }
+      
+      const { data, count } = await adminFetch(
+        'maintenance_requests',
+        '*, property:properties(id, title, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)), tenant_profile:profiles!maintenance_requests_tenant_fkey(first_name, last_name)',
+        filters,
+        { column: 'created_at', ascending: false },
+        { page: currentPage, pageSize: MAINTENANCE_PAGE_SIZE },
+        true
+      )
+
+      setRequests(data || [])
+      setTotalRequests(count || 0)
+    } catch (error) {
+      console.error('Failed to load maintenance requests:', error)
+      setRequests([])
+      setTotalRequests(0)
+    }
+    setLoading(false)
+  }
+
+  const filteredRequests = requests.filter(r => {
+    const term = search.toLowerCase()
+    return (
+      (r.title || '').toLowerCase().includes(term) ||
+      (r.property?.title || '').toLowerCase().includes(term) ||
+      (r.tenant_profile ? `${r.tenant_profile.first_name} ${r.tenant_profile.last_name}`.toLowerCase().includes(term) : false) ||
+      (r.id || '').toLowerCase().includes(term)
+    )
+  })
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Maintenance Monitoring</h2>
+          <p className="text-gray-500 mt-1 text-sm md:text-base">Monitor all maintenance requests across the platform.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <Input placeholder="Search requests..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[900px] md:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Request</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Property</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Tenant</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Landlord</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Status</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredRequests.map(r => (
+                  <tr key={r.id} className="transition-colors hover:bg-gray-50">
+                    <td className="p-4 md:p-5">
+                      <div className="font-bold text-gray-900 text-sm whitespace-nowrap">{r.title}</div>
+                      <div className="text-[10px] text-gray-400 font-mono">ID: {r.id.slice(0, 8)}...</div>
+                    </td>
+                    <td className="p-4 md:p-5">
+                      <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{r.property?.title || 'Unknown'}</div>
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
+                      {r.tenant ? `${r.tenant.first_name} ${r.tenant.last_name}` : 'Unknown'}
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
+                      {r.property?.landlord_profile ? `${r.property.landlord_profile.first_name} ${r.property.landlord_profile.last_name}` : 'Unknown'}
+                    </td>
+                    <td className="p-4 md:p-5">
+                      <Badge variant={r.status === 'completed' ? 'success' : r.status === 'pending' ? 'warning' : 'default'}>
+                        {r.status.replace('_', ' ')}
+                      </Badge>
+                    </td>
+                    <td className="p-4 md:p-5 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingMaintenance(r);
+                          setMaintenanceForm({
+                            title: r.title,
+                            description: r.description,
+                            status: r.status,
+                            priority: r.priority || 'medium',
+                            category: r.category || 'general',
+                            attachment_urls: r.attachment_urls || []
+                          });
+                          setShowMaintenanceModal(true);
+                        }}
+                        className="text-black bg-gray-100 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      {r.status !== 'completed' && r.status !== 'cancelled' && (
+                        <button 
+                          onClick={() => {
+                            if (confirm('Cancel this maintenance request?')) handleCancelMaintenance(r.id, r.status);
+                          }}
+                          className="text-yellow-700 bg-yellow-50 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => {
+                          if (confirm('Permanently delete this maintenance request?')) handleDeleteMaintenance(r.id);
+                        }}
+                        className="text-red-700 bg-red-50 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg border border-red-100 hover:bg-red-100 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filteredRequests.length === 0 && <EmptyStateRow colSpan={6} message="No maintenance requests found." />}
+              </tbody>
+            </table>
+          </div>
+          <PaginationControls
+            currentPage={currentPage}
+            totalItems={totalRequests}
+            pageSize={MAINTENANCE_PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            label="requests"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LeaveMonitoringView({ refreshTrigger, setLeaveForm, setEditingLeave, setShowLeaveModal }) {
+  const LEAVE_PAGE_SIZE = 10
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalRequests, setTotalRequests] = useState(0)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => { setCurrentPage(1) }, [statusFilter, search])
+  useEffect(() => { loadRequests() }, [currentPage, statusFilter, search, refreshTrigger])
+
+  async function loadRequests() {
+    setLoading(true)
+    try {
+      const filters = []
+      if (statusFilter !== 'all') {
+        filters.push({ type: 'eq', column: 'end_request_status', value: statusFilter })
+      } else {
+        filters.push({ type: 'not_null', column: 'end_request_status' })
+      }
+      
+      const { data, count } = await adminFetch(
+        'tenant_occupancies',
+        '*, property:properties(id, title, address, city, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)), tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, last_name, phone, email, avatar_url)',
+        filters,
+        { column: 'end_requested_at', ascending: false },
+        { page: currentPage, pageSize: LEAVE_PAGE_SIZE },
+        true
+      )
+
+      setRequests(data || [])
+      setTotalRequests(count || 0)
+    } catch (error) {
+      console.error('Failed to load leave requests:', error)
+      setRequests([])
+      setTotalRequests(0)
+    }
+    setLoading(false)
+  }
+
+  const filteredRequests = requests.filter(r => {
+    const term = search.toLowerCase()
+    return (
+      (r.property?.title || '').toLowerCase().includes(term) ||
+      (r.tenant_profile ? `${r.tenant_profile.first_name} ${r.tenant_profile.last_name}`.toLowerCase().includes(term) : false) ||
+      (r.end_request_reason || '').toLowerCase().includes(term)
+    )
+  })
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Leave Pending Monitoring</h2>
+          <p className="text-gray-500 mt-1 text-sm md:text-base">Track and monitor tenant move-out requests.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <Input placeholder="Search move-outs..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All Requests</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[900px] md:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Property</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Tenant</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Landlord</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Reason</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Leave Date</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredRequests.map(r => (
+                  <tr key={r.id} className="transition-colors hover:bg-gray-50">
+                    <td className="p-4 md:p-5">
+                      <div className="font-bold text-gray-900 text-sm whitespace-nowrap">{r.property?.title || 'Unknown'}</div>
+                    </td>
+                    <td className="p-4 md:p-5 text-sm font-medium text-gray-800 whitespace-nowrap">
+                      {r.tenant ? `${r.tenant.first_name} ${r.tenant.last_name}` : 'Unknown'}
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
+                      {r.property?.landlord_profile ? `${r.property.landlord_profile.first_name} ${r.property.landlord_profile.last_name}` : 'Unknown'}
+                    </td>
+                    <td className="p-4 md:p-5">
+                      <div className="text-xs text-gray-600 max-w-[200px] line-clamp-2" title={r.end_request_reason}>{r.end_request_reason || '-'}</div>
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-900 font-bold whitespace-nowrap">
+                      {r.end_request_date ? new Date(r.end_request_date).toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td className="p-4 md:p-5">
+                      <Badge variant={r.end_request_status === 'approved' ? 'success' : r.end_request_status === 'pending' ? 'warning' : 'default'}>
+                        {r.end_request_status}
+                      </Badge>
+                    </td>
+                    <td className="p-4 md:p-5 text-right flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingLeave(r);
+                          setLeaveForm({
+                            end_request_status: r.end_request_status || 'pending',
+                            end_request_reason: r.end_request_reason || '',
+                            end_request_date: r.end_request_date || ''
+                          });
+                          setShowLeaveModal(true);
+                        }}
+                        className="text-black bg-gray-100 font-bold text-[10px] cursor-pointer px-2 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filteredRequests.length === 0 && <EmptyStateRow colSpan={6} message="No move-out requests found." />}
+              </tbody>
+            </table>
+          </div>
+          <PaginationControls
+            currentPage={currentPage}
+            totalItems={totalRequests}
+            pageSize={LEAVE_PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            label="requests"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ManagementModal({ title, children, onClose, onSave }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <h3 className="font-black text-gray-900">{title}</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer text-gray-400">✕</button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
+          <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors cursor-pointer">Cancel</button>
+          <button onClick={onSave} className="px-6 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition-all shadow-sm cursor-pointer">Save Changes</button>
         </div>
       </div>
     </div>

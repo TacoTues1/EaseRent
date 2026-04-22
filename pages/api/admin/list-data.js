@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
     const { table, select, filters, order, pagination, includeCount } = req.body
 
-    const allowedTables = ['properties', 'bookings', 'payment_requests', 'profiles', 'applications', 'available_time_slots', 'tenant_occupancies']
+    const allowedTables = ['properties', 'bookings', 'payment_requests', 'profiles', 'applications', 'available_time_slots', 'tenant_occupancies', 'maintenance_requests']
     if (!allowedTables.includes(table)) {
         return res.status(400).json({ error: 'Invalid table' })
     }
@@ -28,6 +28,8 @@ export default async function handler(req, res) {
                 else if (f.type === 'neq') query = query.neq(f.column, f.value)
                 else if (f.type === 'in') query = query.in(f.column, f.value)
                 else if (f.type === 'is') query = query.is(f.column, f.value)
+                else if (f.type === 'not_null') query = query.not(f.column, 'is', null)
+                else if (f.type === 'ilike') query = query.ilike(f.column, `%${f.value}%`)
             }
         }
 
