@@ -854,8 +854,8 @@ export default async function handler(req, res) {
                 try {
                     await sendMoveInNotification(phone, {
                         propertyName: propertyTitle || 'Property',
-                        startDate: new Date(startDate).toLocaleDateString('en-US'),
-                        endDate: new Date(endDate).toLocaleDateString('en-US'),
+                        startDate: formatPhilippineDateTime(startDate, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+                        endDate: formatPhilippineDateTime(endDate, { year: 'numeric', month: 'numeric', day: 'numeric' }),
                         rentAmount: Number(rentAmount || 0).toLocaleString()
                     })
                     results.sms = true
@@ -880,8 +880,8 @@ export default async function handler(req, res) {
                         smsFn: async (memberPhone) => {
                             await sendMoveInNotification(memberPhone, {
                                 propertyName: propertyTitle || 'Property',
-                                startDate: new Date(startDate).toLocaleDateString('en-US'),
-                                endDate: new Date(endDate).toLocaleDateString('en-US'),
+                                startDate: formatPhilippineDateTime(startDate, { year: 'numeric', month: 'numeric', day: 'numeric' }),
+                                endDate: formatPhilippineDateTime(endDate, { year: 'numeric', month: 'numeric', day: 'numeric' }),
                                 rentAmount: Number(rentAmount || 0).toLocaleString()
                             })
                         },
@@ -951,8 +951,8 @@ export default async function handler(req, res) {
                         tenantName: tenantName || 'Tenant',
                         propertyTitle: propertyTitle || 'Property',
                         status,
-                        newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
-                        signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                        newEndDate: newEndDate ? formatPhilippineDateTime(newEndDate, { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                        signingDate: signingDate ? formatPhilippineDateTime(signingDate, { year: 'numeric', month: 'long', day: 'numeric' }) : '',
                         landlordName: landlordName || 'Landlord'
                     })
                     results.email = true
@@ -969,8 +969,8 @@ export default async function handler(req, res) {
                     await sendRenewalStatus(phone, {
                         propertyTitle: propertyTitle || 'Property',
                         status,
-                        newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US') : '',
-                        signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US') : ''
+                        newEndDate: newEndDate ? formatPhilippineDateTime(newEndDate, { year: 'numeric', month: 'numeric', day: 'numeric' }) : '',
+                        signingDate: signingDate ? formatPhilippineDateTime(signingDate, { year: 'numeric', month: 'numeric', day: 'numeric' }) : ''
                     })
                     results.sms = true
                     console.log(`✅ Renewal status SMS sent to ${phone}`)
@@ -995,8 +995,8 @@ export default async function handler(req, res) {
                             await sendRenewalStatus(memberPhone, {
                                 propertyTitle: propertyTitle || 'Property',
                                 status,
-                                newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US') : '',
-                                signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US') : ''
+                                newEndDate: newEndDate ? formatPhilippineDateTime(newEndDate, { year: 'numeric', month: 'numeric', day: 'numeric' }) : '',
+                                signingDate: signingDate ? formatPhilippineDateTime(signingDate, { year: 'numeric', month: 'numeric', day: 'numeric' }) : ''
                             })
                         },
                         emailFn: async (memberEmail, member) => {
@@ -1005,8 +1005,8 @@ export default async function handler(req, res) {
                                 tenantName: member.name || 'Tenant',
                                 propertyTitle: propertyTitle || 'Property',
                                 status,
-                                newEndDate: newEndDate ? new Date(newEndDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
-                                signingDate: signingDate ? new Date(signingDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                                newEndDate: newEndDate ? formatPhilippineDateTime(newEndDate, { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                                signingDate: signingDate ? formatPhilippineDateTime(signingDate, { year: 'numeric', month: 'long', day: 'numeric' }) : '',
                                 landlordName: landlordName || 'Landlord'
                             })
                         }

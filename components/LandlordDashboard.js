@@ -138,6 +138,11 @@ export default function LandlordDashboard({ session, profile }) {
   const [chartFilter, setChartFilter] = useState('all') // 'all', 'water', 'other'
   const [totalIncome, setTotalIncome] = useState(0)
   const [activePanel, setActivePanel] = useState('metrics')
+  const [cancelOccupancyModal, setCancelOccupancyModal] = useState({
+    isOpen: false,
+    occupancy: null
+  })
+  const [processingCancelOccupancy, setProcessingCancelOccupancy] = useState(false)
 
   const router = useRouter()
 
@@ -793,7 +798,8 @@ export default function LandlordDashboard({ session, profile }) {
         sendDate: sendDate,
         status: status,
         note: note,
-        lastBill: latestBill
+        lastBill: latestBill,
+        startDate: occ.start_date
       }
 
       // Utility reminders: these are reminder schedule entries (SMS/Email) shown in billing schedule.
@@ -814,7 +820,8 @@ export default function LandlordDashboard({ session, profile }) {
           sendDate: null,
           status: 'Reminder Scheduled',
           note: 'SMS & email reminder 3 days before due date',
-          lastBill: null
+          lastBill: null,
+          startDate: occ.start_date
         },
         {
           id: `${occ.id}-water`,
@@ -832,7 +839,8 @@ export default function LandlordDashboard({ session, profile }) {
           sendDate: null,
           status: 'Reminder Scheduled',
           note: 'SMS & email reminder 3 days before due date',
-          lastBill: null
+          lastBill: null,
+          startDate: occ.start_date
         },
         {
           id: `${occ.id}-electricity`,
@@ -850,7 +858,8 @@ export default function LandlordDashboard({ session, profile }) {
           sendDate: null,
           status: 'Reminder Scheduled',
           note: 'SMS & email reminder 3 days before due date',
-          lastBill: null
+          lastBill: null,
+          startDate: occ.start_date
         }
       ]
 
@@ -2060,6 +2069,63 @@ export default function LandlordDashboard({ session, profile }) {
     loadProperties(); loadOccupancies(); loadScheduledTodayBookings()
   }
 
+  async function cancelOccupancy() {
+    const occupancy = cancelOccupancyModal.occupancy
+    if (!occupancy) return
+
+    setProcessingCancelOccupancy(true)
+    try {
+      // 1. Delete associated payment requests that are still pending
+      await supabase.from('payment_requests')
+        .delete()
+        .eq('occupancy_id', occupancy.id)
+        .in('status', ['pending', 'pending_confirmation'])
+
+      // 2. Delete the occupancy record
+      const { error: occError } = await supabase
+        .from('tenant_occupancies')
+        .delete()
+        .eq('id', occupancy.id)
+
+      if (occError) throw occError
+
+      // 3. Update property status back to 'available'
+      const { error: propError } = await supabase
+        .from('properties')
+        .update({ status: 'available' })
+        .eq('id', occupancy.property_id)
+
+      if (propError) throw propError
+
+      // 4. Mark the booking as 'accepted' again so it can be re-assigned
+      await supabase.from('bookings')
+        .update({ status: 'accepted' })
+        .eq('tenant', occupancy.tenant_id)
+        .eq('property_id', occupancy.property_id)
+        .eq('status', 'completed')
+
+      // 5. Create notification for tenant
+      const message = `Your upcoming occupancy for "${occupancy.property?.title || 'your property'}" has been cancelled by the landlord.`
+      await createNotification({ 
+        recipient: occupancy.tenant_id, 
+        actor: session.user.id, 
+        type: 'occupancy_cancelled', 
+        message, 
+        link: '/dashboard' 
+      })
+
+      showToast.success('Occupancy cancelled successfully. Property is now available.', { duration: 4000, transition: "bounceIn" })
+      setCancelOccupancyModal({ isOpen: false, occupancy: null })
+      loadOccupancies()
+      loadProperties()
+    } catch (err) {
+      console.error('Cancel occupancy error:', err)
+      showToast.error(`Failed: ${err.message}`, { duration: 4000, transition: "bounceIn" })
+    } finally {
+      setProcessingCancelOccupancy(false)
+    }
+  }
+
   // --- CONFIRMATION HANDLERS ---
 
   function openEndConfirmation(type, requestId) {
@@ -2829,13 +2895,32 @@ export default function LandlordDashboard({ session, profile }) {
                                       </button>
                                     )}
                                     {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
-                                      <button
-                                        onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)}
-                                        disabled={disableSendNow}
-                                        className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
-                                      >
-                                        {isSendingNow ? 'Sending...' : hasBillAlreadySent ? 'Already Sent' : 'Send Now'}
-                                      </button>
+                                      (() => {
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+                                        const start = item.startDate ? new Date(item.startDate) : null;
+                                        if (start) start.setHours(0, 0, 0, 0);
+
+                                        if (start && start > today) {
+                                          return (
+                                            <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                              <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                                                Start on {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                              </span>
+                                            </div>
+                                          );
+                                        }
+
+                                        return (
+                                          <button
+                                            onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)}
+                                            disabled={disableSendNow}
+                                            className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                                          >
+                                            {isSendingNow ? 'Sending...' : hasBillAlreadySent ? 'Already Sent' : 'Send Now'}
+                                          </button>
+                                        );
+                                      })()
                                     )}
                                   </>
                                 )}
@@ -2932,10 +3017,29 @@ export default function LandlordDashboard({ session, profile }) {
                                             </button>
                                           )}
                                           {item.status !== 'Contract Ending' && item.status !== 'Confirming' && (
-                                            <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)} disabled={disableSendNow}
-                                              className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
-                                              {isSendingNow ? 'Sending...' : hasBillAlreadySent ? 'Already Sent' : 'Send Now'}
-                                            </button>
+                                            (() => {
+                                              const today = new Date();
+                                              today.setHours(0, 0, 0, 0);
+                                              const start = item.startDate ? new Date(item.startDate) : null;
+                                              if (start) start.setHours(0, 0, 0, 0);
+
+                                              if (start && start > today) {
+                                                return (
+                                                  <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                                                      Start on {start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              }
+
+                                              return (
+                                                <button onClick={() => openAdvanceBillModal(item.tenantId, item.tenantName, item.propertyTitle, item.propertyPrice, item.billType, item.billLabel)} disabled={disableSendNow}
+                                                  className="text-[11px] font-bold bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition-all disabled:opacity-50 cursor-pointer shadow-sm">
+                                                  {isSendingNow ? 'Sending...' : hasBillAlreadySent ? 'Already Sent' : 'Send Now'}
+                                                </button>
+                                              );
+                                            })()
                                           )}
                                         </div>
                                       )}
@@ -2996,10 +3100,16 @@ export default function LandlordDashboard({ session, profile }) {
                                 </button>
                               </>
                             ) : (
-                              <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
-                                <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
-                                  Start on {new Date(occ.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
-                                </span>
+                              <div className="flex flex-col items-end gap-2">
+                                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
+                                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                                    Start on {new Date(occ.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                  </span>
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); setCancelOccupancyModal({ isOpen: true, occupancy: occ }) }}
+                                  className="text-[10px] text-red-600 font-bold hover:text-red-700 cursor-pointer transition-colors px-1">
+                                  Cancel Occupancy
+                                </button>
                               </div>
                             )}
                           </div>
@@ -4287,6 +4397,78 @@ export default function LandlordDashboard({ session, profile }) {
       <footer>
         <Footer />
       </footer>
+
+      {/* Cancel Occupancy Confirmation Modal */}
+      {cancelOccupancyModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-red-50 px-6 py-4 border-b border-red-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Cancel Upcoming Occupancy</h3>
+                  <p className="text-xs text-gray-500">This action cannot be undone</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+                <p className="text-xs font-bold text-red-800 uppercase tracking-wider mb-2">Warning</p>
+                <p className="text-sm text-red-700 leading-relaxed">
+                  You are about to cancel the upcoming occupancy for <strong>{cancelOccupancyModal.occupancy?.tenant?.first_name} {cancelOccupancyModal.occupancy?.tenant?.last_name}</strong>.
+                </p>
+              </div>
+              
+              <ul className="space-y-3 text-sm text-gray-600">
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <span>The property will become <strong>Available</strong> again.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <span>All pending bills for this occupancy will be deleted.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <span>The tenant's booking will be reset to <strong>Accepted</strong> status.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 justify-end">
+              <button
+                onClick={() => setCancelOccupancyModal({ isOpen: false, occupancy: null })}
+                disabled={processingCancelOccupancy}
+                className="px-5 py-2.5 border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-100 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                No, Keep it
+              </button>
+              <button
+                onClick={cancelOccupancy}
+                disabled={processingCancelOccupancy}
+                className="px-5 py-2.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 cursor-pointer shadow-lg shadow-red-200 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {processingCancelOccupancy ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Cancelling...
+                  </>
+                ) : (
+                  'Yes, Cancel Occupancy'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
     </>

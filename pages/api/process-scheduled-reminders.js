@@ -192,6 +192,7 @@ function getBookingScheduleDisplay(booking) {
 // This runs server-side (cron/API), so it works even when no user is logged in.
 async function autoStartDueMaintenanceRequests() {
     const summary = { updated: 0, notified: 0 }
+    const nowISO = new Date().toISOString()
 
     const { data: dueRequests, error: dueError } = await supabaseAdmin
         .from('maintenance_requests')

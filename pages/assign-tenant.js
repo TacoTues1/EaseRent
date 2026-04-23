@@ -32,7 +32,13 @@ export default function AssignTenantPage() {
     const [selectedProp, setSelectedProp] = useState(null)
 
     // Step 2 - Schedule
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
+    const [startDate, setStartDate] = useState(() => {
+        const d = new Date()
+        const year = d.getFullYear()
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+    })
 
     // Step 3 - Charges
     const [penaltyDetails, setPenaltyDetails] = useState('')
@@ -242,7 +248,9 @@ export default function AssignTenantPage() {
         // Notifications
         const allPaid = paidRent && paidAdvance && paidDeposit
         const somePaid = paidRent || paidAdvance || paidDeposit
-        let message = `You have been assigned to occupy "${selectedProp.title}" starting ${new Date(startDate).toLocaleDateString('en-US')}.`
+        const [y, m, d] = startDate.split('-')
+        const formattedStartDate = `${parseInt(m)}/${parseInt(d)}/${y}`
+        let message = `You have been assigned to occupy "${selectedProp.title}" starting ${formattedStartDate}.`
         if (!paidDeposit && securityDepositAmount > 0) message += ` Security deposit: ₱${Number(securityDepositAmount).toLocaleString()}.`
         if (somePaid) {
             const paidItems = [paidRent && 'Rent', paidAdvance && 'Advance', paidDeposit && 'Security Deposit'].filter(Boolean)

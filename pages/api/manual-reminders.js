@@ -473,8 +473,18 @@ export default async function handler(req, res) {
       };
 
       // Filter occupancies where today is 1, 2, or 3 days before the due date
+      // AND the occupancy has already started
       const rentOccupancies = (allOccupancies || []).filter(occ => {
         if (!occ.start_date && !occ.rent_due_day) return false;
+
+        // Check if occupancy has started
+        if (occ.start_date) {
+          const startDate = new Date(occ.start_date);
+          startDate.setHours(0, 0, 0, 0);
+          const compareToday = new Date(today);
+          compareToday.setHours(0, 0, 0, 0);
+          if (compareToday < startDate) return false;
+        }
         
         // Use rent_due_day if landlord set it, otherwise fall back to start_date's day
         let dueDay;
@@ -680,10 +690,20 @@ export default async function handler(req, res) {
       console.log(`[Wifi Reminder] ========================================`);
 
       // Filter occupancies where today is 1, 2, or 3 days before the WiFi due date
+      // AND the occupancy has already started
       const wifiOccupancies = (allOccupancies || []).filter(occ => {
         if (!isUtilityEnabled(occ, 'internet')) return false;
         if (!isWifiAvailableAtProperty(occ)) return false;
         if (!occ.wifi_due_day) return false;
+
+        // Check if occupancy has started
+        if (occ.start_date) {
+          const startDate = new Date(occ.start_date);
+          startDate.setHours(0, 0, 0, 0);
+          const compareToday = new Date(today);
+          compareToday.setHours(0, 0, 0, 0);
+          if (compareToday < startDate) return false;
+        }
 
         const wifiDueDay = occ.wifi_due_day;
         const currentMonthDueDate = new Date(todayYear, todayMonth, wifiDueDay);
@@ -766,6 +786,15 @@ export default async function handler(req, res) {
           if (!occ.tenant) continue;
           if (!isUtilityEnabled(occ, 'electricity')) continue;
 
+          // Check if occupancy has started
+          if (occ.start_date) {
+            const startDate = new Date(occ.start_date);
+            startDate.setHours(0, 0, 0, 0);
+            const compareToday = new Date(today);
+            compareToday.setHours(0, 0, 0, 0);
+            if (compareToday < startDate) continue;
+          }
+
           // Check if notification already sent TODAY
           const todayStart = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
           const todayEnd = new Date(todayYear, todayMonth, todayDay, 23, 59, 59, 999);
@@ -828,6 +857,15 @@ export default async function handler(req, res) {
         for (const occ of (allOccupancies || [])) {
           if (!occ.tenant) continue;
           if (!isUtilityEnabled(occ, 'water')) continue;
+
+          // Check if occupancy has started
+          if (occ.start_date) {
+            const startDate = new Date(occ.start_date);
+            startDate.setHours(0, 0, 0, 0);
+            const compareToday = new Date(today);
+            compareToday.setHours(0, 0, 0, 0);
+            if (compareToday < startDate) continue;
+          }
 
           // Check if notification already sent TODAY
           const todayStartW = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);

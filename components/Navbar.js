@@ -1103,7 +1103,7 @@ export default function Navbar({ isHomeLoading = false }) {
                     )}
                   </Link>
                   <Link href="/maintenance" className={`nav-link text-sm font-semibold whitespace-nowrap transition-colors relative group ${isActive('/maintenance') ? 'active text-gray-900' : 'text-gray-500 hover:text-gray-900'} ${disabledClass}`}>
-                    Tenants Maintenance
+                    Tenants Maintenance Requests
                     {maintenanceCount > 0 && (
                       <span className="absolute top-0 right-0 transform translate-x-3 -translate-y-2 bg-[#FF4B60] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center shadow-sm">
                         {maintenanceCount > 9 ? '9+' : maintenanceCount}
@@ -1411,7 +1411,7 @@ export default function Navbar({ isHomeLoading = false }) {
                     )}
                   </Link>
                   <Link href="/maintenance" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/maintenance') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
-                    Tenants Maintenance
+                    Tenants Maintenance Requests
                     {maintenanceCount > 0 && (
                       <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/maintenance') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
                         {maintenanceCount > 9 ? '9+' : maintenanceCount}
