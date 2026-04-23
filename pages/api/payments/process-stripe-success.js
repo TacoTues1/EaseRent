@@ -144,6 +144,7 @@ export default async function handler(req, res) {
                 amount: amountPaid,
                 water_bill: request.water_bill,
                 electrical_bill: request.electrical_bill,
+                wifi_bill: request.wifi_bill,
                 other_bills: request.other_bills,
                 bills_description: request.bills_description,
                 method: 'stripe',

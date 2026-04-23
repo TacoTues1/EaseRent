@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { generateStatementPDF, generateLandlordStatementPDF } from '../../../lib/pdf-generator'
 import { sendMonthlyStatementEmail, sendLandlordMonthlyStatementEmail } from '../../../lib/email'
+import { NON_ADVANCE_PAYMENT_REQUEST_FILTER, getRecordedPaymentRequestAmount, sumRecordedPaymentRequestAmounts } from '../../../lib/paymentTotals'
 
 
 
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
                     .select('*')
                     .eq('tenant', tenant.id)
                     .in('status', ['paid', 'completed', 'confirmed'])
+                    .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
                     .order('created_at', { ascending: false })
 
                 if (paymentError) {
@@ -187,6 +189,7 @@ export default async function handler(req, res) {
                             .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, created_at, property_id, amount_paid, status, bills_description')
                             .eq('landlord', landlord.id)
                             .in('status', ['paid', 'confirmed', 'completed'])
+                            .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
 
                         if (payError) {
                             console.error(`Error fetching payments for landlord ${landlord.id}:`, payError)
@@ -211,20 +214,7 @@ export default async function handler(req, res) {
                         }
 
                         // Calculate total income
-                        const calculateTotal = (paymentsList) => {
-                            return paymentsList?.reduce((sum, p) => {
-                                const total = parseFloat(p.amount_paid || 0) || (
-                                    (parseFloat(p.rent_amount) || 0) +
-                                    (parseFloat(p.security_deposit_amount) || 0) +
-                                    (parseFloat(p.advance_amount) || 0) +
-                                    (parseFloat(p.water_bill) || 0) +
-                                    (parseFloat(p.electrical_bill) || 0) +
-                                    (parseFloat(p.wifi_bill) || 0) +
-                                    (parseFloat(p.other_bills) || 0)
-                                )
-                                return sum + total
-                            }, 0) || 0
-                        }
+                        const calculateTotal = (paymentsList) => sumRecordedPaymentRequestAmounts(paymentsList || [])
 
                         // Group by property
                         const groupByProperty = (paymentsList) => {
@@ -234,15 +224,7 @@ export default async function handler(req, res) {
                                 if (!grouped[propTitle]) {
                                     grouped[propTitle] = { title: propTitle, income: 0, payments: 0 }
                                 }
-                                const total = parseFloat(p.amount_paid || 0) || (
-                                    (parseFloat(p.rent_amount) || 0) +
-                                    (parseFloat(p.security_deposit_amount) || 0) +
-                                    (parseFloat(p.advance_amount) || 0) +
-                                    (parseFloat(p.water_bill) || 0) +
-                                    (parseFloat(p.electrical_bill) || 0) +
-                                    (parseFloat(p.wifi_bill) || 0) +
-                                    (parseFloat(p.other_bills) || 0)
-                                )
+                                const total = getRecordedPaymentRequestAmount(p)
                                 grouped[propTitle].income += total
                                 grouped[propTitle].payments += 1
                             })

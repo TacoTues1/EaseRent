@@ -1,5 +1,6 @@
 import Lottie from "lottie-react"
 import { useEffect, useState } from 'react'
+import { NON_ADVANCE_PAYMENT_REQUEST_FILTER, sumRecordedPaymentRequestAmounts } from '../lib/paymentTotals'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -16,6 +17,7 @@ export default function PaymentHistoryPage() {
   const [userRole, setUserRole] = useState(null)
   const [chartYear, setChartYear] = useState(new Date().getFullYear())
   const [chartFilter, setChartFilter] = useState('all')
+  const [paidIncomeRequests, setPaidIncomeRequests] = useState([])
   const [selectedDetailPayment, setSelectedDetailPayment] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [isPageLoading, setIsPageLoading] = useState(false)
@@ -52,6 +54,7 @@ export default function PaymentHistoryPage() {
   useEffect(() => {
     if (session && userRole) {
       loadPayments()
+      loadPaidIncomeRequests()
 
       const channel = supabase
         .channel('payment_history_realtime')
@@ -60,6 +63,13 @@ export default function PaymentHistoryPage() {
           { event: '*', schema: 'public', table: 'payments' },
           () => {
             loadPayments()
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payment_requests' },
+          () => {
+            loadPaidIncomeRequests()
           }
         )
         .subscribe()
@@ -91,14 +101,29 @@ export default function PaymentHistoryPage() {
     setLoading(false)
   }
 
+  async function loadPaidIncomeRequests() {
+    if (!session?.user?.id || userRole !== 'landlord') {
+      setPaidIncomeRequests([])
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('payment_requests')
+      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at')
+      .eq('landlord', session.user.id)
+      .eq('status', 'paid')
+      .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
+
+    if (error) {
+      console.error('Error loading payment history income totals:', error)
+      return
+    }
+
+    setPaidIncomeRequests(data || [])
+  }
+
   // Calculate totals
-  const totalIncome = payments.reduce((sum, p) => {
-    const rent = parseFloat(p.amount) || 0
-    const water = parseFloat(p.water_bill) || 0
-    const electrical = parseFloat(p.electrical_bill) || 0
-    const other = parseFloat(p.other_bills) || 0
-    return sum + rent + water + electrical + other
-  }, 0)
+  const totalIncome = sumRecordedPaymentRequestAmounts(paidIncomeRequests)
 
   const totalPaymentCount = payments.length
   const totalPages = Math.max(1, Math.ceil(totalPaymentCount / PAYMENT_HISTORY_PER_PAGE))
@@ -194,12 +219,12 @@ export default function PaymentHistoryPage() {
           const chartDataYear = monthNames.map((name, month) => {
             const mStart = new Date(chartYear, month, 1)
             const mEnd = new Date(chartYear, month + 1, 0, 23, 59, 59)
-            const monthPaid = payments.filter(p => {
+            const monthPaid = paidIncomeRequests.filter(p => {
               if (!p.paid_at) return false
               const d = new Date(p.paid_at)
               return d >= mStart && d <= mEnd
             })
-            const income = monthPaid.reduce((s, p) => s + ((parseFloat(p.amount) || 0) + (parseFloat(p.water_bill) || 0) + (parseFloat(p.electrical_bill) || 0) + (parseFloat(p.wifi_bill) || 0) + (parseFloat(p.other_bills) || 0)), 0)
+            const income = sumRecordedPaymentRequestAmounts(monthPaid)
             const other = monthPaid.reduce((s, p) => s + (parseFloat(p.other_bills) || 0), 0)
             return { name, income, other }
           })

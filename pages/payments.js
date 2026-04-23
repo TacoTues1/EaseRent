@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import StripePaymentForm from '../components/StripePaymentForm'
 import { downloadExcel } from '../lib/exportExcel'
+import { NON_ADVANCE_PAYMENT_REQUEST_FILTER, getRecordedPaymentRequestAmount, sumRecordedPaymentRequestAmounts } from '../lib/paymentTotals'
 import { supabase } from '../lib/supabaseClient'
 
 const PAYMENT_REQUESTS_PER_PAGE = 15
@@ -61,6 +62,7 @@ export default function PaymentsPage() {
   const [isFamilyMember, setIsFamilyMember] = useState(false) // Track if user is a family member
   const [primaryTenantId, setPrimaryTenantId] = useState(null) // Primary tenant ID for family members
   const [parentOccupancyId, setParentOccupancyId] = useState(null) // Parent occupancy ID for family members
+  const [incomeTotal, setIncomeTotal] = useState(0)
   const currentPageRef = useRef(1)
   const [chartYear, setChartYear] = useState(new Date().getFullYear())
   const [formData, setFormData] = useState({
@@ -227,6 +229,7 @@ export default function PaymentsPage() {
       if (userRole === 'landlord') {
         loadProperties()
         loadApprovedApplications()
+        loadIncomeTotal()
       }
 
       // Realtime Subscriptions
@@ -238,6 +241,9 @@ export default function PaymentsPage() {
           (payload) => {
             // Reload requests when a new bill is sent or status updates
             loadPaymentRequests(currentPageRef.current)
+            if (userRole === 'landlord') {
+              loadIncomeTotal()
+            }
           }
         )
         .on(
@@ -339,6 +345,27 @@ export default function PaymentsPage() {
 
     const { data } = await query
     setPayments(data || [])
+  }
+
+  async function loadIncomeTotal() {
+    if (!session?.user?.id || userRole !== 'landlord') {
+      setIncomeTotal(0)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('payment_requests')
+      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills')
+      .eq('landlord', session.user.id)
+      .eq('status', 'paid')
+      .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
+
+    if (error) {
+      console.error('Error loading landlord income total:', error)
+      return
+    }
+
+    setIncomeTotal(sumRecordedPaymentRequestAmounts(data || []))
   }
 
   async function loadPaymentRequests(page = currentPage) {
@@ -1270,15 +1297,7 @@ export default function PaymentsPage() {
         monthlyRent = parseFloat(fallbackProperty?.price || 0);
       }
 
-      // Calculate total amount paid by tenant
-      const billTotal = (
-        parseFloat(request.rent_amount || 0) +
-        parseFloat(request.security_deposit_amount || 0) +
-        parseFloat(request.advance_amount || 0) +
-        parseFloat(request.water_bill || 0) +
-        parseFloat(request.electrical_bill || 0) +
-        parseFloat(request.other_bills || 0)
-      );
+      const recordedAmount = getRecordedPaymentRequestAmount(request);
 
       let extraMonths = 0;
       if (monthlyRent > 0 && !request.is_move_in_payment) {
@@ -1296,9 +1315,10 @@ export default function PaymentsPage() {
           application_id: request.application_id,
           tenant: request.tenant,
           landlord: session.user.id,
-          amount: billTotal, // Record the TOTAL amount paid (Rent + Advance + Utilities + etc)
+          amount: recordedAmount,
           water_bill: request.water_bill,
           electrical_bill: request.electrical_bill,
+          wifi_bill: request.wifi_bill,
           other_bills: request.other_bills,
           bills_description: request.bills_description,
           method: request.payment_method || 'cash',
@@ -1458,6 +1478,7 @@ export default function PaymentsPage() {
 
       loadPaymentRequests()
       loadPayments()
+      loadIncomeTotal()
 
       let successMsg = 'Payment confirmed and recorded!';
       if (extraMonths > 0) {
@@ -1630,8 +1651,7 @@ export default function PaymentsPage() {
 
   if (!session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>
 
-  // Calculate total income from recorded payments
-  const totalIncome = payments.reduce((sum, p) => sum + (parseFloat(p.amount || 0) || 0), 0)
+  const totalIncome = incomeTotal
 
   const totalPages = Math.max(1, Math.ceil(totalPaymentRequestCount / PAYMENT_REQUESTS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)

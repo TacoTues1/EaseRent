@@ -3,6 +3,7 @@ import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createNotification } from '../lib/notifications'
+import { NON_ADVANCE_PAYMENT_REQUEST_FILTER, getRecordedPaymentRequestAmount, sumRecordedPaymentRequestAmounts } from '../lib/paymentTotals'
 import { supabase } from '../lib/supabaseClient'
 import Footer from './Footer'
 
@@ -199,19 +200,9 @@ export default function LandlordDashboard({ session, profile }) {
         .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
+        .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
 
-      const total = (data || []).reduce((sum, p) => {
-        const t = parseFloat(p.amount_paid || 0) || (
-          parseFloat(p.rent_amount || 0) +
-          parseFloat(p.security_deposit_amount || 0) +
-          parseFloat(p.advance_amount || 0) +
-          parseFloat(p.water_bill || 0) +
-          parseFloat(p.electrical_bill || 0) +
-          parseFloat(p.wifi_bill || 0) +
-          parseFloat(p.other_bills || 0)
-        )
-        return sum + t
-      }, 0)
+      const total = sumRecordedPaymentRequestAmounts(data || [])
 
       setTotalIncome(total)
     } catch (err) {
@@ -320,6 +311,7 @@ export default function LandlordDashboard({ session, profile }) {
         .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
+        .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
         .gte('paid_at', monthStart.toISOString())
         .lte('paid_at', monthEnd.toISOString())
 
@@ -329,24 +321,12 @@ export default function LandlordDashboard({ session, profile }) {
         .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
+        .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
         .gte('paid_at', yearStart.toISOString())
         .lte('paid_at', yearEnd.toISOString())
 
       // Calculate totals
-      const calculateTotal = (payments) => {
-        return payments?.reduce((sum, p) => {
-          const total = parseFloat(p.amount_paid || 0) || (
-            (parseFloat(p.rent_amount) || 0) +
-            (parseFloat(p.security_deposit_amount) || 0) +
-            (parseFloat(p.advance_amount) || 0) +
-            (parseFloat(p.water_bill) || 0) +
-            (parseFloat(p.electrical_bill) || 0) +
-            (parseFloat(p.wifi_bill) || 0) +
-            (parseFloat(p.other_bills) || 0)
-          )
-          return sum + total
-        }, 0) || 0
-      }
+      const calculateTotal = (payments) => sumRecordedPaymentRequestAmounts(payments || [])
 
       // Group by property for breakdown
       const groupByProperty = (payments) => {
@@ -356,15 +336,7 @@ export default function LandlordDashboard({ session, profile }) {
           if (!grouped[propTitle]) {
             grouped[propTitle] = { title: propTitle, income: 0, payments: 0 }
           }
-          const total = parseFloat(p.amount_paid || 0) || (
-            (parseFloat(p.rent_amount) || 0) +
-            (parseFloat(p.security_deposit_amount) || 0) +
-            (parseFloat(p.advance_amount) || 0) +
-            (parseFloat(p.water_bill) || 0) +
-            (parseFloat(p.electrical_bill) || 0) +
-            (parseFloat(p.wifi_bill) || 0) +
-            (parseFloat(p.other_bills) || 0)
-          )
+          const total = getRecordedPaymentRequestAmount(p)
           grouped[propTitle].income += total
           grouped[propTitle].payments += 1
         })
@@ -394,18 +366,7 @@ export default function LandlordDashboard({ session, profile }) {
           return paidDate >= mStart && paidDate <= mEnd
         }) || []
 
-        const monthTotal = monthPaymentsFiltered.reduce((sum, p) => {
-          const total = parseFloat(p.amount_paid || 0) || (
-            (parseFloat(p.rent_amount) || 0) +
-            (parseFloat(p.security_deposit_amount) || 0) +
-            (parseFloat(p.advance_amount) || 0) +
-            (parseFloat(p.water_bill) || 0) +
-            (parseFloat(p.electrical_bill) || 0) +
-            (parseFloat(p.wifi_bill) || 0) +
-            (parseFloat(p.other_bills) || 0)
-          )
-          return sum + total
-        }, 0)
+        const monthTotal = sumRecordedPaymentRequestAmounts(monthPaymentsFiltered)
 
         const waterTotal = monthPaymentsFiltered.reduce((sum, p) => {
           return sum + (parseFloat(p.water_bill) || 0)
@@ -2485,7 +2446,7 @@ export default function LandlordDashboard({ session, profile }) {
               <div className="flex flex-row flex-wrap lg:flex-col lg:flex-nowrap gap-1.5 sm:gap-2.5">
               <button onClick={() => setActivePanel('metrics')} className={`w-auto lg:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 sm:gap-3 cursor-pointer ${activePanel === 'metrics' ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                <span className="hidden sm:inline">Manage your Apartment</span>
+                <span className="hidden sm:inline">Manage your Properties</span>
                 <span className="sm:hidden">Manage</span>
                 <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black border inline-flex items-center justify-center ${activePanel === 'metrics' ? 'bg-white/15 text-white border-white/25' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{metricsToolCount}</span>
               </button>
@@ -2656,14 +2617,14 @@ export default function LandlordDashboard({ session, profile }) {
                 <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200/60 shadow-sm">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
                     <div>
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Your Apartments</h3>
+                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Your Properties</h3>
                       <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">Manage all your uploaded properties here</p>
                     </div>
                     <button
                         onClick={() => router.push('/properties/new')}
                         className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-black text-white text-xs sm:text-sm font-bold rounded-xl cursor-pointer hover:bg-gray-800 transition-all shadow-sm"
                     >
-                        + Add New Apartment
+                        + Add New Properties
                     </button>
                   </div>
  

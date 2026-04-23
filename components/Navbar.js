@@ -647,11 +647,8 @@ export default function Navbar({ isHomeLoading = false }) {
     ].includes(type)) {
       router.push('/dashboard')
     }
-    // --- Application-related → /applications ---
-    else if (type === 'application' || type === 'assign_user' || type.includes('application_')) {
-      router.push('/applications')
+    else if (type === 'assign_user') {
     }
-    // --- Fallback: go to notifications page ---
     else {
       router.push('/notifications')
     }
@@ -1400,9 +1397,7 @@ export default function Navbar({ isHomeLoading = false }) {
               {effectiveRole === 'landlord' && (
                 <>
                   <Link href="/properties/my-properties" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/my-properties') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>My Properties</Link>
-                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Add Property</Link>
-                  <Link href="/applications" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/applications') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Tenants Inquiries</Link>
-                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
+                  <Link href="/properties/new" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all ${isActive('/properties/new') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>Add Property</Link>                  <Link href="/bookings" onClick={() => setShowMobileMenu(false)} className={`flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium transition-all relative ${isActive('/bookings') ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'} ${disabledClass}`}>
                     Tenants Viewing Requests
                     {bookingCount > 0 && (
                       <span className={`absolute top-0 right-0 transform translate-x-1/4 -translate-y-1/4 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[1rem] text-center border border-white shadow-sm ${isActive('/bookings') ? 'bg-white text-black' : 'bg-red-500 text-white'}`}>
