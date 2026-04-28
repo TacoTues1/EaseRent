@@ -2534,7 +2534,7 @@ export default function LandlordDashboard({ session, profile }) {
               </button>
               <button onClick={() => setActivePanel('terminations')} className={`w-auto lg:w-full text-left px-3 sm:px-4 py-2 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 sm:gap-3 cursor-pointer ${activePanel === 'terminations' ? 'bg-black text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}>
                 <svg className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                <span className="hidden sm:inline">Approved Property Request leave</span>
+                <span className="hidden sm:inline">Approved Property Leave Request</span>
                 <span className="sm:hidden">Ends</span>
                 <span className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-black border inline-flex items-center justify-center ${activePanel === 'terminations' ? 'bg-white/15 text-white border-white/25' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{terminationsToolCount}</span>
               </button>
