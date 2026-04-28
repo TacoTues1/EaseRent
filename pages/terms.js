@@ -26,7 +26,7 @@ export default function Terms() {
             <span className="text-black font-bold">Terms of Service</span>
           </div>
           <h1 className="text-4xl font-black mb-4 tracking-tight">Terms of Service</h1>
-          <p className="text-lg text-gray-600">Last Updated: March 2026</p>
+          <p className="text-lg text-gray-600">Last Updated: April 2026</p>
         </div>
 
         <div className="space-y-12">
@@ -34,18 +34,14 @@ export default function Terms() {
           {/* 1. Multiple Accounts Policy (FROM YOUR TEXT) */}
           <section id="accounts" className="scroll-mt-24">
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-red-50 text-red-600 rounded-lg">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-              </div>
               <h2 className="text-2xl font-bold">1. Multiple Accounts Policy</h2>
             </div>
 
-            <div className="bg-red-50 border border-red-100 p-6 rounded-2xl mb-6">
-              <p className="font-bold text-red-800 mb-2 flex items-center gap-2">
-                <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
-                STRICT PROHIBITION
+            <div className="bg-gray-50 border border-gray-100 p-6 rounded-2xl mb-6">
+              <p className="font-bold text-gray-800 mb-2 flex items-center gap-2">
+                *STRICTLY PROHIBITED
               </p>
-              <p className="text-red-900/80 font-medium">Creating multiple accounts for the same user identity is strictly prohibited on Abalay.</p>
+              <p className="text-gray-900/80 font-medium">Creating multiple accounts for the same user identity is strictly prohibited on Abalay.</p>
             </div>
 
             <ul className="grid gap-4 md:grid-cols-2">
@@ -99,17 +95,73 @@ export default function Terms() {
             </ul>
           </section>
 
-          {/* 5. Privacy Reference */}
+          {/* 5. Subscription & Slot Policy */}
+          <section id="slots" className="scroll-mt-24">
+            <div className="flex items-center gap-3 mb-6">
+              <h2 className="text-2xl font-bold">5. Subscription & Slot Policy</h2>
+            </div>
+
+            <p className="text-gray-600 mb-6">Abalay provides certain features on a freemium basis. Users receive a limited number of free slots and may purchase additional slots to expand their capacity.</p>
+
+            <div className="grid gap-5 md:grid-cols-2 mb-6">
+              {/* Landlord Slot Policy */}
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <strong className="text-black text-lg">Landlord — Property Slots</strong>
+                </div>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span>*<strong>3 free property slots</strong> are included with every landlord account upon registration.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>*Additional property slots may be purchased at <strong>₱50.00 per slot</strong>.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>*Each landlord account may hold a <strong>maximum of 10 property slots</strong>.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>*Purchased slots are <strong>permanent</strong> and non-refundable.</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Tenant Slot Policy */}
+              <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <strong className="text-black text-lg">Tenant — Family Member Slots</strong>
+                </div>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-start gap-2">
+                    <span>*<strong>1 free family member slot</strong> is included with every tenant account upon registration.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>*Additional family member slots may be purchased at <strong>₱50.00 per slot</strong>.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span>*Purchased slots are <strong>permanent</strong> and non-refundable.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
+              <p className="text-sm text-gray-900">
+                <strong>Payment:</strong> All slot purchases are processed securely through PayMongo. Accepted payment methods include GCash, Maya, and credit/debit cards. Once a slot is purchased, it is immediately available and permanently added to your account.
+              </p>
+            </div>
+          </section>
+
+          {/* 6. Privacy Reference */}
           <section>
-            <h2 className="text-2xl font-bold mb-4">5. Privacy & Data</h2>
+            <h2 className="text-2xl font-bold mb-4">6. Privacy & Data</h2>
             <p className="text-gray-600">
               Your use of the platform is also governed by our <Link href="/privacy" className="text-black font-bold underline">Privacy Policy</Link>, which details how we collect, use, and protect your information.
             </p>
           </section>
 
-          {/* 6. Disclaimers & Limitations */}
+          {/* 7. Disclaimers & Limitations */}
           <section>
-            <h2 className="text-2xl font-bold mb-4">6. Disclaimers & Limitation of Liability</h2>
+            <h2 className="text-2xl font-bold mb-4">7. Disclaimers & Limitation of Liability</h2>
             <div className="space-y-4 text-gray-600">
               <p>
                 <strong>"As Is" Basis:</strong> Abalay is provided indiscriminately on an "as is" and "as available" basis without any warranties of any kind, whether express or implied.
