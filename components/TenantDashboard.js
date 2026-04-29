@@ -2852,6 +2852,13 @@ export default function TenantDashboard({ session, profile }) {
                     )}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleSeeMore}
+                  className="text-sm font-black text-gray-900 hover:text-black hover:underline underline-offset-4 sm:ml-auto cursor-pointer whitespace-nowrap"
+                >
+                  See more properties
+                </button>
               </div>
               {properties.length === 0 ? (
                 <div className="text-center py-20 h-[400px] flex items-center justify-center">No properties found.</div>

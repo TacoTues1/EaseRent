@@ -35,6 +35,7 @@ function MyApp({ Component, pageProps }) {
     '/forgotPassword',
     '/updatePassword',
     '/compare',
+    '/help-center',
     '/landlords/landlordlist',
     '/landlords/landlordprofile',
     '/properties/allProperties',
@@ -74,7 +75,7 @@ function MyApp({ Component, pageProps }) {
     }
   }, [router.pathname])
 
-  const hideNavbarPaths = ['/login', '/register', '/register-landlord', '/forgotPassword', '/updatePassword', '/getDirections', '/assign-tenant', '/properties/new']
+  const hideNavbarPaths = ['/login', '/register', '/register-landlord', '/forgotPassword', '/updatePassword', '/getDirections', '/assign-tenant', '/properties/new', '/help-center']
 
   return (
     <>

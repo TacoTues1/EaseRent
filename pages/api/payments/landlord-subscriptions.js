@@ -35,14 +35,16 @@ export default async function handler(req, res) {
 
         // If no subscription exists, return default free plan info
         if (!subscription) {
+            const totalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS, usedSlots))
+            const paidSlots = Math.max(0, totalSlots - FREE_SLOTS)
             return res.status(200).json({
                 subscription: null,
                 plan: {
-                    type: 'free',
-                    total_slots: FREE_SLOTS,
-                    paid_slots: 0,
+                    type: paidSlots > 0 ? 'paid' : 'free',
+                    total_slots: totalSlots,
+                    paid_slots: paidSlots,
                     used_slots: usedSlots,
-                    available_slots: FREE_SLOTS - usedSlots,
+                    available_slots: Math.max(0, totalSlots - usedSlots),
                     slot_price: SLOT_PRICE,
                     max_slots: MAX_PROPERTY_SLOTS
                 }
@@ -59,8 +61,8 @@ export default async function handler(req, res) {
         if (paidCountErr) return res.status(500).json({ error: paidCountErr.message })
 
         const maxPaidSlots = Math.max(0, MAX_PROPERTY_SLOTS - FREE_SLOTS)
-        const reconciledPaidSlots = Math.min(paidCount || 0, maxPaidSlots)
-        const reconciledTotalSlots = Math.min(MAX_PROPERTY_SLOTS, FREE_SLOTS + reconciledPaidSlots)
+        const reconciledPaidSlots = Math.min(Math.max(subscription.paid_slots || 0, paidCount || 0, usedSlots - FREE_SLOTS), maxPaidSlots)
+        const reconciledTotalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS + reconciledPaidSlots, usedSlots))
 
         if (
             subscription.paid_slots !== reconciledPaidSlots ||
@@ -90,7 +92,7 @@ export default async function handler(req, res) {
                 total_slots: subscription.total_slots,
                 paid_slots: subscription.paid_slots,
                 used_slots: usedSlots,
-                available_slots: subscription.total_slots - usedSlots,
+                available_slots: Math.max(0, subscription.total_slots - usedSlots),
                 slot_price: SLOT_PRICE,
                 max_slots: MAX_PROPERTY_SLOTS
             }
@@ -168,7 +170,18 @@ export default async function handler(req, res) {
                 subscription = newSub
             }
 
-            if (subscription.total_slots >= MAX_PROPERTY_SLOTS) {
+            const { count: propertyCountForPurchase, error: propertyCountForPurchaseErr } = await supabaseAdmin
+                .from('properties')
+                .select('id', { count: 'exact', head: true })
+                .eq('landlord', landlord_id)
+                .eq('is_deleted', false)
+
+            if (propertyCountForPurchaseErr) return res.status(500).json({ error: propertyCountForPurchaseErr.message })
+
+            const usedSlotsForPurchase = propertyCountForPurchase || 0
+            const currentTotalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(subscription.total_slots || FREE_SLOTS, usedSlotsForPurchase))
+
+            if (currentTotalSlots >= MAX_PROPERTY_SLOTS) {
                 return res.status(400).json({ error: `Maximum ${MAX_PROPERTY_SLOTS} property slots reached` })
             }
 
@@ -192,8 +205,8 @@ export default async function handler(req, res) {
 
             // If payment method is provided, upgrade immediately
             if (payment_method) {
-                const newPaidSlots = subscription.paid_slots + 1
-                const newTotalSlots = FREE_SLOTS + newPaidSlots
+                const newTotalSlots = Math.min(MAX_PROPERTY_SLOTS, currentTotalSlots + 1)
+                const newPaidSlots = Math.max(0, newTotalSlots - FREE_SLOTS)
 
                 const { data: updatedSub, error: updateErr } = await supabaseAdmin
                     .from('landlord_subscriptions')
@@ -267,9 +280,18 @@ export default async function handler(req, res) {
 
             if (paidCountErr) return res.status(500).json({ error: paidCountErr.message })
 
+            const { count: propertyCountForConfirm, error: propertyCountForConfirmErr } = await supabaseAdmin
+                .from('properties')
+                .select('id', { count: 'exact', head: true })
+                .eq('landlord', payment.landlord_id)
+                .eq('is_deleted', false)
+
+            if (propertyCountForConfirmErr) return res.status(500).json({ error: propertyCountForConfirmErr.message })
+
+            const usedSlotsForConfirm = propertyCountForConfirm || 0
             const maxPaidSlots = Math.max(0, MAX_PROPERTY_SLOTS - FREE_SLOTS)
-            const newPaidSlots = Math.min(paidCount || 0, maxPaidSlots)
-            const newTotalSlots = Math.min(MAX_PROPERTY_SLOTS, FREE_SLOTS + newPaidSlots)
+            const newPaidSlots = Math.min(Math.max(payment.subscription.paid_slots || 0, paidCount || 0, usedSlotsForConfirm - FREE_SLOTS), maxPaidSlots)
+            const newTotalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS + newPaidSlots, usedSlotsForConfirm))
 
             const { data: updatedSub, error: updateErr } = await supabaseAdmin
                 .from('landlord_subscriptions')
@@ -306,8 +328,6 @@ export default async function handler(req, res) {
                 .eq('landlord_id', landlord_id)
                 .maybeSingle()
 
-            const totalSlots = subscription?.total_slots || FREE_SLOTS
-
             const { count: propertyCount } = await supabaseAdmin
                 .from('properties')
                 .select('id', { count: 'exact', head: true })
@@ -315,6 +335,7 @@ export default async function handler(req, res) {
                 .eq('is_deleted', false)
 
             const usedSlots = propertyCount || 0
+            const totalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(subscription?.total_slots || FREE_SLOTS, usedSlots))
             const canAdd = usedSlots < totalSlots
             const needsPayment = usedSlots >= totalSlots && totalSlots < MAX_PROPERTY_SLOTS
             const maxReached = totalSlots >= MAX_PROPERTY_SLOTS && usedSlots >= MAX_PROPERTY_SLOTS

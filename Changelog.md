@@ -2,6 +2,25 @@
 
 All notable updates are listed below.
 
+## 2026-04-29
+
+### Added
+- Help Center page with ticket submission, FAQs, attachments, and My Tickets history with comments.
+- Admin dashboard Pending Tickets tab with badge count, claim controls, status updates, and comment replies.
+- Admin slot management for tenant family slots and landlord property slots (add/remove with admin payment records).
+- "See more properties" actions on Home recommendations and Tenant dashboard.
+- Bug report categories and Help Center link in the footer.
+
+### Changed
+- Support ticket APIs now send detailed admin email notifications with attachment links.
+- Bug report emails are sent to all active admins and reports are persisted in `bug_reports`.
+- Subscription slot calculations reconcile paid and used slots for tenant and landlord plans to keep availability accurate.
+- PayMongo webhook logic now reconciles slot totals with usage and sends slot purchase receipts.
+- Auth modal accepts a redirect target; Help Center is included in the public allowlist and navbar hide list.
+
+### Fixed
+- Property creation form now pre-fills owner email and phone from the logged-in profile.
+
 ## 2026-04-10
 
 ### Added

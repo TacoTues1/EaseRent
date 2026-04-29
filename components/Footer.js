@@ -3,9 +3,19 @@ import { useState } from 'react'
 import { showToast } from 'nextjs-toast-notify'
 import { supabase } from '../lib/supabaseClient'
 
+const BUG_CATEGORY_OPTIONS = [
+  { value: 'booking', label: 'Booking' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'payment_problems', label: 'Payment Problems' },
+  { value: 'account_profile', label: 'Account / Profile' },
+  { value: 'property_listing', label: 'Property Listing' },
+  { value: 'messages_notifications', label: 'Messages / Notifications' },
+  { value: 'other', label: 'Others' }
+]
+
 export default function Footer() {
   const [isBugModalOpen, setIsBugModalOpen] = useState(false)
-  const [bugData, setBugData] = useState({ name: '', description: '' })
+  const [bugData, setBugData] = useState({ name: '', category: '', otherCategory: '', description: '' })
   const [bugFile, setBugFile] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -15,6 +25,16 @@ export default function Footer() {
 
     try {
       let filePayload = {}
+      const selectedCategory = BUG_CATEGORY_OPTIONS.find(option => option.value === bugData.category)
+      const categoryLabel = bugData.category === 'other'
+        ? bugData.otherCategory.trim()
+        : selectedCategory?.label
+
+      if (!categoryLabel) {
+        showToast.error('Please choose a bug category.', { duration: 4000, transition: 'bounceIn' })
+        setIsSubmitting(false)
+        return
+      }
 
       if (bugFile) {
         // Read file as base64
@@ -40,6 +60,7 @@ export default function Footer() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: bugData.name,
+          category: categoryLabel,
           description: bugData.description,
           ...filePayload
         })
@@ -61,7 +82,7 @@ export default function Footer() {
       })
       
       setIsBugModalOpen(false)
-      setBugData({ name: '', description: '' })
+      setBugData({ name: '', category: '', otherCategory: '', description: '' })
       setBugFile(null)
 
     } catch (error) {
@@ -89,6 +110,7 @@ export default function Footer() {
               >
                 Report a bug
               </button>
+              <Link href="/help-center" className="text-[14px] hover:underline hover:text-black">Help Center</Link>
 
               {/* Social Icons */}
               <div className="flex items-center gap-4 pt-4">
@@ -152,7 +174,7 @@ export default function Footer() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="text-xl font-bold">Report a Problem</h2>
+              <h2 className="text-xl font-bold">Report a Bug</h2>
               <button 
                 onClick={() => !isSubmitting && setIsBugModalOpen(false)}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -174,6 +196,38 @@ export default function Footer() {
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-black outline-none transition-colors"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Category</label>
+                  <select
+                    required
+                    value={bugData.category}
+                    onChange={(e) => setBugData({
+                      ...bugData,
+                      category: e.target.value,
+                      otherCategory: e.target.value === 'other' ? bugData.otherCategory : ''
+                    })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-black outline-none transition-colors"
+                  >
+                    <option value="" disabled>Select a category</option>
+                    {BUG_CATEGORY_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {bugData.category === 'other' && (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Other Category</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength="100"
+                      placeholder="Enter the bug category"
+                      value={bugData.otherCategory}
+                      onChange={(e) => setBugData({...bugData, otherCategory: e.target.value})}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm focus:border-black outline-none transition-colors"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Issue Description</label>
                   <textarea

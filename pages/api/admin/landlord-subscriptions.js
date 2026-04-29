@@ -1,34 +1,27 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin'
 
-const SLOT_PRICE = 1
-const FREE_SLOTS = 1
-const MAX_FAMILY_MEMBERS = 4
+const SLOT_PRICE = 50
+const FREE_SLOTS = 3
+const MAX_PROPERTY_SLOTS = 10
 
-async function getTenantUsedSlots(tenantId) {
-  const { data: occupancy, error: occupancyError } = await supabaseAdmin
-    .from('tenant_occupancies')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .in('status', ['active', 'pending_end'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+function normalizeIdList(ids) {
+  return Array.from(new Set((ids || []).filter(Boolean)))
+}
 
-  if (occupancyError) throw occupancyError
-  if (!occupancy?.id) return 0
-
-  const { count, error: familyError } = await supabaseAdmin
-    .from('family_members')
+async function getLandlordUsedPropertySlots(landlordId) {
+  const { count, error } = await supabaseAdmin
+    .from('properties')
     .select('id', { count: 'exact', head: true })
-    .eq('parent_occupancy_id', occupancy.id)
+    .eq('landlord', landlordId)
+    .eq('is_deleted', false)
 
-  if (familyError) throw familyError
+  if (error) throw error
   return count || 0
 }
 
-async function getLatestPaidSubscriptionPayment(subscriptionId) {
+async function getLatestPaidLandlordSlotPayment(subscriptionId) {
   const { data: adminPayment, error: adminPaymentError } = await supabaseAdmin
-    .from('subscription_payments')
+    .from('landlord_slot_payments')
     .select('id')
     .eq('subscription_id', subscriptionId)
     .eq('status', 'paid')
@@ -41,7 +34,7 @@ async function getLatestPaidSubscriptionPayment(subscriptionId) {
   if (adminPayment) return adminPayment
 
   const { data: payment, error: paymentError } = await supabaseAdmin
-    .from('subscription_payments')
+    .from('landlord_slot_payments')
     .select('id')
     .eq('subscription_id', subscriptionId)
     .eq('status', 'paid')
@@ -58,78 +51,79 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { action } = req.body || {}
-
   if (!supabaseAdmin) {
     return res.status(500).json({ error: 'Supabase admin client is not configured' })
   }
 
+  const { action } = req.body || {}
+
   try {
     if (action === 'stats') {
-      const tenantIds = Array.from(new Set((req.body.tenantIds || []).filter(Boolean)))
-      if (!tenantIds.length) {
+      const landlordIds = normalizeIdList(req.body.landlordIds)
+      if (!landlordIds.length) {
         return res.status(200).json({ stats: {} })
       }
 
       const { data: subscriptions, error: subscriptionError } = await supabaseAdmin
-        .from('subscriptions')
-        .select('tenant_id, plan_type, total_slots, paid_slots, status')
-        .in('tenant_id', tenantIds)
+        .from('landlord_subscriptions')
+        .select('id, landlord_id, plan_type, total_slots, paid_slots, status')
+        .in('landlord_id', landlordIds)
 
       if (subscriptionError) {
         return res.status(500).json({ error: subscriptionError.message })
       }
 
-      const { data: occupancies, error: occupancyError } = await supabaseAdmin
-        .from('tenant_occupancies')
-        .select('id, tenant_id, created_at')
-        .in('tenant_id', tenantIds)
-        .in('status', ['active', 'pending_end'])
-        .order('created_at', { ascending: false })
+      const subscriptionByLandlord = Object.fromEntries((subscriptions || []).map((s) => [s.landlord_id, s]))
+      const subscriptionIds = (subscriptions || []).map((s) => s.id).filter(Boolean)
 
-      if (occupancyError) {
-        return res.status(500).json({ error: occupancyError.message })
-      }
+      let paidPayments = []
+      if (subscriptionIds.length) {
+        const { data: paymentData, error: paymentError } = await supabaseAdmin
+          .from('landlord_slot_payments')
+          .select('id, subscription_id, landlord_id')
+          .in('subscription_id', subscriptionIds)
+          .eq('status', 'paid')
 
-      const latestOccupancyByTenant = {}
-      for (const occ of occupancies || []) {
-        if (!latestOccupancyByTenant[occ.tenant_id]) {
-          latestOccupancyByTenant[occ.tenant_id] = occ.id
+        if (paymentError) {
+          return res.status(500).json({ error: paymentError.message })
         }
+
+        paidPayments = paymentData || []
       }
 
-      const parentOccIds = Object.values(latestOccupancyByTenant)
-      let familyMembers = []
-      if (parentOccIds.length) {
-        const { data: familyData, error: familyError } = await supabaseAdmin
-          .from('family_members')
-          .select('id, parent_occupancy_id')
-          .in('parent_occupancy_id', parentOccIds)
-
-        if (familyError) {
-          return res.status(500).json({ error: familyError.message })
-        }
-        familyMembers = familyData || []
+      const paidSlotsByLandlord = {}
+      for (const payment of paidPayments) {
+        paidSlotsByLandlord[payment.landlord_id] = (paidSlotsByLandlord[payment.landlord_id] || 0) + 1
       }
 
-      const usedByParentOcc = {}
-      for (const member of familyMembers) {
-        usedByParentOcc[member.parent_occupancy_id] = (usedByParentOcc[member.parent_occupancy_id] || 0) + 1
+      const { data: propertyRows, error: propertyError } = await supabaseAdmin
+        .from('properties')
+        .select('id, landlord')
+        .in('landlord', landlordIds)
+        .eq('is_deleted', false)
+
+      if (propertyError) {
+        return res.status(500).json({ error: propertyError.message })
       }
 
-      const subscriptionByTenant = Object.fromEntries((subscriptions || []).map((s) => [s.tenant_id, s]))
+      const usedSlotsByLandlord = {}
+      for (const property of propertyRows || []) {
+        usedSlotsByLandlord[property.landlord] = (usedSlotsByLandlord[property.landlord] || 0) + 1
+      }
 
+      const maxPaidSlots = Math.max(0, MAX_PROPERTY_SLOTS - FREE_SLOTS)
       const stats = {}
-      for (const tenantId of tenantIds) {
-        const subscription = subscriptionByTenant[tenantId] || null
-        const parentOccId = latestOccupancyByTenant[tenantId]
-        const usedSlots = parentOccId ? (usedByParentOcc[parentOccId] || 0) : 0
+
+      for (const landlordId of landlordIds) {
+        const subscription = subscriptionByLandlord[landlordId] || null
+        const usedSlots = usedSlotsByLandlord[landlordId] || 0
         const paidSlots = Math.min(
-          Math.max(subscription?.paid_slots || 0, usedSlots - FREE_SLOTS),
-          Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
+          Math.max(subscription?.paid_slots || 0, paidSlotsByLandlord[landlordId] || 0, usedSlots - FREE_SLOTS),
+          maxPaidSlots
         )
-        const totalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(subscription?.total_slots || FREE_SLOTS, FREE_SLOTS + paidSlots, usedSlots))
-        stats[tenantId] = {
+        const totalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS + paidSlots, usedSlots))
+
+        stats[landlordId] = {
           has_subscription: !!subscription,
           plan_type: paidSlots > 0 ? 'paid' : (subscription?.plan_type || 'free'),
           status: subscription?.status || 'active',
@@ -137,7 +131,7 @@ export default async function handler(req, res) {
           paid_slots: paidSlots,
           used_slots: usedSlots,
           available_slots: Math.max(0, totalSlots - usedSlots),
-          max_slots: MAX_FAMILY_MEMBERS
+          max_slots: MAX_PROPERTY_SLOTS
         }
       }
 
@@ -145,15 +139,30 @@ export default async function handler(req, res) {
     }
 
     if (action === 'add-slot') {
-      const { tenantId } = req.body || {}
-      if (!tenantId) {
-        return res.status(400).json({ error: 'tenantId is required' })
+      const { landlordId } = req.body || {}
+      if (!landlordId) {
+        return res.status(400).json({ error: 'landlordId is required' })
+      }
+
+      const { data: landlord, error: landlordError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, role')
+        .eq('id', landlordId)
+        .eq('is_deleted', false)
+        .maybeSingle()
+
+      if (landlordError) {
+        return res.status(500).json({ error: landlordError.message })
+      }
+
+      if (!landlord || landlord.role !== 'landlord') {
+        return res.status(400).json({ error: 'User is not an active landlord' })
       }
 
       let { data: subscription, error: subscriptionError } = await supabaseAdmin
-        .from('subscriptions')
+        .from('landlord_subscriptions')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('landlord_id', landlordId)
         .maybeSingle()
 
       if (subscriptionError) {
@@ -162,9 +171,9 @@ export default async function handler(req, res) {
 
       if (!subscription) {
         const { data: createdSubscription, error: createError } = await supabaseAdmin
-          .from('subscriptions')
+          .from('landlord_subscriptions')
           .insert({
-            tenant_id: tenantId,
+            landlord_id: landlordId,
             plan_type: 'free',
             total_slots: FREE_SLOTS,
             paid_slots: 0,
@@ -181,7 +190,7 @@ export default async function handler(req, res) {
       }
 
       const { count: paidCount, error: paidCountError } = await supabaseAdmin
-        .from('subscription_payments')
+        .from('landlord_slot_payments')
         .select('id', { count: 'exact', head: true })
         .eq('subscription_id', subscription.id)
         .eq('status', 'paid')
@@ -190,21 +199,20 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: paidCountError.message })
       }
 
-      const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
-      const usedSlots = await getTenantUsedSlots(tenantId)
+      const maxPaidSlots = Math.max(0, MAX_PROPERTY_SLOTS - FREE_SLOTS)
+      const usedSlots = await getLandlordUsedPropertySlots(landlordId)
       const currentPaidSlots = Math.min(Math.max(subscription.paid_slots || 0, paidCount || 0, usedSlots - FREE_SLOTS), maxPaidSlots)
-      const currentTotalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(FREE_SLOTS + currentPaidSlots, usedSlots))
+      const currentTotalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS + currentPaidSlots, usedSlots))
 
-      if (currentTotalSlots >= MAX_FAMILY_MEMBERS) {
-        return res.status(400).json({ error: `Maximum ${MAX_FAMILY_MEMBERS} slots reached` })
+      if (currentTotalSlots >= MAX_PROPERTY_SLOTS) {
+        return res.status(400).json({ error: `Maximum ${MAX_PROPERTY_SLOTS} property slots reached` })
       }
 
       const { error: paymentError } = await supabaseAdmin
-        .from('subscription_payments')
+        .from('landlord_slot_payments')
         .insert({
           subscription_id: subscription.id,
-          tenant_id: tenantId,
-          occupancy_id: null,
+          landlord_id: landlordId,
           amount: SLOT_PRICE,
           currency: 'PHP',
           payment_method: 'admin',
@@ -217,16 +225,17 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: paymentError.message })
       }
 
-      const updatedTotalSlots = Math.min(MAX_FAMILY_MEMBERS, currentTotalSlots + 1)
+      const updatedTotalSlots = Math.min(MAX_PROPERTY_SLOTS, currentTotalSlots + 1)
       const updatedPaidSlots = Math.min(maxPaidSlots, Math.max(0, updatedTotalSlots - FREE_SLOTS))
 
       const { data: updatedSubscription, error: updateError } = await supabaseAdmin
-        .from('subscriptions')
+        .from('landlord_subscriptions')
         .update({
           total_slots: updatedTotalSlots,
           paid_slots: updatedPaidSlots,
           plan_type: updatedPaidSlots > 0 ? 'paid' : 'free',
-          status: 'active'
+          status: 'active',
+          updated_at: new Date().toISOString()
         })
         .eq('id', subscription.id)
         .select()
@@ -239,20 +248,35 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         subscription: updatedSubscription,
-        message: `Family slot added. Total slots: ${updatedTotalSlots}`
+        message: `Property slot added. Total slots: ${updatedTotalSlots}`
       })
     }
 
     if (action === 'remove-slot') {
-      const { tenantId } = req.body || {}
-      if (!tenantId) {
-        return res.status(400).json({ error: 'tenantId is required' })
+      const { landlordId } = req.body || {}
+      if (!landlordId) {
+        return res.status(400).json({ error: 'landlordId is required' })
+      }
+
+      const { data: landlord, error: landlordError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, role')
+        .eq('id', landlordId)
+        .eq('is_deleted', false)
+        .maybeSingle()
+
+      if (landlordError) {
+        return res.status(500).json({ error: landlordError.message })
+      }
+
+      if (!landlord || landlord.role !== 'landlord') {
+        return res.status(400).json({ error: 'User is not an active landlord' })
       }
 
       const { data: subscription, error: subscriptionError } = await supabaseAdmin
-        .from('subscriptions')
+        .from('landlord_subscriptions')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('landlord_id', landlordId)
         .maybeSingle()
 
       if (subscriptionError) {
@@ -260,11 +284,11 @@ export default async function handler(req, res) {
       }
 
       if (!subscription) {
-        return res.status(400).json({ error: `Minimum ${FREE_SLOTS} free family slot reached` })
+        return res.status(400).json({ error: `Minimum ${FREE_SLOTS} free property slots reached` })
       }
 
       const { count: paidCount, error: paidCountError } = await supabaseAdmin
-        .from('subscription_payments')
+        .from('landlord_slot_payments')
         .select('id', { count: 'exact', head: true })
         .eq('subscription_id', subscription.id)
         .eq('status', 'paid')
@@ -273,29 +297,29 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: paidCountError.message })
       }
 
-      const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
-      const usedSlots = await getTenantUsedSlots(tenantId)
+      const maxPaidSlots = Math.max(0, MAX_PROPERTY_SLOTS - FREE_SLOTS)
+      const usedSlots = await getLandlordUsedPropertySlots(landlordId)
       const currentPaidSlots = Math.min(Math.max(subscription.paid_slots || 0, paidCount || 0, usedSlots - FREE_SLOTS), maxPaidSlots)
-      const currentTotalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(FREE_SLOTS + currentPaidSlots, usedSlots))
+      const currentTotalSlots = Math.min(MAX_PROPERTY_SLOTS, Math.max(FREE_SLOTS + currentPaidSlots, usedSlots))
 
       if (currentTotalSlots <= FREE_SLOTS) {
-        return res.status(400).json({ error: `Minimum ${FREE_SLOTS} free family slot reached` })
+        return res.status(400).json({ error: `Minimum ${FREE_SLOTS} free property slots reached` })
       }
 
       const availableSlots = currentTotalSlots - usedSlots
       if (availableSlots <= 0) {
-        return res.status(400).json({ error: 'All family slots are occupied. Remove a family member before removing a slot.' })
+        return res.status(400).json({ error: 'All property slots are occupied. Remove a property before removing a slot.' })
       }
 
       const updatedTotalSlots = currentTotalSlots - 1
       if (updatedTotalSlots < usedSlots) {
-        return res.status(400).json({ error: `Cannot remove occupied family slot(s). ${usedSlots} slot(s) are in use.` })
+        return res.status(400).json({ error: `Cannot remove occupied property slot(s). ${usedSlots} slot(s) are in use.` })
       }
 
-      const paymentToCancel = await getLatestPaidSubscriptionPayment(subscription.id)
+      const paymentToCancel = await getLatestPaidLandlordSlotPayment(subscription.id)
       if (paymentToCancel?.id) {
         const { error: cancelPaymentError } = await supabaseAdmin
-          .from('subscription_payments')
+          .from('landlord_slot_payments')
           .update({ status: 'cancelled' })
           .eq('id', paymentToCancel.id)
 
@@ -307,12 +331,13 @@ export default async function handler(req, res) {
       const updatedPaidSlots = Math.max(0, currentPaidSlots - 1)
 
       const { data: updatedSubscription, error: updateError } = await supabaseAdmin
-        .from('subscriptions')
+        .from('landlord_subscriptions')
         .update({
           total_slots: updatedTotalSlots,
           paid_slots: updatedPaidSlots,
           plan_type: updatedPaidSlots > 0 ? 'paid' : 'free',
-          status: 'active'
+          status: 'active',
+          updated_at: new Date().toISOString()
         })
         .eq('id', subscription.id)
         .select()
@@ -325,13 +350,13 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         subscription: updatedSubscription,
-        message: `Family slot removed. Total slots: ${updatedTotalSlots}`
+        message: `Property slot removed. Total slots: ${updatedTotalSlots}`
       })
     }
 
     return res.status(400).json({ error: 'Invalid action' })
   } catch (error) {
-    console.error('admin/family-subscriptions error:', error)
+    console.error('admin/landlord-subscriptions error:', error)
     return res.status(500).json({ error: error.message || 'Server error' })
   }
 }

@@ -2619,63 +2619,7 @@ export default function LandlordDashboard({ session, profile }) {
                   <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? actionsToolCount : 0} /></h3>
                   <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Pending Tasks</p>
                 </div>
-              </div>
-
-                {/* PROPERTY ENDS (DASHBOARD SUMMARY) */}
-                {/* {incomingEnds.length > 0 && (
-                  <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200/60 shadow-sm mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Property Ends</h3>
-                        <p className="text-xs sm:text-sm font-medium text-gray-500">Scheduled move-outs and expirations</p>
-                      </div>
-                      <button onClick={() => setActivePanel('terminations')} className="text-xs font-bold text-blue-600 hover:text-blue-700 cursor-pointer">
-                        View All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {incomingEnds.slice(0, 4).map(req => {
-                        const isApprovedMoveOut = req.end_request_status === 'approved'
-                        const isPending = req.end_request_status === 'pending'
-                        const rawEndDate = isApprovedMoveOut || isPending ? req.end_request_date : req.contract_end_date
-                        const endDateObj = new Date(rawEndDate)
-                        const isOverdue = endDateObj < new Date().setHours(0,0,0,0)
-                        
-                        return (
-                          <div key={req.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-200 transition-all">
-                            <div className="flex items-start gap-3">
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isApprovedMoveOut ? 'bg-emerald-100 text-emerald-600' : (isPending ? 'bg-orange-100 text-orange-600' : (isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'))}`}>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  {isApprovedMoveOut ? (
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  ) : isPending ? (
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  ) : (
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  )}
-                                </svg>
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2 mb-0.5">
-                                  <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isApprovedMoveOut ? 'bg-emerald-50 text-emerald-700' : (isPending ? 'bg-orange-50 text-orange-700' : (isOverdue ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'))}`}>
-                                    {isApprovedMoveOut ? 'Scheduled' : (isPending ? 'Pending Approval' : (isOverdue ? 'Expired' : 'Expiring'))}
-                                  </span>
-                                </div>
-                                <h4 className="font-bold text-xs text-gray-900 truncate">{req.property?.title}</h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                                  <p className="text-[10px] text-gray-500 truncate max-w-[100px]">{req.tenant?.first_name} {req.tenant?.last_name}</p>
-                                  <p className={`text-[10px] font-bold ${isOverdue && !isApprovedMoveOut ? 'text-rose-600' : 'text-gray-700'}`}>
-                                    Ends: {new Date(rawEndDate).toLocaleDateString()}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )} */}
+              </div>  
 
                 {/* PROPERTIES GRID */}
                 <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200/60 shadow-sm">
@@ -2685,14 +2629,9 @@ export default function LandlordDashboard({ session, profile }) {
                       <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">Manage all your uploaded properties here</p>
                       {propertySlotPlan && (
                         <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                          <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-gray-200 text-black-200 border border-gray-900">
                             {propertySlotPlan.used_slots}/{propertySlotPlan.total_slots} slots used
                           </span>
-                          {propertySlotPlan.paid_slots > 0 && (
-                            <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-yellow-50 text-black border border-yellow-400">
-                              {propertySlotPlan.paid_slots} purchased
-                            </span>
-                          )}
                         </div>
                       )}
                     </div>

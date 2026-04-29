@@ -56,14 +56,16 @@ export default async function handler(req, res) {
 
         // If no subscription exists, return default free plan info
         if (!subscription) {
+            const totalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(FREE_SLOTS, usedSlots))
+            const paidSlots = Math.max(0, totalSlots - FREE_SLOTS)
             return res.status(200).json({
                 subscription: null,
                 plan: {
-                    type: 'free',
-                    total_slots: FREE_SLOTS,
-                    paid_slots: 0,
+                    type: paidSlots > 0 ? 'paid' : 'free',
+                    total_slots: totalSlots,
+                    paid_slots: paidSlots,
                     used_slots: usedSlots,
-                    available_slots: FREE_SLOTS - usedSlots,
+                    available_slots: Math.max(0, totalSlots - usedSlots),
                     slot_price: SLOT_PRICE,
                     max_slots: MAX_FAMILY_MEMBERS
                 }
@@ -80,8 +82,8 @@ export default async function handler(req, res) {
         if (paidCountErr) return res.status(500).json({ error: paidCountErr.message })
 
         const maxPaidSlots = Math.max(0, MAX_FAMILY_MEMBERS - FREE_SLOTS)
-        const reconciledPaidSlots = Math.min(paidCount || 0, maxPaidSlots)
-        const reconciledTotalSlots = Math.min(MAX_FAMILY_MEMBERS, FREE_SLOTS + reconciledPaidSlots)
+        const reconciledPaidSlots = Math.min(Math.max(subscription.paid_slots || 0, paidCount || 0, usedSlots - FREE_SLOTS), maxPaidSlots)
+        const reconciledTotalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(FREE_SLOTS + reconciledPaidSlots, usedSlots))
 
         if (
             subscription.paid_slots !== reconciledPaidSlots ||
@@ -110,7 +112,7 @@ export default async function handler(req, res) {
                 total_slots: subscription.total_slots,
                 paid_slots: subscription.paid_slots,
                 used_slots: usedSlots,
-                available_slots: subscription.total_slots - usedSlots,
+                available_slots: Math.max(0, subscription.total_slots - usedSlots),
                 slot_price: SLOT_PRICE,
                 max_slots: MAX_FAMILY_MEMBERS
             }
@@ -361,8 +363,6 @@ export default async function handler(req, res) {
                 .eq('tenant_id', tenant_id)
                 .maybeSingle()
 
-            const totalSlots = subscription?.total_slots || FREE_SLOTS
-
             // Count current family members for THIS occupancy
             const { data: members } = await supabaseAdmin
                 .from('family_members')
@@ -370,6 +370,7 @@ export default async function handler(req, res) {
                 .eq('parent_occupancy_id', occupancy_id)
 
             const usedSlots = (members || []).length
+            const totalSlots = Math.min(MAX_FAMILY_MEMBERS, Math.max(subscription?.total_slots || FREE_SLOTS, usedSlots))
             const canAdd = usedSlots < totalSlots
             const needsPayment = usedSlots >= totalSlots && totalSlots < MAX_FAMILY_MEMBERS
             const maxReached = totalSlots >= MAX_FAMILY_MEMBERS && usedSlots >= MAX_FAMILY_MEMBERS

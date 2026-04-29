@@ -153,12 +153,17 @@ export default function NewProperty() {
 
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, email, phone')
       .eq('id', result.data.session.user.id)
       .maybeSingle()
 
     if (profileData) {
       setProfile(profileData)
+      setFormData(prev => ({
+        ...prev,
+        owner_phone: prev.owner_phone || profileData.phone || '',
+        owner_email: prev.owner_email || profileData.email || result.data.session.user.email || ''
+      }))
       if (profileData.role !== 'landlord' && profileData.role !== 'admin') {
         notifyError('Access denied. Only landlords and admins can add properties.')
         setTimeout(() => router.push('/dashboard'), 2000)

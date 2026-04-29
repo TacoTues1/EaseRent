@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import toast from 'react-hot-toast'
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'signin', redirectTo = '/dashboard' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -163,7 +163,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
           icon: '✓',
         })
         onClose()
-        router.push('/dashboard')
+        router.push(redirectTo)
       }
     } catch (err) {
       toast.error(err.message || 'An error occurred', {
@@ -181,7 +181,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${window.location.origin}${redirectTo}`,
           skipBrowserRedirect: false
         }
       })
@@ -204,7 +204,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'facebook',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${window.location.origin}${redirectTo}`,
           // Request first_name, middle_name, last_name from Facebook
           scopes: 'public_profile email',
           skipBrowserRedirect: false
@@ -266,7 +266,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         })
         setTimeout(() => {
           onClose()
-          router.push('/dashboard')
+          router.push(redirectTo)
         }, 1500)
       }
     } catch (err) {
@@ -327,7 +327,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'signin' }) {
         })
         setTimeout(() => {
           onClose()
-          router.push('/dashboard')
+          router.push(redirectTo)
         }, 1500)
       }
     } catch (err) {

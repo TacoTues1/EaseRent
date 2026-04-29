@@ -702,6 +702,13 @@ export default function Home({ setHomeNavbarLoading }) {
               <h2 className="text-2xl font-black text-black shrink-0">
                 Recommended Properties
               </h2>
+              <button
+                type="button"
+                onClick={() => router.push('/properties/allProperties')}
+                className="text-sm font-black text-gray-900 hover:text-black hover:underline underline-offset-4 sm:ml-auto cursor-pointer whitespace-nowrap"
+              >
+                See more properties
+              </button>
             </div>
           )}
 

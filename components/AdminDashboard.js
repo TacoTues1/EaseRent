@@ -4,6 +4,13 @@ import { normalizeImageForUpload } from '../lib/imageCompression'
 import { Input, Badge, Spinner } from './UI'
 import { showToast } from 'nextjs-toast-notify'
 import { useRouter } from 'next/router'
+import {
+  SUPPORT_TICKET_ISSUES,
+  SUPPORT_TICKET_REQUEST_TYPES,
+  SUPPORT_TICKET_STATUSES,
+  formatSupportTicketId,
+  getSupportOptionLabel
+} from '../lib/supportTickets'
 
 async function adminFetch(table, select = '*', filters = [], order = null, pagination = null, includeCount = false) {
   try {
@@ -47,6 +54,7 @@ export default function AdminDashboard({ session, profile }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [pendingTicketsCount, setPendingTicketsCount] = useState(0)
 
   const navItems = [
     { id: 'overview', label: 'Overview', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -58,6 +66,7 @@ export default function AdminDashboard({ session, profile }) {
     { id: 'schedules', label: 'Schedule Days', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
     { id: 'maintenance', label: 'Maintenance', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
     { id: 'leaves', label: 'Leave Pending monitoring', icon: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1' },
+    { id: 'support_tickets', label: 'Pending Tickets', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', badge: pendingTicketsCount },
   ]
 
   // Management Modals State
@@ -121,6 +130,27 @@ export default function AdminDashboard({ session, profile }) {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const refresh = useCallback(() => setRefreshTrigger(prev => prev + 1), [])
+
+  const loadPendingTicketsCount = useCallback(async () => {
+    if (!session?.access_token) return
+
+    try {
+      const res = await fetch('/api/admin/support-tickets?status=pending', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load support tickets')
+      setPendingTicketsCount(data.pendingCount || 0)
+    } catch (error) {
+      console.error('Failed to load pending support ticket count:', error)
+    }
+  }, [session?.access_token])
+
+  useEffect(() => {
+    loadPendingTicketsCount()
+  }, [loadPendingTicketsCount, refreshTrigger])
 
   useEffect(() => {
     async function loadResources() {
@@ -501,13 +531,18 @@ export default function AdminDashboard({ session, profile }) {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               title={sidebarCollapsed ? item.label : ''}
-              className={`w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${activeTab === item.id
+              className={`relative w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${activeTab === item.id
                 ? 'text-white bg-white/15'
                 : 'text-gray-400'
                 }`}
             >
               <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
               {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+              {item.badge > 0 && (
+                <span className={`${sidebarCollapsed ? 'absolute top-1 right-1' : 'ml-auto'} min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center`}>
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -534,8 +569,13 @@ export default function AdminDashboard({ session, profile }) {
       {/* MOBILE NAV (Bottom Fixed) */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-between px-4 py-3 pb-5 overflow-x-auto border-t border-gray-800 bg-black">
         {navItems.map(item => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`p-3 rounded-2xl transition-all cursor-pointer flex-shrink-0 ${activeTab === item.id ? 'text-white bg-white/15 transform -translate-y-1.5' : 'text-gray-500'}`}>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`relative p-3 rounded-2xl transition-all cursor-pointer flex-shrink-0 ${activeTab === item.id ? 'text-white bg-white/15 transform -translate-y-1.5' : 'text-gray-500'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
+            {item.badge > 0 && (
+              <span className="absolute top-1 right-1 min-w-[1.1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">
+                {item.badge > 99 ? '99+' : item.badge}
+              </span>
+            )}
           </button>
         ))}
         <button onClick={() => setShowLogoutModal(true)} className="p-3 rounded-2xl text-gray-700 cursor-pointer flex-shrink-0">
@@ -609,6 +649,13 @@ export default function AdminDashboard({ session, profile }) {
               setEditingLeave={setEditingLeave}
               setShowLeaveModal={setShowLeaveModal}
               handleDeleteLeave={handleDeleteLeave}
+            />
+          )}
+          {activeTab === 'support_tickets' && (
+            <PendingTicketsView
+              session={session}
+              refreshTrigger={refreshTrigger}
+              onPendingCountChange={setPendingTicketsCount}
             />
           )}
           {activeTab === 'profile' && <AdminProfileView session={session} profile={profile} />}
@@ -877,10 +924,10 @@ export default function AdminDashboard({ session, profile }) {
 }
 
 
-function DeleteModal({ isOpen, onClose, onConfirm, title, message, confirmText = 'Delete' }) {
+function DeleteModal({ isOpen, onClose, onConfirm, title, message, confirmText = 'Delete', zIndexClass = 'z-[70]' }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
+    <div className={`fixed inset-0 ${zIndexClass} bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200`}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-7 text-center shadow-2xl mx-4 border border-gray-100">
         <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
           <svg className="w-8 h-8 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -1398,10 +1445,15 @@ function UsersView({ refreshTrigger }) {
   const [editForm, setEditForm] = useState({})
   const [deleteId, setDeleteId] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [slotRemovalConfirm, setSlotRemovalConfirm] = useState(null)
   const [newUserForm, setNewUserForm] = useState({ first_name: '', middle_name: '', last_name: '', email: '', phone: '', password: '', role: 'tenant', birthday: '', gender: '', avatar_url: '' })
   const [isCreating, setIsCreating] = useState(false)
   const [familySubscriptions, setFamilySubscriptions] = useState({})
+  const [landlordSubscriptions, setLandlordSubscriptions] = useState({})
   const [addingSlotForUserId, setAddingSlotForUserId] = useState(null)
+  const [addingPropertySlotForUserId, setAddingPropertySlotForUserId] = useState(null)
+  const [removingSlotForUserId, setRemovingSlotForUserId] = useState(null)
+  const [removingPropertySlotForUserId, setRemovingPropertySlotForUserId] = useState(null)
 
   useEffect(() => { setCurrentPage(1) }, [search, roleFilter])
   useEffect(() => { fetchUsers() }, [currentPage, search, roleFilter, refreshTrigger])
@@ -1432,12 +1484,16 @@ function UsersView({ refreshTrigger }) {
       if (error) throw error
       setUsers(data || [])
       setTotalUsers(count || 0)
-      await loadFamilySubscriptions(data || [])
+      await Promise.all([
+        loadFamilySubscriptions(data || []),
+        loadLandlordSubscriptions(data || [])
+      ])
     } catch (error) {
       console.error(error)
       setUsers([])
       setTotalUsers(0)
       setFamilySubscriptions({})
+      setLandlordSubscriptions({})
     }
     setLoading(false)
   }
@@ -1464,6 +1520,28 @@ function UsersView({ refreshTrigger }) {
     }
   }
 
+  async function loadLandlordSubscriptions(userRows) {
+    const landlordIds = (userRows || []).filter((u) => u.role === 'landlord').map((u) => u.id)
+    if (!landlordIds.length) {
+      setLandlordSubscriptions({})
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/landlord-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stats', landlordIds })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to load landlord subscriptions')
+      setLandlordSubscriptions(data.stats || {})
+    } catch (error) {
+      console.error('Failed to load landlord subscriptions:', error)
+      setLandlordSubscriptions({})
+    }
+  }
+
   async function addFamilySlot(userId) {
     if (!userId) return
     setAddingSlotForUserId(userId)
@@ -1482,6 +1560,100 @@ function UsersView({ refreshTrigger }) {
       showToast.error(error.message || 'Failed to add family slot')
     }
     setAddingSlotForUserId(null)
+  }
+
+  async function addPropertySlot(userId) {
+    if (!userId) return
+    setAddingPropertySlotForUserId(userId)
+    try {
+      const response = await fetch('/api/admin/landlord-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-slot', landlordId: userId })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to add property slot')
+
+      showToast.success(data.message || 'Property slot added successfully')
+      await fetchUsers()
+    } catch (error) {
+      showToast.error(error.message || 'Failed to add property slot')
+    }
+    setAddingPropertySlotForUserId(null)
+  }
+
+  async function removeFamilySlot(userId) {
+    if (!userId) return
+    setRemovingSlotForUserId(userId)
+    try {
+      const response = await fetch('/api/admin/family-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove-slot', tenantId: userId })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to remove family slot')
+
+      showToast.success(data.message || 'Family slot removed successfully')
+      await fetchUsers()
+    } catch (error) {
+      showToast.error(error.message || 'Failed to remove family slot')
+    } finally {
+      setRemovingSlotForUserId(null)
+    }
+  }
+
+  async function removePropertySlot(userId) {
+    if (!userId) return
+    setRemovingPropertySlotForUserId(userId)
+    try {
+      const response = await fetch('/api/admin/landlord-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove-slot', landlordId: userId })
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Failed to remove property slot')
+
+      showToast.success(data.message || 'Property slot removed successfully')
+      await fetchUsers()
+    } catch (error) {
+      showToast.error(error.message || 'Failed to remove property slot')
+    } finally {
+      setRemovingPropertySlotForUserId(null)
+    }
+  }
+
+  function openFamilySlotRemoval(userId) {
+    setSlotRemovalConfirm({
+      type: 'family',
+      userId,
+      title: 'Remove Family Slot',
+      message: 'Remove 1 available family slot from this tenant? Occupied family slots cannot be removed.',
+      confirmText: 'Remove 1 Family Slot'
+    })
+  }
+
+  function openPropertySlotRemoval(userId) {
+    setSlotRemovalConfirm({
+      type: 'property',
+      userId,
+      title: 'Remove Property Slot',
+      message: 'Remove 1 available property slot from this landlord? Occupied property slots cannot be removed.',
+      confirmText: 'Remove 1 Property Slot'
+    })
+  }
+
+  async function confirmRemoveSlot() {
+    if (!slotRemovalConfirm) return
+    const pendingRemoval = slotRemovalConfirm
+    setSlotRemovalConfirm(null)
+
+    if (pendingRemoval.type === 'family') {
+      await removeFamilySlot(pendingRemoval.userId)
+    } else {
+      await removePropertySlot(pendingRemoval.userId)
+    }
   }
 
   async function handleUpdate() {
@@ -1617,7 +1789,7 @@ function UsersView({ refreshTrigger }) {
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">User</th>
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Email / Phone</th>
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Family Subscription</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Slots</th>
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
@@ -1651,20 +1823,76 @@ function UsersView({ refreshTrigger }) {
                             </div>
                           )
                         })()
+                      ) : user.role === 'landlord' ? (
+                        (() => {
+                          const stats = landlordSubscriptions[user.id]
+                          if (!stats) {
+                            return <span className="text-xs text-gray-400">Loading...</span>
+                          }
+                          return (
+                            <div className="text-xs text-gray-700">
+                              <div className="font-bold">{stats.paid_slots > 0 ? 'Paid plan' : 'Free plan'}</div>
+                              <div className="text-gray-500">{stats.used_slots || 0}/{stats.total_slots || 3} used</div>
+                            </div>
+                          )
+                        })()
                       ) : (
                         <span className="text-xs text-gray-400">N/A</span>
                       )}
                     </td>
                     <td className="p-4 md:p-5 flex justify-end gap-2">
-                      {user.role === 'tenant' && (
-                        <button
-                          onClick={() => addFamilySlot(user.id)}
-                          disabled={addingSlotForUserId === user.id}
-                          className="px-3 py-1.5 md:px-4 md:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
-                        >
-                          {addingSlotForUserId === user.id ? 'Adding...' : 'Add Slot'}
-                        </button>
-                      )}
+                      {user.role === 'tenant' && (() => {
+                        const stats = familySubscriptions[user.id]
+                        const totalSlots = stats?.total_slots || 1
+                        const availableSlots = stats?.available_slots ?? Math.max(0, totalSlots - (stats?.used_slots || 0))
+                        const canDecrease = stats && totalSlots > 1 && availableSlots > 0
+                        return (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openFamilySlotRemoval(user.id)}
+                              disabled={removingSlotForUserId === user.id || !canDecrease}
+                              title={canDecrease ? 'Remove one available family slot' : 'Cannot remove an occupied or free family slot'}
+                              className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {removingSlotForUserId === user.id ? 'Removing...' : 'Remove 1 Family Slot'}
+                            </button>
+                            <button
+                              onClick={() => addFamilySlot(user.id)}
+                              disabled={addingSlotForUserId === user.id}
+                              className="px-3 py-1.5 md:px-4 md:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
+                            >
+                              {addingSlotForUserId === user.id ? 'Adding...' : 'Add Family Slot'}
+                            </button>
+                          </div>
+                        )
+                      })()}
+                      {user.role === 'landlord' && (() => {
+                        const stats = landlordSubscriptions[user.id]
+                        const totalSlots = stats?.total_slots || 3
+                        const availableSlots = stats?.available_slots ?? Math.max(0, totalSlots - (stats?.used_slots || 0))
+                        const canDecrease = stats && totalSlots > 3 && availableSlots > 0
+                        return (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openPropertySlotRemoval(user.id)}
+                              disabled={removingPropertySlotForUserId === user.id || !canDecrease}
+                              title={canDecrease ? 'Remove one available property slot' : 'Cannot remove an occupied or free property slot'}
+                              className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {removingPropertySlotForUserId === user.id ? 'Removing...' : 'Remove 1 Property Slot'}
+                            </button>
+                            <button
+                              onClick={() => addPropertySlot(user.id)}
+                              disabled={addingPropertySlotForUserId === user.id}
+                              className="px-3 py-1.5 md:px-4 md:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
+                            >
+                              {addingPropertySlotForUserId === user.id ? 'Adding...' : 'Add Property Slot'}
+                            </button>
+                          </div>
+                        )
+                      })()}
                       <button
                         onClick={() => {
                           const accepted = (user.accepted_payments && typeof user.accepted_payments === 'object') ? user.accepted_payments : {}
@@ -1797,14 +2025,71 @@ function UsersView({ refreshTrigger }) {
                     <p className="text-xs text-gray-500">
                       Available: {familySubscriptions[editingUser.id]?.available_slots ?? 1}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => addFamilySlot(editingUser.id)}
-                      disabled={addingSlotForUserId === editingUser.id}
-                      className="mt-3 px-3 py-2 bg-black text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
-                    >
-                      {addingSlotForUserId === editingUser.id ? 'Adding...' : 'Add Family Slot'}
-                    </button>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openFamilySlotRemoval(editingUser.id)}
+                        disabled={
+                          removingSlotForUserId === editingUser.id ||
+                          !familySubscriptions[editingUser.id] ||
+                          (familySubscriptions[editingUser.id]?.total_slots || 1) <= 1 ||
+                          (familySubscriptions[editingUser.id]?.available_slots ?? Math.max(0, (familySubscriptions[editingUser.id]?.total_slots || 1) - (familySubscriptions[editingUser.id]?.used_slots || 0))) <= 0
+                        }
+                        title="Remove one available family slot"
+                        className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {removingSlotForUserId === editingUser.id ? 'Removing...' : 'Remove 1 Family Slot'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addFamilySlot(editingUser.id)}
+                        disabled={addingSlotForUserId === editingUser.id}
+                        className="px-3 py-2 bg-black text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        {addingSlotForUserId === editingUser.id ? 'Adding...' : 'Add Family Slot'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editForm.role === 'landlord' && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-gray-700">Property Slots</label>
+                  <div className="rounded-xl border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-sm font-bold text-gray-900">
+                      {(landlordSubscriptions[editingUser.id]?.paid_slots || 0) > 0 ? 'Paid plan' : 'Free plan'}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Slots: {landlordSubscriptions[editingUser.id]?.used_slots || 0}/{landlordSubscriptions[editingUser.id]?.total_slots || 3} used
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Available: {landlordSubscriptions[editingUser.id]?.available_slots ?? 3}
+                    </p>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openPropertySlotRemoval(editingUser.id)}
+                        disabled={
+                          removingPropertySlotForUserId === editingUser.id ||
+                          !landlordSubscriptions[editingUser.id] ||
+                          (landlordSubscriptions[editingUser.id]?.total_slots || 3) <= 3 ||
+                          (landlordSubscriptions[editingUser.id]?.available_slots ?? Math.max(0, (landlordSubscriptions[editingUser.id]?.total_slots || 3) - (landlordSubscriptions[editingUser.id]?.used_slots || 0))) <= 0
+                        }
+                        title="Remove one available property slot"
+                        className="px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {removingPropertySlotForUserId === editingUser.id ? 'Removing...' : 'Remove 1 Property Slot'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addPropertySlot(editingUser.id)}
+                        disabled={addingPropertySlotForUserId === editingUser.id}
+                        className="px-3 py-2 bg-black text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        {addingPropertySlotForUserId === editingUser.id ? 'Adding...' : 'Add Property Slot'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1935,6 +2220,16 @@ function UsersView({ refreshTrigger }) {
           </div>
         </div>
       )}
+
+      <DeleteModal
+        isOpen={!!slotRemovalConfirm}
+        onClose={() => setSlotRemovalConfirm(null)}
+        onConfirm={confirmRemoveSlot}
+        title={slotRemovalConfirm?.title || 'Remove Slot'}
+        message={slotRemovalConfirm?.message || ''}
+        confirmText={slotRemovalConfirm?.confirmText || 'Remove'}
+        zIndexClass="z-[100]"
+      />
 
       <DeleteModal isOpen={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={confirmDelete} title="Delete User" message="Are you sure you want to delete this user? They will no longer be able to log in." />
     </div>
@@ -3609,6 +3904,420 @@ function AdminProfileView({ session, profile }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function formatAdminTicketDate(value) {
+  if (!value) return 'N/A'
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(new Date(value))
+}
+
+function getTicketPersonName(profile) {
+  const name = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim()
+  return name || profile?.email || 'N/A'
+}
+
+function appendTicketComment(ticket, comment) {
+  if (!ticket) return ticket
+
+  return {
+    ...ticket,
+    updated_at: new Date().toISOString(),
+    comments: [...(ticket.comments || []), comment]
+  }
+}
+
+function getCommentAuthorLabel(comment, currentUserId) {
+  if (comment.author_id === currentUserId) return 'You'
+  if (comment.author?.role === 'admin') return 'Admin'
+  return 'User'
+}
+
+function SupportTicketStatusBadge({ status }) {
+  const variant = status === 'resolved' || status === 'closed'
+    ? 'success'
+    : status === 'pending'
+      ? 'warning'
+      : 'default'
+
+  return (
+    <Badge variant={variant}>
+      {getSupportOptionLabel(SUPPORT_TICKET_STATUSES, status)}
+    </Badge>
+  )
+}
+
+function PendingTicketsView({ session, refreshTrigger, onPendingCountChange }) {
+  const [tickets, setTickets] = useState([])
+  const [selectedTicket, setSelectedTicket] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [updatingId, setUpdatingId] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [commentBody, setCommentBody] = useState('')
+  const [commenting, setCommenting] = useState(false)
+
+  useEffect(() => { loadTickets() }, [statusFilter, refreshTrigger])
+
+  async function loadTickets() {
+    if (!session?.access_token) return
+
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/support-tickets?status=${encodeURIComponent(statusFilter)}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load support tickets')
+
+      const nextTickets = data.tickets || []
+      setTickets(nextTickets)
+      setSelectedTicket(prev => prev ? nextTickets.find(ticket => ticket.id === prev.id) || null : prev)
+      onPendingCountChange?.(data.pendingCount || 0)
+    } catch (error) {
+      console.error('Failed to load support tickets:', error)
+      showToast.error(error.message || 'Failed to load support tickets')
+      setTickets([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function updateTicket(ticketId, action, status = null) {
+    if (!session?.access_token) return
+
+    setUpdatingId(ticketId)
+    try {
+      const res = await fetch('/api/admin/support-tickets', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ ticketId, action, status })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update ticket')
+
+      setTickets(prev => {
+        if (statusFilter !== 'all' && data.ticket?.status !== statusFilter) {
+          return prev.filter(ticket => ticket.id !== ticketId)
+        }
+        return prev.map(ticket => ticket.id === ticketId ? data.ticket : ticket)
+      })
+      setSelectedTicket(prev => prev?.id === ticketId ? data.ticket : prev)
+      onPendingCountChange?.(data.pendingCount || 0)
+      showToast.success(action === 'claim' ? 'Ticket claimed' : 'Ticket updated')
+    } catch (error) {
+      showToast.error(error.message || 'Failed to update ticket')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
+  async function submitTicketComment(event) {
+    event.preventDefault()
+
+    if (!selectedTicket || !session?.access_token) return
+
+    const body = commentBody.trim()
+    if (!body) return
+
+    setCommenting(true)
+    try {
+      const res = await fetch('/api/support-ticket-comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          ticketId: selectedTicket.id,
+          body
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add comment')
+
+      setTickets(prev => prev.map(ticket => (
+        ticket.id === selectedTicket.id ? appendTicketComment(ticket, data.comment) : ticket
+      )))
+      setSelectedTicket(prev => appendTicketComment(prev, data.comment))
+      setCommentBody('')
+      showToast.success('Comment added')
+    } catch (error) {
+      showToast.error(error.message || 'Failed to add comment')
+    } finally {
+      setCommenting(false)
+    }
+  }
+
+  const filteredTickets = tickets.filter(ticket => {
+    const term = search.trim().toLowerCase()
+    if (!term) return true
+
+    return (
+      formatSupportTicketId(ticket.id).toLowerCase().includes(term) ||
+      (ticket.subject || '').toLowerCase().includes(term) ||
+      (ticket.description || '').toLowerCase().includes(term) ||
+      (ticket.issue || '').toLowerCase().includes(term) ||
+      getTicketPersonName(ticket.requester).toLowerCase().includes(term) ||
+      (ticket.requester?.email || '').toLowerCase().includes(term)
+    )
+  })
+  const selectedTicketCanComment = selectedTicket?.claimed_by === session?.user?.id
+  const selectedTicketIsClosed = selectedTicket?.status === 'closed'
+  const selectedTicketAssignedToOtherAdmin = Boolean(selectedTicket?.claimed_by && !selectedTicketCanComment)
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-sm border border-gray-100/80">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Pending Tickets</h2>
+          <p className="text-gray-500 mt-1 text-sm md:text-base">Review, claim, and resolve Help Center requests.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <Input placeholder="Search request..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
+            <option value="all">All Status</option>
+            {SUPPORT_TICKET_STATUSES.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[1000px] md:min-w-0">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">ID of the Request</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Subject</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Requester</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Created</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Status</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Claimed By</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredTickets.map(ticket => (
+                  <tr
+                    key={ticket.id}
+                    onClick={() => {
+                      setSelectedTicket(ticket)
+                      setCommentBody('')
+                    }}
+                    className="transition-colors hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="p-4 md:p-5 text-sm font-mono font-bold text-gray-800 whitespace-nowrap">{formatSupportTicketId(ticket.id)}</td>
+                    <td className="p-4 md:p-5">
+                      <div className="font-bold text-gray-900 text-sm">{ticket.subject}</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">{getSupportOptionLabel(SUPPORT_TICKET_REQUEST_TYPES, ticket.request_type)}</div>
+                    </td>
+                    <td className="p-4 md:p-5">
+                      <div className="text-sm font-bold text-gray-900 whitespace-nowrap">{getTicketPersonName(ticket.requester)}</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 break-all">{ticket.requester?.email || 'No email'}</div>
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">{formatAdminTicketDate(ticket.created_at)}</td>
+                    <td className="p-4 md:p-5">
+                      <SupportTicketStatusBadge status={ticket.status} />
+                    </td>
+                    <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
+                      {ticket.claimed_by_profile ? getTicketPersonName(ticket.claimed_by_profile) : 'Unclaimed'}
+                    </td>
+                    <td className="p-4 md:p-5 text-right">
+                      {!ticket.claimed_by && (
+                        <button
+                          type="button"
+                          onClick={event => {
+                            event.stopPropagation()
+                            updateTicket(ticket.id, 'claim')
+                          }}
+                          disabled={updatingId === ticket.id}
+                          className="text-black bg-gray-100 font-bold text-[10px] cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                        >
+                          {updatingId === ticket.id ? 'Claiming...' : 'Claim'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filteredTickets.length === 0 && <EmptyStateRow colSpan={7} message="No support tickets found." />}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {selectedTicket && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedTicket(null)}></div>
+          <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <div>
+                <h3 className="font-black text-gray-900">{selectedTicket.subject}</h3>
+                <p className="text-xs text-gray-500 font-mono mt-0.5">{formatSupportTicketId(selectedTicket.id)}</p>
+              </div>
+              <button onClick={() => setSelectedTicket(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer text-gray-400">Close</button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-145px)] space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TicketDetail label="Request Type" value={getSupportOptionLabel(SUPPORT_TICKET_REQUEST_TYPES, selectedTicket.request_type)} />
+                <TicketDetail label="Issue" value={getSupportOptionLabel(SUPPORT_TICKET_ISSUES, selectedTicket.issue)} />
+                <TicketDetail label="Phone Number" value={selectedTicket.phone_number || 'N/A'} />
+                <TicketDetail label="Created" value={formatAdminTicketDate(selectedTicket.created_at)} />
+                <TicketDetail label="Requester" value={getTicketPersonName(selectedTicket.requester)} />
+                <TicketDetail label="Requester Email" value={selectedTicket.requester?.email || 'N/A'} />
+                <TicketDetail label="Claimed By" value={selectedTicket.claimed_by_profile ? getTicketPersonName(selectedTicket.claimed_by_profile) : 'Unclaimed'} />
+              </div>
+
+              <div>
+                <p className="text-xs font-black text-gray-500 uppercase mb-2">Subject</p>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-900">{selectedTicket.subject}</div>
+              </div>
+
+              <div>
+                <p className="text-xs font-black text-gray-500 uppercase mb-2">Description</p>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedTicket.description}</div>
+              </div>
+
+              <div>
+                <p className="text-xs font-black text-gray-500 uppercase mb-2">Attachments</p>
+                {Array.isArray(selectedTicket.attachments) && selectedTicket.attachments.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {selectedTicket.attachments.map((file, index) => (
+                      <a
+                        key={`${file.url}-${index}`}
+                        href={file.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-2xl border border-gray-200 bg-white p-4 text-sm font-bold text-gray-800 hover:bg-gray-50 transition-colors truncate"
+                      >
+                        {file.name || `Attachment ${index + 1}`}
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No attachments.</div>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-black text-gray-500 uppercase mb-2">Comments</p>
+                <div className="space-y-4">
+                  {(selectedTicket.comments || []).length > 0 ? (
+                    selectedTicket.comments.map(comment => (
+                      <div key={comment.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <div className="inline-flex max-w-full items-center gap-3 rounded-2xl bg-gray-200/70 px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-xs font-black text-gray-500 flex-shrink-0">
+                            {getTicketPersonName(comment.author).charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-sm font-black text-gray-900 truncate">
+                                {comment.author_id === session?.user?.id ? 'You' : getTicketPersonName(comment.author)}
+                              </p>
+                              <span className="text-[10px] font-black uppercase text-gray-500 bg-white rounded-full px-2 py-0.5">
+                                {getCommentAuthorLabel(comment, session?.user?.id)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">{formatAdminTicketDate(comment.created_at)}</p>
+                          </div>
+                        </div>
+                        <p className="mt-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No comments yet.</div>
+                  )}
+
+                  {selectedTicketIsClosed ? (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm font-semibold text-gray-600">
+                      This ticket is closed. Comments are disabled.
+                    </div>
+                  ) : selectedTicketCanComment ? (
+                    <form onSubmit={submitTicketComment} className="pt-1">
+                      <label className="block">
+                        <span className="block text-sm font-bold text-gray-700 mb-2">Add Comment</span>
+                        <textarea
+                          rows={4}
+                          maxLength={2000}
+                          value={commentBody}
+                          onChange={event => setCommentBody(event.target.value)}
+                          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-black resize-none"
+                          placeholder="Write your reply"
+                        />
+                      </label>
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={commenting || !commentBody.trim()}
+                          className="px-5 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {commenting ? 'Sending...' : 'Send Comment'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                      {selectedTicketAssignedToOtherAdmin ? 'Only the assigned admin can comment on this ticket.' : 'Claim this ticket before replying.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-black text-gray-500 uppercase">Status</span>
+                <select
+                  value={selectedTicket.status}
+                  onChange={event => updateTicket(selectedTicket.id, 'status', event.target.value)}
+                  disabled={updatingId === selectedTicket.id}
+                  className="border rounded-xl px-3 py-2 bg-white text-sm font-bold focus:ring-2 focus:ring-black outline-none cursor-pointer disabled:opacity-50"
+                >
+                  {SUPPORT_TICKET_STATUSES.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {!selectedTicket.claimed_by && (
+                <button
+                  type="button"
+                  onClick={() => updateTicket(selectedTicket.id, 'claim')}
+                  disabled={updatingId === selectedTicket.id}
+                  className="px-5 py-2.5 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {updatingId === selectedTicket.id ? 'Claiming...' : 'Claim Ticket'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TicketDetail({ label, value }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+      <p className="text-xs font-black text-gray-500 uppercase mb-2">{label}</p>
+      <p className="text-sm font-bold text-gray-900 break-words">{value}</p>
     </div>
   )
 }
