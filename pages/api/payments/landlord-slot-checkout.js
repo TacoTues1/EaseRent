@@ -10,7 +10,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: `Method ${req.method} Not Allowed` })
     }
 
-    const { landlord_id, allowedMethods } = req.body
+    const { landlord_id, allowedMethods, redirect_to } = req.body
 
     if (!landlord_id) {
         return res.status(400).json({ error: 'landlord_id required' })
@@ -83,8 +83,12 @@ export default async function handler(req, res) {
 
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '')
 
-    const successUrl = `${cleanBaseUrl}/dashboard?slot_purchase_success=true&payment_id=${payment.id}`
-    const cancelUrl = `${cleanBaseUrl}/dashboard?slot_purchase_cancelled=true`
+    const successUrl = redirect_to === 'settings'
+        ? `${cleanBaseUrl}/settings?landlord_slot_success=true&landlord_payment_id=${payment.id}`
+        : `${cleanBaseUrl}/dashboard?slot_purchase_success=true&payment_id=${payment.id}`
+    const cancelUrl = redirect_to === 'settings'
+        ? `${cleanBaseUrl}/settings?landlord_slot_cancelled=true`
+        : `${cleanBaseUrl}/dashboard?slot_purchase_cancelled=true`
 
     const landlordName = `${landlord.first_name || ''} ${landlord.last_name || ''}`.trim()
     const paymentMethodTypes = allowedMethods && allowedMethods.length > 0

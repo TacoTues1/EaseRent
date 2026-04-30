@@ -79,6 +79,12 @@ export default function Settings() {
   const [loadingSubscription, setLoadingSubscription] = useState(false)
   const [buyingSlot, setBuyingSlot] = useState(false)
 
+  // Landlord Subscription State
+  const [landlordSubPlan, setLandlordSubPlan] = useState(null)
+  const [landlordSubPayments, setLandlordSubPayments] = useState([])
+  const [loadingLandlordSub, setLoadingLandlordSub] = useState(false)
+  const [buyingPropertySlot, setBuyingPropertySlot] = useState(false)
+
   // Notification Preferences State
   const [notifPrefs, setNotifPrefs] = useState({
     email: true,
@@ -135,7 +141,7 @@ export default function Settings() {
 
   // Handle subscription_success / subscription_cancelled redirect from PayMongo
   useEffect(() => {
-    const { subscription_success, payment_id, subscription_cancelled } = router.query
+    const { subscription_success, payment_id, subscription_cancelled, landlord_slot_success, landlord_slot_cancelled, landlord_payment_id } = router.query
     if (subscription_success === 'true' && payment_id) {
       confirmSubscriptionPayment(payment_id)
       router.replace('/settings?tab=subscription', undefined, { shallow: true })
@@ -145,9 +151,18 @@ export default function Settings() {
       cancelPendingPayments()
       router.replace('/settings?tab=subscription', undefined, { shallow: true })
     }
+    if (landlord_slot_success === 'true' && landlord_payment_id) {
+      confirmLandlordSlotPayment(landlord_payment_id)
+      router.replace('/settings?tab=subscription', undefined, { shallow: true })
+    }
+    if (landlord_slot_cancelled === 'true') {
+      showToast.warning('Property slot purchase was cancelled.')
+      router.replace('/settings?tab=subscription', undefined, { shallow: true })
+    }
     if (router.query.tab === 'subscription') {
       setActiveTab('subscription')
       loadSubscription()
+      loadLandlordSubscription()
     }
   }, [router.query])
 
@@ -915,6 +930,75 @@ export default function Settings() {
     }
   }
 
+  // ── Landlord Subscription Functions ──
+  async function loadLandlordSubscription() {
+    if (!session?.user?.id || profile?.role !== 'landlord') return
+    setLoadingLandlordSub(true)
+    try {
+      const res = await fetch(`/api/payments/landlord-subscriptions?landlord_id=${session.user.id}`)
+      const data = await res.json()
+      if (data.plan) setLandlordSubPlan(data.plan)
+
+      // Load payment history
+      const histRes = await fetch('/api/payments/landlord-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'payment-history', landlord_id: session.user.id })
+      })
+      const histData = await histRes.json()
+      if (histData.payments) setLandlordSubPayments(histData.payments)
+    } catch (err) {
+      console.error('Error loading landlord subscription:', err)
+    }
+    setLoadingLandlordSub(false)
+  }
+
+  async function handleBuyPropertySlot() {
+    if (!session?.user?.id) return
+    setBuyingPropertySlot(true)
+    try {
+      const baseUrl = window.location.origin
+      const res = await fetch('/api/payments/landlord-slot-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ landlord_id: session.user.id, redirect_to: 'settings' })
+      })
+      const data = await res.json()
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      } else {
+        showToast.error(data.error || 'Failed to create checkout')
+      }
+    } catch (err) {
+      showToast.error('Failed to create checkout session')
+      console.error(err)
+    }
+    setBuyingPropertySlot(false)
+  }
+
+  async function confirmLandlordSlotPayment(paymentId) {
+    try {
+      const res = await fetch('/api/payments/landlord-subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'confirm-payment',
+          payment_id: paymentId,
+          payment_method: 'paymongo'
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast.success(data.message || 'Property slot purchased successfully!')
+        loadLandlordSubscription()
+      } else {
+        showToast.error(data.error || 'Failed to confirm slot purchase')
+      }
+    } catch (err) {
+      console.error('Error confirming landlord slot payment:', err)
+    }
+  }
+
   const tabs = [
     {
       id: 'profile', label: 'Profile', icon: (
@@ -926,7 +1010,7 @@ export default function Settings() {
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
       )
     }] : []),
-    ...(profile?.role === 'tenant' ? [{
+    ...(profile?.role === 'tenant' || profile?.role === 'landlord' ? [{
       id: 'subscription', label: 'Subscription', icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
       )
@@ -1030,7 +1114,10 @@ export default function Settings() {
                     key={tab.id}
                     onClick={() => {
                       setActiveTab(tab.id)
-                      if (tab.id === 'subscription') loadSubscription()
+                      if (tab.id === 'subscription') {
+                        loadSubscription()
+                        loadLandlordSubscription()
+                      }
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer ${activeTab === tab.id
                       ? 'bg-black text-white shadow-md'
@@ -1555,7 +1642,6 @@ export default function Settings() {
                             )}
                           </button>
                         </div>
-                        <p className="text-xs text-gray-400 mt-3">Payment via QR PH • Permanent • Carries over to new properties</p>
                       </div>
                     )}
 
@@ -1579,6 +1665,149 @@ export default function Settings() {
                                 </div>
                                 <div>
                                   <p className="font-bold text-sm">+1 Family Slot</p>
+                                  <p className="text-xs text-gray-500">{new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">₱{parseFloat(payment.amount).toFixed(2)}</p>
+                                <p className="text-xs font-bold text-emerald-600">Paid</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* LANDLORD SUBSCRIPTION TAB */}
+            {activeTab === 'subscription' && profile?.role === 'landlord' && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold">Property Slot Subscription</h2>
+                    <p className="text-sm text-gray-500 mt-1">Manage your property listing slots. Your subscription is permanent and carries over.</p>
+                  </div>
+                  <button onClick={loadLandlordSubscription} className="p-2 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer" title="Refresh">
+                    <svg className={`w-5 h-5 text-gray-500 ${loadingLandlordSub ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  </button>
+                </div>
+
+                {loadingLandlordSub ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-black"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Current Plan Card */}
+                    <div className={`p-6 rounded-2xl border-2 transition-all ${
+                      landlordSubPlan?.paid_slots > 0
+                        ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50'
+                        : 'border-gray-100 bg-gradient-to-br from-gray-50 to-slate-50'
+                    }`}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <h3 className="font-bold text-lg">{landlordSubPlan?.paid_slots > 0 ? 'Paid Plan' : 'Free Plan'}</h3>
+                            <p className="text-sm text-gray-500">
+                              {landlordSubPlan?.paid_slots > 0
+                                ? `${landlordSubPlan.paid_slots} extra slot(s) purchased`
+                                : '3 free property slots included'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`px-3 py-1 text-xs font-bold rounded-full uppercase tracking-wider ${
+                          landlordSubPlan?.paid_slots > 0
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {landlordSubPlan?.type || 'free'}
+                        </span>
+                      </div>
+
+                      {/* Slot Usage */}
+                      <div className="grid grid-cols-3 gap-4 mt-4">
+                        <div className="text-center p-3 bg-white/60 rounded-xl">
+                          <p className="text-2xl font-black">{landlordSubPlan?.total_slots || 3}</p>
+                          <p className="text-xs font-bold text-gray-500 mt-1">Total Slots</p>
+                        </div>
+                        <div className="text-center p-3 bg-white/60 rounded-xl">
+                          <p className="text-2xl font-black text-blue-600">{landlordSubPlan?.used_slots || 0}</p>
+                          <p className="text-xs font-bold text-gray-500 mt-1">Used</p>
+                        </div>
+                        <div className="text-center p-3 bg-white/60 rounded-xl">
+                          <p className="text-2xl font-black text-emerald-600">{landlordSubPlan?.available_slots ?? (landlordSubPlan?.total_slots || 3)}</p>
+                          <p className="text-xs font-bold text-gray-500 mt-1">Available</p>
+                        </div>
+                      </div>
+
+                      {/* Slot Progress Bar */}
+                      <div className="mt-4">
+                        <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                          <span>{landlordSubPlan?.used_slots || 0} / {landlordSubPlan?.total_slots || 3} slots used</span>
+                          <span>Max: {landlordSubPlan?.max_slots || 10}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div
+                            className={`h-2.5 rounded-full transition-all duration-500 ${
+                              (landlordSubPlan?.used_slots || 0) >= (landlordSubPlan?.total_slots || 3)
+                                ? 'bg-red-500'
+                                : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${Math.min(((landlordSubPlan?.used_slots || 0) / (landlordSubPlan?.max_slots || 10)) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Buy Slot Button */}
+                    {(landlordSubPlan?.total_slots || 3) < (landlordSubPlan?.max_slots || 10) && (
+                      <div className="p-5 rounded-2xl border-2 border-dashed border-gray-200 hover:border-black transition-all">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-bold">Need more slots?</h4>
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Purchase an additional property slot for <span className="font-bold text-black">₱{landlordSubPlan?.slot_price || 50}</span>
+                            </p>
+                          </div>
+                          <button
+                            onClick={handleBuyPropertySlot}
+                            disabled={buyingPropertySlot}
+                            className="px-6 py-3 bg-black text-white font-bold rounded-xl hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                          >
+                            {buyingPropertySlot ? (
+                              <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div> Processing...</>
+                            ) : (
+                              <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg> Buy Slot</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(landlordSubPlan?.total_slots || 3) >= (landlordSubPlan?.max_slots || 10) && (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium flex items-center gap-2">
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                        Maximum 10 property slots reached.
+                      </div>
+                    )}
+
+                    {/* Payment History — only show completed payments */}
+                    {landlordSubPayments.filter(p => p.status === 'paid').length > 0 && (
+                      <div>
+                        <h3 className="font-bold text-sm uppercase text-gray-500 mb-3">Purchase History</h3>
+                        <div className="space-y-2">
+                          {landlordSubPayments.filter(p => p.status === 'paid').map(payment => (
+                            <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-emerald-100 text-emerald-600">
+                                  ✓
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm">+1 Property Slot</p>
                                   <p className="text-xs text-gray-500">{new Date(payment.paid_at || payment.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                                 </div>
                               </div>

@@ -681,7 +681,14 @@ export default function LandlordDashboard({ session, profile }) {
     closeAdvanceBillModal()
     setSendingBillId(`${tenantId}-${billType}`)
     try {
-      const res = await fetch(`/api/test-rent-reminder?tenantId=${tenantId}&billType=${billType}`)
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      const params = new URLSearchParams({ tenantId, billType })
+      const headers = currentSession?.access_token
+        ? { Authorization: `Bearer ${currentSession.access_token}` }
+        : undefined
+      const res = await fetch(`/api/test-rent-reminder?${params.toString()}`, {
+        headers
+      })
       const data = await res.json()
       if (res.ok) {
         showToast.success(data?.message || `${advanceBillModal.billLabel} sent successfully!`, { duration: 4000, transition: "bounceIn" })

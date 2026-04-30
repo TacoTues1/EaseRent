@@ -19,8 +19,19 @@ function formatPhoneNumber(phone) {
 }
 
 export default async function handler(req, res) {
-  // Security: Only allow in development or with a secret key
-  if (process.env.NODE_ENV === 'production' && req.query.secret !== process.env.TEST_SECRET) {
+  const hasValidTestSecret =
+    process.env.NODE_ENV !== 'production' ||
+    (process.env.TEST_SECRET && req.query.secret === process.env.TEST_SECRET)
+  const authHeader = req.headers.authorization || ''
+  const bearerToken = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]
+  let requesterUserId = null
+
+  if (!hasValidTestSecret && bearerToken) {
+    const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(bearerToken)
+    if (!authError) requesterUserId = authData?.user?.id || null
+  }
+
+  if (!hasValidTestSecret && !requesterUserId) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 
@@ -53,6 +64,10 @@ export default async function handler(req, res) {
 
     if (occError || !occupancy) {
       return res.status(404).json({ error: 'Active occupancy not found for this tenant' })
+    }
+
+    if (!hasValidTestSecret && requesterUserId !== occupancy.landlord_id) {
+      return res.status(403).json({ error: 'Forbidden' })
     }
 
     // Utility "Send Now": send immediate reminder notifications without creating rent bills.

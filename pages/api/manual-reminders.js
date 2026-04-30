@@ -247,12 +247,17 @@ export default async function handler(req, res) {
     // Skip bill reminders if not in time window OR already ran today (Unless 'force' param is present)
     const forceRun = req.query.force === 'true';
     const shouldSendBillReminders = forceRun || (isReminderTime && !alreadyRanToday);
+    const catchUpMissedBillReminders = req.query.catch_up !== 'false';
+    const parsedCatchUpPastDueDays = parseInt(req.query.catch_up_past_due_days || '7', 10);
+    const catchUpPastDueDays = Number.isFinite(parsedCatchUpPastDueDays)
+      ? Math.max(0, Math.min(31, parsedCatchUpPastDueDays))
+      : 7;
 
     if (!shouldSendBillReminders) {
-      console.log(`[Reminder Check] Skipping bill reminders - Time: ${currentHour}:00, Already ran: ${alreadyRanToday}, Force: ${forceRun}`);
+      console.log(`[Reminder Check] Skipping bill reminders - Time: ${currentHour}:00, Already ran: ${alreadyRanToday}, Force: ${forceRun}, Catch-up: ${catchUpMissedBillReminders}`);
       results.skipped = `Bill reminders skipped. Current hour: ${currentHour}, Already ran today: ${alreadyRanToday}`;
     } else {
-      console.log(`[Reminder Check] Running bill reminders (Force: ${forceRun})`);
+      console.log(`[Reminder Check] Running bill reminders (Force: ${forceRun}, Catch-up: ${catchUpMissedBillReminders}, Catch-up past due days: ${catchUpPastDueDays})`);
       if (!forceRun) {
         // Mark that we ran today (create a system notification)
         await supabaseAdmin.from('notifications').insert({
@@ -472,19 +477,75 @@ export default async function handler(req, res) {
         return amenities.includes('Wifi') || amenities.includes('WiFi') || amenities.includes('Free WiFi');
       };
 
+      const todayDateOnly = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
+      const millisecondsPerDay = 1000 * 60 * 60 * 24;
+
+      const normalizeDueDay = (value, fallback) => {
+        const parsed = parseInt(value, 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(1, Math.min(31, parsed));
+      };
+
+      const getDaysUntilDue = (dueDate) => Math.floor((dueDate.getTime() - todayDateOnly.getTime()) / millisecondsPerDay);
+
+      const getReminderDueDateForDay = (dueDay) => {
+        const currentMonthDueDate = new Date(todayYear, todayMonth, dueDay, 0, 0, 0, 0);
+
+        if (catchUpMissedBillReminders) {
+          const autoSendDate = new Date(currentMonthDueDate);
+          autoSendDate.setDate(autoSendDate.getDate() - 3);
+          const currentMonthDaysUntilDue = getDaysUntilDue(currentMonthDueDate);
+
+          if (
+            autoSendDate <= todayDateOnly &&
+            currentMonthDaysUntilDue >= -catchUpPastDueDays &&
+            currentMonthDaysUntilDue <= 3
+          ) {
+            return currentMonthDueDate;
+          }
+        }
+
+        const candidate = new Date(currentMonthDueDate);
+        if (candidate < todayDateOnly) {
+          candidate.setMonth(candidate.getMonth() + 1);
+        }
+        return candidate;
+      };
+
+      const shouldSendReminderForDueDate = (dueDate) => {
+        const daysUntilDue = getDaysUntilDue(dueDate);
+        if (daysUntilDue >= 1 && daysUntilDue <= 3) return true;
+        if (!catchUpMissedBillReminders) return false;
+
+        const autoSendDate = new Date(dueDate);
+        autoSendDate.setDate(autoSendDate.getDate() - 3);
+        return autoSendDate <= todayDateOnly && daysUntilDue >= -catchUpPastDueDays && daysUntilDue <= 3;
+      };
+
+      const getReminderTimingText = (daysUntilDue) => {
+        if (daysUntilDue > 1) return `${daysUntilDue} days before due`;
+        if (daysUntilDue === 1) return '1 day before due';
+        if (daysUntilDue === 0) return 'due today';
+        const overdueDays = Math.abs(daysUntilDue);
+        return overdueDays === 1 ? '1 day past due' : `${overdueDays} days past due`;
+      };
+
+      const formatOrdinalDueDate = (dueDay, dueDate) =>
+        `${dueDay}${[11, 12, 13].includes(dueDay) ? 'th' : ['st', 'nd', 'rd'][dueDay % 10 - 1] || 'th'} of ${dueDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+
+      const hasOccupancyStarted = (occ) => {
+        if (!occ.start_date) return true;
+        const startDate = new Date(occ.start_date);
+        startDate.setHours(0, 0, 0, 0);
+        return todayDateOnly >= startDate;
+      };
+
       // Filter occupancies where today is 1, 2, or 3 days before the due date
       // AND the occupancy has already started
       const rentOccupancies = (allOccupancies || []).filter(occ => {
         if (!occ.start_date && !occ.rent_due_day) return false;
 
-        // Check if occupancy has started
-        if (occ.start_date) {
-          const startDate = new Date(occ.start_date);
-          startDate.setHours(0, 0, 0, 0);
-          const compareToday = new Date(today);
-          compareToday.setHours(0, 0, 0, 0);
-          if (compareToday < startDate) return false;
-        }
+        if (!hasOccupancyStarted(occ)) return false;
         
         // Use rent_due_day if landlord set it, otherwise fall back to start_date's day
         let dueDay;
@@ -497,12 +558,12 @@ export default async function handler(req, res) {
           return false;
         }
 
-        // Calculate due date for current month
-        const currentMonthDueDate = new Date(todayYear, todayMonth, dueDay);
-        const daysUntilDue = Math.floor((currentMonthDueDate - today) / (1000 * 60 * 60 * 24));
+        // Calculate the next upcoming due date, matching the Billing Schedule UI.
+        const currentMonthDueDate = getReminderDueDateForDay(dueDay);
+        const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
         // Check if today is 1, 2, or 3 days before due date
-        return daysUntilDue >= 1 && daysUntilDue <= 3;
+        return shouldSendReminderForDueDate(currentMonthDueDate);
       });
 
       console.log(`[Rent Reminder] Matching occupancies (1-3 days before due): ${rentOccupancies.length}`);
@@ -519,8 +580,8 @@ export default async function handler(req, res) {
             const startDate = new Date(occ.start_date);
             dueDay = startDate.getDate();
           }
-          const currentMonthDueDate = new Date(todayYear, todayMonth, dueDay);
-          const daysUntilDue = Math.floor((currentMonthDueDate - today) / (1000 * 60 * 60 * 24));
+          const currentMonthDueDate = getReminderDueDateForDay(dueDay);
+          const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
           // Check if notification already sent TODAY (not this month)
           const todayStart = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
@@ -555,15 +616,15 @@ export default async function handler(req, res) {
             }
 
             // --- CREATE PAYMENT REQUEST (Rent Bill) - Only on day 3 (first day) ---
-            if (daysUntilDue === 3) {
+            if (daysUntilDue === 3 || catchUpMissedBillReminders) {
               // Check if bill already exists for this month
               const { data: existingBill } = await supabaseAdmin
                 .from('payment_requests')
                 .select('id, rent_amount')
                 .eq('tenant', occ.tenant_id)
                 .eq('property_id', occ.property?.id)
-                .gte('due_date', new Date(todayYear, todayMonth, 1).toISOString())
-                .lte('due_date', new Date(todayYear, todayMonth + 1, 0).toISOString())
+                .gte('due_date', new Date(currentMonthDueDate.getFullYear(), currentMonthDueDate.getMonth(), 1).toISOString())
+                .lte('due_date', new Date(currentMonthDueDate.getFullYear(), currentMonthDueDate.getMonth() + 1, 0, 23, 59, 59, 999).toISOString())
                 .eq('status', 'pending')
                 .limit(1);
 
@@ -621,8 +682,8 @@ export default async function handler(req, res) {
               }
             }
 
-            const daysText = daysUntilDue === 3 ? '3 days' : daysUntilDue === 2 ? '2 days' : '1 day';
-            const rentMessage = `Rent Bill Reminder (${daysText} before due): Your monthly rent of ₱${Number(rentAmount).toLocaleString()} for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}.${occ.late_payment_fee > 0 ? ` Late payment fee: ₱${Number(occ.late_payment_fee).toLocaleString()}` : ''} Please check your Payments page.`;
+            const daysText = getReminderTimingText(daysUntilDue);
+            const rentMessage = `Rent Bill Reminder (${daysText}): Your monthly rent of ₱${Number(rentAmount).toLocaleString()} for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}.${occ.late_payment_fee > 0 ? ` Late payment fee: ₱${Number(occ.late_payment_fee).toLocaleString()}` : ''} Please check your Payments page.`;
 
             // IF BILL WAS JUST CREATED (Day 3), send SPECIFIC Bill Notification
             if (billCreated) {
@@ -661,12 +722,12 @@ export default async function handler(req, res) {
               );
             } else {
               // STANDARD REMINDER (Day 1 & 2)
-              console.log(`[Rent Reminder] Sending notification (${daysText} before): ${rentMessage}`);
+              console.log(`[Rent Reminder] Sending notification (${daysText}): ${rentMessage}`);
 
               occ.tenant.profile_id = occ.tenant.id;
               await sendUtilityReminder(supabaseAdmin, occ.tenant, 'rent_bill_reminder',
                 rentMessage,
-                `🏠 Rent Bill Reminder (${daysText} before due)`
+                `🏠 Rent Bill Reminder (${daysText})`
               );
             }
 
@@ -696,21 +757,14 @@ export default async function handler(req, res) {
         if (!isWifiAvailableAtProperty(occ)) return false;
         if (!occ.wifi_due_day) return false;
 
-        // Check if occupancy has started
-        if (occ.start_date) {
-          const startDate = new Date(occ.start_date);
-          startDate.setHours(0, 0, 0, 0);
-          const compareToday = new Date(today);
-          compareToday.setHours(0, 0, 0, 0);
-          if (compareToday < startDate) return false;
-        }
+        if (!hasOccupancyStarted(occ)) return false;
 
-        const wifiDueDay = occ.wifi_due_day;
-        const currentMonthDueDate = new Date(todayYear, todayMonth, wifiDueDay);
-        const daysUntilDue = Math.floor((currentMonthDueDate - today) / (1000 * 60 * 60 * 24));
+        const wifiDueDay = normalizeDueDay(occ.wifi_due_day, 10);
+        const currentMonthDueDate = getReminderDueDateForDay(wifiDueDay);
+        const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
         // Check if today is 1, 2, or 3 days before due date
-        return daysUntilDue >= 1 && daysUntilDue <= 3;
+        return shouldSendReminderForDueDate(currentMonthDueDate);
       });
 
       console.log(`[Wifi Reminder] Matching occupancies (1-3 days before due): ${wifiOccupancies.length}`);
@@ -719,9 +773,9 @@ export default async function handler(req, res) {
         for (const occ of wifiOccupancies) {
           if (!occ.tenant) continue;
 
-          const wifiDueDay = occ.wifi_due_day;
-          const currentMonthDueDate = new Date(todayYear, todayMonth, wifiDueDay);
-          const daysUntilDue = Math.floor((currentMonthDueDate - today) / (1000 * 60 * 60 * 24));
+          const wifiDueDay = normalizeDueDay(occ.wifi_due_day, 10);
+          const currentMonthDueDate = getReminderDueDateForDay(wifiDueDay);
+          const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
           // Check if notification already sent TODAY
           const todayStart = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
@@ -742,17 +796,17 @@ export default async function handler(req, res) {
 
           if (!alreadySentToday) {
             const dueDate = new Date(currentMonthDueDate);
-            const dueDateStr = `${wifiDueDay}${[11, 12, 13].includes(wifiDueDay) ? 'th' : ['st', 'nd', 'rd'][wifiDueDay % 10 - 1] || 'th'} of ${dueDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
-            const daysText = daysUntilDue === 3 ? '3 days' : daysUntilDue === 2 ? '2 days' : '1 day';
+            const dueDateStr = formatOrdinalDueDate(wifiDueDay, dueDate);
+            const daysText = getReminderTimingText(daysUntilDue);
 
-            const wifiMessage = `WiFi Bill Reminder (${daysText} before due): Your WiFi bill for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}. Please ensure timely payment to avoid service interruption.`;
+            const wifiMessage = `WiFi Bill Reminder (${daysText}): Your WiFi bill for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}. Please ensure timely payment to avoid service interruption.`;
 
-            console.log(`[Wifi Reminder] Sending reminder (${daysText} before): ${wifiMessage}`);
+            console.log(`[Wifi Reminder] Sending reminder (${daysText}): ${wifiMessage}`);
 
             occ.tenant.profile_id = occ.tenant.id;
             await sendUtilityReminder(supabaseAdmin, occ.tenant, 'wifi_due_reminder',
               wifiMessage,
-              `WiFi Bill Due Reminder (${daysText} before due)`
+              `WiFi Bill Due Reminder (${daysText})`
             );
 
             // Also notify the LANDLORD about upcoming WiFi due date
@@ -771,31 +825,34 @@ export default async function handler(req, res) {
       console.log(`[Wifi Reminder] ========================================`);
 
       // ====================================================
-      // E. ELECTRICITY DUE DATE NOTIFICATIONS (First Week of Month - Daily Reminders)
-      // Sends notifications every day at 8:00 AM on days 1, 2, 3 of the month
-      // Electricity is due in the first week, so we remind at the start of that week
+      // E. ELECTRICITY DUE DATE NOTIFICATIONS (3 Days Before - Daily Reminders)
+      // Sends notifications every day during the 3 days before the configured due date.
       // ====================================================
       console.log(`[Electric Reminder] ========================================`);
-      console.log(`[Electric Reminder] Today is day ${todayDay} of the month`);
 
-      // Send electricity reminders on days 1, 2, 3 of every month (start of first week)
-      if (todayDay >= 1 && todayDay <= 3) {
-        console.log(`[Electric Reminder] First 3 days of month - sending to ALL active tenants`);
+      const electricityOccupancies = (allOccupancies || []).filter(occ => {
+        if (!occ.tenant) return false;
+        if (!isUtilityEnabled(occ, 'electricity')) return false;
+        if (!occ.electricity_due_day) return false;
+        if (!hasOccupancyStarted(occ)) return false;
 
-        for (const occ of (allOccupancies || [])) {
+        const electricityDueDay = normalizeDueDay(occ.electricity_due_day, 7);
+        const currentMonthDueDate = getReminderDueDateForDay(electricityDueDay);
+        const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
+
+        return shouldSendReminderForDueDate(currentMonthDueDate);
+      });
+
+      console.log(`[Electric Reminder] Matching occupancies (1-3 days before due): ${electricityOccupancies.length}`);
+
+      if (electricityOccupancies.length > 0) {
+        for (const occ of electricityOccupancies) {
           if (!occ.tenant) continue;
-          if (!isUtilityEnabled(occ, 'electricity')) continue;
 
-          // Check if occupancy has started
-          if (occ.start_date) {
-            const startDate = new Date(occ.start_date);
-            startDate.setHours(0, 0, 0, 0);
-            const compareToday = new Date(today);
-            compareToday.setHours(0, 0, 0, 0);
-            if (compareToday < startDate) continue;
-          }
+          const electricityDueDay = normalizeDueDay(occ.electricity_due_day, 7);
+          const currentMonthDueDate = getReminderDueDateForDay(electricityDueDay);
+          const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
-          // Check if notification already sent TODAY
           const todayStart = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
           const todayEnd = new Date(todayYear, todayMonth, todayDay, 23, 59, 59, 999);
 
@@ -810,64 +867,66 @@ export default async function handler(req, res) {
 
           const alreadySentToday = todayNotification && todayNotification.length > 0;
 
-          console.log(`[Electric Reminder] Processing ${occ.tenant?.first_name}: alreadySentToday=${alreadySentToday}`);
+          console.log(`[Electric Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentToday}`);
 
           if (!alreadySentToday) {
-            const monthYear = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            const daysText = todayDay === 1 ? '3 days' : todayDay === 2 ? '2 days' : '1 day';
+            const dueDate = new Date(currentMonthDueDate);
+            const dueDateStr = formatOrdinalDueDate(electricityDueDay, dueDate);
+            const daysText = getReminderTimingText(daysUntilDue);
 
-            const electricMessage = `Electricity Bill Reminder (${daysText} into first week): Your electricity bill for "${occ.property?.title || 'your property'}" is due in the first week of ${monthYear}. Please ensure timely payment to avoid service interruption.`;
+            const electricMessage = `Electricity Bill Reminder (${daysText}): Your electricity bill for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}. Please ensure timely payment to avoid service interruption.`;
 
-            console.log(`[Electric Reminder] Sending reminder (day ${todayDay}): ${electricMessage}`);
+            console.log(`[Electric Reminder] Sending reminder (${daysText}): ${electricMessage}`);
 
             occ.tenant.profile_id = occ.tenant.id;
             await sendUtilityReminder(supabaseAdmin, occ.tenant, 'electricity_due_reminder',
               electricMessage,
-              `Electricity Bill Due Reminder (${daysText} into first week)`
+              `Electricity Bill Due Reminder (${daysText})`
             );
 
-            // Also notify the LANDLORD about upcoming electricity due
-            const elecMonthYear = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            await sendLandlordUtilityReminder(supabaseAdmin, occ.landlord_id, occ.tenant, 'electricity', occ.property?.title, `first week of ${elecMonthYear}`, daysText);
+            await sendLandlordUtilityReminder(supabaseAdmin, occ.landlord_id, occ.tenant, 'electricity', occ.property?.title, dueDateStr, daysText);
 
             results.electricity_reminders_sent = (results.electricity_reminders_sent || 0) + 1;
             console.log(`[Electric Reminder] Reminder sent to ${occ.tenant?.first_name} and landlord`);
           } else {
-            console.log(`[Electric Reminder] ⏭️ Skipped ${occ.tenant?.first_name} - already sent today`);
+            console.log(`[Electric Reminder] Skipped ${occ.tenant?.first_name} - already sent today`);
           }
         }
       } else {
-        console.log(`[Electric Reminder] Not first 3 days of month - skipping electricity reminders`);
+        console.log(`[Electric Reminder] No tenants with electricity due dates 1-3 days away`);
       }
 
       console.log(`[Electric Reminder] ========================================`);
 
       // ====================================================
-      // F. WATER BILL DUE DATE NOTIFICATIONS (First Week of Month - Daily Reminders)
-      // Sends notifications every day at 8:00 AM on days 1, 2, 3 of the month
-      // Water is due in the first week, so we remind at the start of that week
+      // F. WATER BILL DUE DATE NOTIFICATIONS (3 Days Before - Daily Reminders)
+      // Sends notifications every day during the 3 days before the configured due date.
       // ====================================================
       console.log(`[Water Reminder] ========================================`);
-      console.log(`[Water Reminder] Today is day ${todayDay} of the month`);
 
-      // Send water reminders on days 1, 2, 3 of every month (start of first week)
-      if (todayDay >= 1 && todayDay <= 3) {
-        console.log(`[Water Reminder] First 3 days of month - sending to ALL active tenants`);
+      const waterOccupancies = (allOccupancies || []).filter(occ => {
+        if (!occ.tenant) return false;
+        if (!isUtilityEnabled(occ, 'water')) return false;
+        if (!occ.water_due_day) return false;
+        if (!hasOccupancyStarted(occ)) return false;
 
-        for (const occ of (allOccupancies || [])) {
+        const waterDueDay = normalizeDueDay(occ.water_due_day, 7);
+        const currentMonthDueDate = getReminderDueDateForDay(waterDueDay);
+        const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
+
+        return shouldSendReminderForDueDate(currentMonthDueDate);
+      });
+
+      console.log(`[Water Reminder] Matching occupancies (1-3 days before due): ${waterOccupancies.length}`);
+
+      if (waterOccupancies.length > 0) {
+        for (const occ of waterOccupancies) {
           if (!occ.tenant) continue;
-          if (!isUtilityEnabled(occ, 'water')) continue;
 
-          // Check if occupancy has started
-          if (occ.start_date) {
-            const startDate = new Date(occ.start_date);
-            startDate.setHours(0, 0, 0, 0);
-            const compareToday = new Date(today);
-            compareToday.setHours(0, 0, 0, 0);
-            if (compareToday < startDate) continue;
-          }
+          const waterDueDay = normalizeDueDay(occ.water_due_day, 7);
+          const currentMonthDueDate = getReminderDueDateForDay(waterDueDay);
+          const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
 
-          // Check if notification already sent TODAY
           const todayStartW = new Date(todayYear, todayMonth, todayDay, 0, 0, 0, 0);
           const todayEndW = new Date(todayYear, todayMonth, todayDay, 23, 59, 59, 999);
 
@@ -882,34 +941,33 @@ export default async function handler(req, res) {
 
           const alreadySentTodayW = todayNotificationW && todayNotificationW.length > 0;
 
-          console.log(`[Water Reminder] Processing ${occ.tenant?.first_name}: alreadySentToday=${alreadySentTodayW}`);
+          console.log(`[Water Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentTodayW}`);
 
           if (!alreadySentTodayW) {
-            const monthYear = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            const daysText = todayDay === 1 ? '3 days' : todayDay === 2 ? '2 days' : '1 day';
+            const dueDate = new Date(currentMonthDueDate);
+            const dueDateStr = formatOrdinalDueDate(waterDueDay, dueDate);
+            const daysText = getReminderTimingText(daysUntilDue);
 
-            const waterMessage = `Water Bill Reminder (${daysText} into first week): Your water bill for "${occ.property?.title || 'your property'}" is due in the first week of ${monthYear}. Please ensure timely payment to avoid service interruption.`;
+            const waterMessage = `Water Bill Reminder (${daysText}): Your water bill for "${occ.property?.title || 'your property'}" is due on ${dueDateStr}. Please ensure timely payment to avoid service interruption.`;
 
-            console.log(`[Water Reminder] Sending reminder (day ${todayDay}): ${waterMessage}`);
+            console.log(`[Water Reminder] Sending reminder (${daysText}): ${waterMessage}`);
 
             occ.tenant.profile_id = occ.tenant.id;
             await sendUtilityReminder(supabaseAdmin, occ.tenant, 'water_due_reminder',
               waterMessage,
-              `Water Bill Due Reminder (${daysText} into first week)`
+              `Water Bill Due Reminder (${daysText})`
             );
 
-            // Also notify the LANDLORD about upcoming water due
-            const waterMonthYear = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            await sendLandlordUtilityReminder(supabaseAdmin, occ.landlord_id, occ.tenant, 'water', occ.property?.title, `first week of ${waterMonthYear}`, daysText);
+            await sendLandlordUtilityReminder(supabaseAdmin, occ.landlord_id, occ.tenant, 'water', occ.property?.title, dueDateStr, daysText);
 
             results.water_reminders_sent = (results.water_reminders_sent || 0) + 1;
             console.log(`[Water Reminder] Reminder sent to ${occ.tenant?.first_name} and landlord`);
           } else {
-            console.log(`[Water Reminder] ⏭️ Skipped ${occ.tenant?.first_name} - already sent today`);
+            console.log(`[Water Reminder] Skipped ${occ.tenant?.first_name} - already sent today`);
           }
         }
       } else {
-        console.log(`[Water Reminder] Not first 3 days of month - skipping water reminders`);
+        console.log(`[Water Reminder] No tenants with water due dates 1-3 days away`);
       }
 
       console.log(`[Water Reminder] ========================================`);
@@ -1238,8 +1296,11 @@ async function sendLandlordUtilityReminder(supabase, landlordId, tenant, utility
     const landlordName = landlordProfile ? `${landlordProfile.first_name || ''}`.trim() : 'Landlord';
     const utilityLabel = utilityType === 'wifi' ? 'Internet/WiFi' : utilityType === 'electricity' ? 'Electricity' : 'Water';
 
-    const landlordMessage = `${utilityLabel} Payment Settlement Notice (${daysText} before due): Tenant ${tenantName}'s ${utilityLabel.toLowerCase()} bill for "${propertyTitle || 'property'}" is due on ${dueDateStr}. Please follow up to ensure timely payment settlement.`;
-    const subject = `${utilityLabel} Due - Tenant Payment Settlement (${daysText} left)`;
+    const timingLabel = /due|past due/i.test(String(daysText || ''))
+      ? String(daysText || '').trim()
+      : `${daysText} before due`;
+    const landlordMessage = `${utilityLabel} Payment Settlement Notice (${timingLabel}): Tenant ${tenantName}'s ${utilityLabel.toLowerCase()} bill for "${propertyTitle || 'property'}" is due on ${dueDateStr}. Please follow up to ensure timely payment settlement.`;
+    const subject = `${utilityLabel} Due - Tenant Payment Settlement (${timingLabel})`;
 
     // 1. In-App Notification
     await supabase.from('notifications').insert({

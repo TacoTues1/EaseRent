@@ -66,6 +66,20 @@ function MyApp({ Component, pageProps }) {
     if (!authReady) return
     if (session) return
     if (publicPaths.has(router.pathname)) return
+
+    // Don't redirect when returning from payment checkout — session may still be restoring
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (
+        params.get('subscription_success') ||
+        params.get('subscription_cancelled') ||
+        params.get('landlord_slot_success') ||
+        params.get('landlord_slot_cancelled') ||
+        params.get('slot_purchase_success') ||
+        params.get('slot_purchase_cancelled')
+      ) return
+    }
+
     router.replace('/')
   }, [authReady, session, router.pathname])
 
