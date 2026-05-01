@@ -1892,34 +1892,36 @@ function UsersView({ refreshTrigger }) {
 
       {loading ? <Spinner /> : (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px] md:min-w-0">
+          <div className="overflow-x-auto md:overflow-x-hidden">
+            <table className="w-full table-fixed text-left border-collapse min-w-[760px] md:min-w-0">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">User</th>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Email / Phone</th>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Slots</th>
-                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                  <th className="w-[23%] p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">User</th>
+                  <th className="w-[24%] p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Email / Phone</th>
+                  <th className="w-[9%] p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="w-[10%] p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider">Slots</th>
+                  <th className="w-[34%] p-4 md:p-5 text-xs font-black text-gray-500 uppercase tracking-wider text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {users.map(user => (
                   <tr key={user.id} className="transition-colors group">
-                    <td className="p-4 md:p-5">
-                      <div className="font-bold text-gray-900 text-sm md:text-base whitespace-nowrap">{user.first_name} {user.middle_name ? user.middle_name + ' ' : ''}{user.last_name}</div>
+                    <td className="p-4 md:p-5 align-middle min-w-0">
+                      <div className="font-bold text-gray-900 text-sm md:text-base truncate" title={`${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`}>
+                        {user.first_name} {user.middle_name ? user.middle_name + ' ' : ''}{user.last_name}
+                      </div>
                       <div className="text-xs text-gray-400 font-mono mt-0.5">ID: {user.id.slice(0, 8)}...</div>
                     </td>
-                    <td className="p-4 md:p-5">
-                      <div className="text-sm font-medium text-gray-900">{user.email || 'N/A'}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{user.phone || 'N/A'}</div>
+                    <td className="p-4 md:p-5 align-middle min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate" title={user.email || 'N/A'}>{user.email || 'N/A'}</div>
+                      <div className="text-xs text-gray-500 mt-0.5 truncate" title={user.phone || 'N/A'}>{user.phone || 'N/A'}</div>
                     </td>
-                    <td className="p-4 md:p-5">
+                    <td className="p-4 md:p-5 align-middle">
                       <Badge variant='default'>
                         {user.role}
                       </Badge>
                     </td>
-                    <td className="p-4 md:p-5">
+                    <td className="p-4 md:p-5 align-middle">
                       {user.role === 'tenant' ? (
                         (() => {
                           const stats = familySubscriptions[user.id]
@@ -1950,27 +1952,28 @@ function UsersView({ refreshTrigger }) {
                         <span className="text-xs text-gray-400">N/A</span>
                       )}
                     </td>
-                    <td className="p-4 md:p-5 flex justify-end gap-2">
+                    <td className="p-4 md:p-5 align-middle">
+                      <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5 md:gap-2">
                       {user.role === 'tenant' && (() => {
                         const stats = familySubscriptions[user.id]
                         const totalSlots = stats?.total_slots || 1
                         const availableSlots = stats?.available_slots ?? Math.max(0, totalSlots - (stats?.used_slots || 0))
                         const canDecrease = stats && totalSlots > 1 && availableSlots > 0
                         return (
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => openFamilySlotRemoval(user.id)}
                               disabled={removingSlotForUserId === user.id || !canDecrease}
                               title={canDecrease ? 'Remove one available family slot' : 'Cannot remove an occupied or free family slot'}
-                              className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                              className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {removingSlotForUserId === user.id ? 'Removing...' : 'Remove 1 Family Slot'}
                             </button>
                             <button
                               onClick={() => addFamilySlot(user.id)}
                               disabled={addingSlotForUserId === user.id}
-                              className="px-3 py-1.5 md:px-4 md:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
+                              className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
                             >
                               {addingSlotForUserId === user.id ? 'Adding...' : 'Add Family Slot'}
                             </button>
@@ -1983,20 +1986,20 @@ function UsersView({ refreshTrigger }) {
                         const availableSlots = stats?.available_slots ?? Math.max(0, totalSlots - (stats?.used_slots || 0))
                         const canDecrease = stats && totalSlots > 3 && availableSlots > 0
                         return (
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => openPropertySlotRemoval(user.id)}
                               disabled={removingPropertySlotForUserId === user.id || !canDecrease}
                               title={canDecrease ? 'Remove one available property slot' : 'Cannot remove an occupied or free property slot'}
-                              className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                              className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {removingPropertySlotForUserId === user.id ? 'Removing...' : 'Remove 1 Property Slot'}
                             </button>
                             <button
                               onClick={() => addPropertySlot(user.id)}
                               disabled={addingPropertySlotForUserId === user.id}
-                              className="px-3 py-1.5 md:px-4 md:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
+                              className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-black text-white rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap disabled:opacity-50"
                             >
                               {addingPropertySlotForUserId === user.id ? 'Adding...' : 'Add Property Slot'}
                             </button>
@@ -2018,16 +2021,17 @@ function UsersView({ refreshTrigger }) {
                             accepted_stripe: !!accepted.stripe,
                           })
                         }}
-                        className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-gray-100 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => setDeleteId(user.id)}
-                        className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                        className="px-2.5 py-1.5 xl:px-4 xl:py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
                       >
                         Delete
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
