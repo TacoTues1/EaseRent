@@ -548,19 +548,19 @@ export default function AdminDashboard({ session, profile }) {
           ))}
         </nav>
 
-        <div className={`p-4 border-t border-gray-200 space-y-3 ${sidebarCollapsed ? 'px-2' : ''}`}>
-          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-gray-700 bg-gray-100 border border-gray-200 flex-shrink-0">
+        <div className={`bg-white border border-gray-200 rounded-2xl shadow-sm mb-3 flex flex-col transition-all duration-300 ease-in-out overflow-hidden py-3 space-y-3 ${sidebarCollapsed ? 'mx-2 px-1' : 'mx-3 px-3'}`}>
+          <div className={`flex items-center transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'justify-center gap-0' : 'justify-start gap-3'}`}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-gray-700 bg-gray-100 border border-gray-200 flex-shrink-0 transition-all duration-300">
               {profile?.first_name?.[0]}
             </div>
-            <div className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[180px] opacity-100'}`}>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out whitespace-nowrap flex flex-col justify-center ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[180px] opacity-100'}`}>
               <p className="text-sm font-bold text-gray-900 truncate">{profile?.first_name} {profile?.last_name}</p>
               <p className="text-[10px] text-gray-500 truncate uppercase tracking-wider font-bold">Administrator</p>
             </div>
           </div>
-          <button onClick={() => setShowLogoutModal(true)} className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-center gap-2'} px-3 py-2.5 bg-white text-red-600 rounded-xl text-xs font-bold transition-all cursor-pointer group border border-gray-200 hover:bg-red-50`}>
-            <svg className="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            <span className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[80px] opacity-100'}`}>
+          <button onClick={() => setShowLogoutModal(true)} className={`w-full h-10 flex items-center bg-white text-red-600 rounded-xl text-xs font-bold transition-all duration-300 ease-in-out cursor-pointer group border border-gray-200 hover:bg-red-50 ${sidebarCollapsed ? 'justify-center px-0 gap-0' : 'justify-center gap-2 px-3'}`}>
+            <svg className="w-4 h-4 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[80px] opacity-100'}`}>
               Log Out
             </span>
           </button>
