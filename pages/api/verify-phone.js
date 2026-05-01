@@ -131,7 +131,7 @@ export default async function handler(req, res) {
                 "api-key": BREVO_API_KEY,
               },
               body: JSON.stringify({
-                sender: { name: "Abalay", email: "alfnzperez@gmail.com" },
+                sender: { name: "Abalay Rent", email: "support@abalay-rent.me" },
                 to: [{ email }],
                 subject: "Abalay - Phone Verification Code",
                 htmlContent: `

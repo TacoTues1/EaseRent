@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY)
 
     const sendSmtpEmail = new brevo.SendSmtpEmail()
-    sendSmtpEmail.sender = { name: 'Abalay', email: 'alfnzperez@gmail.com' }
+    sendSmtpEmail.sender = { name: 'Abalay Rent', email: 'support@abalay-rent.me' }
     sendSmtpEmail.to = [{ email: normalizedEmail }]
     sendSmtpEmail.subject = 'Abalay - Password Reset Code'
     sendSmtpEmail.htmlContent = `

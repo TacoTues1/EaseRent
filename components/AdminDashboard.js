@@ -4,6 +4,7 @@ import { normalizeImageForUpload } from '../lib/imageCompression'
 import { Input, Badge, Spinner } from './UI'
 import { showToast } from 'nextjs-toast-notify'
 import { useRouter } from 'next/router'
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import {
   SUPPORT_TICKET_ISSUES,
   SUPPORT_TICKET_REQUEST_TYPES,
@@ -54,6 +55,7 @@ export default function AdminDashboard({ session, profile }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [showAdminProfileModal, setShowAdminProfileModal] = useState(false)
   const [pendingTicketsCount, setPendingTicketsCount] = useState(0)
 
   const navItems = [
@@ -510,9 +512,9 @@ export default function AdminDashboard({ session, profile }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans bg-gray-50 [&_button]:cursor-pointer">
+    <div className="h-screen w-full flex flex-col md:flex-row font-sans bg-gray-50 [&_button]:cursor-pointer overflow-hidden">
       {/* SIDEBAR (Desktop) */}
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} hidden md:flex flex-col flex-shrink-0 h-screen sticky top-0 z-20 transition-all duration-300 bg-black`}>
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} hidden md:flex flex-col flex-shrink-0 h-full z-20 transition-all duration-300 bg-black`}>
         <div className={`p-6 ${sidebarCollapsed ? 'px-4' : ''} flex items-center justify-between`}>
           {!sidebarCollapsed && (
             <h1 className="text-xl font-black tracking-tighter uppercase flex items-center gap-2">
@@ -583,7 +585,7 @@ export default function AdminDashboard({ session, profile }) {
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-y-auto overflow-x-hidden relative">
         <header className="hidden md:flex items-center justify-between px-8 py-5 bg-white border-b border-gray-200 sticky top-0 z-10">
           <div>
             <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
@@ -596,12 +598,18 @@ export default function AdminDashboard({ session, profile }) {
               <p className="text-sm font-bold text-gray-900 tabular-nums">{clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
               <p className="text-[10px] text-gray-400 font-medium">{clock.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm bg-gray-700">{profile?.first_name?.[0]}</div>
+            <button 
+              onClick={() => setShowAdminProfileModal(true)} 
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm bg-gray-700 hover:bg-gray-800 transition-colors cursor-pointer"
+              title="View Profile"
+            >
+              {profile?.first_name?.[0]}
+            </button>
           </div>
         </header>
 
         <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full max-w-[1400px] mx-auto">
-          {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} />}
+          {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} session={session} />}
           {activeTab === 'users' && <UsersView refreshTrigger={refreshTrigger} />}
           {activeTab === 'properties' && <PropertiesView refreshTrigger={refreshTrigger} />}
           {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} />}
@@ -658,11 +666,28 @@ export default function AdminDashboard({ session, profile }) {
               onPendingCountChange={setPendingTicketsCount}
             />
           )}
-          {activeTab === 'profile' && <AdminProfileView session={session} profile={profile} />}
         </main>
       </div>
 
       {/* MODALS */}
+      {showAdminProfileModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-start md:items-center justify-center z-[100] p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl border border-gray-100 max-h-[92vh] overflow-hidden relative flex flex-col">
+            <button 
+              onClick={() => setShowAdminProfileModal(false)}
+              className="absolute top-4 right-4 w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors cursor-pointer z-10"
+              aria-label="Close profile modal"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="overflow-y-auto p-5 sm:p-7 md:p-8">
+              <AdminProfileView session={session} profile={profile} />
+            </div>
+          </div>
+        </div>
+      )}
       {showPaymentModal && (
         <ManagementModal 
           title={editingPayment ? "Edit Payment Bill" : "Create Payment Bill"} 
@@ -960,11 +985,62 @@ function EmptyStateRow({ colSpan, message }) {
   )
 }
 
+// --- CHART HELPERS ---
+const CHART_COLORS = ['#000000', '#374151', '#6b7280', '#9ca3af', '#d1d5db', '#111827', '#4b5563']
+
+function ChartCard({ title, data }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col h-72 shadow-sm">
+        <h4 className="font-bold text-gray-900 text-sm mb-4 text-center">{title}</h4>
+        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm font-medium">No data</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col h-72 shadow-sm hover:shadow-lg transition-all duration-300">
+      <h4 className="font-bold text-gray-900 text-sm mb-2 text-center">{title}</h4>
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="45%"
+              innerRadius={45}
+              outerRadius={70}
+              paddingAngle={3}
+              dataKey="value"
+              nameKey="name"
+              isAnimationActive={false}
+              stroke="none"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip 
+              contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+              itemStyle={{ fontSize: '13px', fontWeight: 'bold', color: '#111827' }}
+            />
+            <Legend 
+              verticalAlign="bottom" 
+              height={40} 
+              iconType="circle"
+              wrapperStyle={{ fontSize: '11px', fontWeight: '600', color: '#4b5563', paddingTop: '10px' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
 // --- SUB-VIEWS ---
 
-function OverviewView({ refreshTrigger }) {
-  const [stats, setStats] = useState({ users: 0, properties: 0, bookings: 0 })
-  const [recentUsers, setRecentUsers] = useState([])
+function OverviewView({ refreshTrigger, session }) {
+  const [chartData, setChartData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [monthlyStatementReport, setMonthlyStatementReport] = useState(null)
   const [monthlyStatementLastRun, setMonthlyStatementLastRun] = useState(null)
@@ -978,7 +1054,7 @@ function OverviewView({ refreshTrigger }) {
   const [bulkEmailBody, setBulkEmailBody] = useState('')
   const [sendingBulkEmail, setSendingBulkEmail] = useState(false)
 
-  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); }, [refreshTrigger])
+  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); }, [refreshTrigger, session?.access_token])
 
   async function checkReminderStatus() {
     try {
@@ -1112,49 +1188,60 @@ function OverviewView({ refreshTrigger }) {
   async function loadStats() {
     setLoading(true)
     try {
-      const [usersRes, propsRes, bookingsData] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, role, created_at', { count: 'exact' }).eq('is_deleted', false).order('created_at', { ascending: false }).limit(5),
-        supabase.from('properties').select('id', { count: 'exact' }).eq('is_deleted', false),
-        adminFetch('bookings', 'id')
-      ])
+      if (!session?.access_token) {
+        setChartData(null)
+        return
+      }
 
-      setStats({
-        users: usersRes.count || 0,
-        properties: propsRes.count || 0,
-        bookings: bookingsData.length || 0
+      const res = await fetch(`/api/admin/overview-stats?refresh=${refreshTrigger}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
       })
-      setRecentUsers(usersRes.data || [])
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load overview statistics')
+      }
+
+      setChartData(data.chartData || {})
     } catch (err) {
       console.error("Overview stats load failed:", err)
+      setChartData({})
     } finally {
       setLoading(false)
     }
   }
 
-  const statCards = [
-    { label: 'Total Users', value: stats.users, icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
-    { label: 'Properties', value: stats.properties, icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
-    { label: 'Bookings', value: stats.bookings, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  ]
-
   if (loading) return <Spinner />
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-5">
-        {statCards.map((card, i) => (
-          <div key={i} className="rounded-2xl p-5 text-white relative overflow-hidden bg-black border border-gray-800 transition-all duration-300 cursor-default">
-            <div className="relative z-10">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} /></svg>
-              </div>
-              <p className="text-2xl font-black">{card.prefix ? <AnimatedCounter value={card.value} prefix={card.prefix} /> : <AnimatedCounter value={card.value} />}</p>
-              <p className="text-sm font-medium text-white/70 mt-0.5">{card.label}</p>
-            </div>
+
+
+      {/* Analytics Charts */}
+      {chartData && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 mb-8">
+          <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
+            <span className="w-8 h-8 rounded-lg bg-black flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              </svg>
+            </span>
+            Analytics Overview
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <ChartCard title="Total Users" data={chartData.users} />
+            <ChartCard title="Bookings" data={chartData.bookings} />
+            <ChartCard title="Properties" data={chartData.properties} />
+            <ChartCard title="Maintenance" data={chartData.maintenance} />
+            <ChartCard title="Pending Tickets" data={chartData.tickets} />
+            <ChartCard title="Leave Pending" data={chartData.leaves} />
+            <ChartCard title="Active Occupancy" data={chartData.occupancy} />
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Automated Processes */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
@@ -1322,34 +1409,6 @@ function OverviewView({ refreshTrigger }) {
           >
             Compose Bulk Email
           </button>
-        </div>
-      </div>
-
-      {/* Recent Users */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-        <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-black flex items-center justify-center"><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg></span>
-          Recent Users
-          <span className="text-xs text-gray-400 font-medium ml-auto">Last 5 registered</span>
-        </h3>
-        <div className="space-y-3">
-          {recentUsers.map((user, idx) => (
-            <div key={user.id} className="flex items-center justify-between p-4 rounded-xl transition-all duration-300 group">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white bg-gray-600">
-                  {user.first_name?.[0]}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900">{user.first_name} {user.last_name}</p>
-                  <p className="text-xs text-gray-400 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-              </div>
-              <Badge variant='default'>{user.role}</Badge>
-            </div>
-          ))}
         </div>
       </div>
 
@@ -3829,14 +3888,14 @@ function AdminProfileView({ session, profile }) {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 max-w-2xl">
-      <div>
+    <div className="space-y-5 animate-in fade-in duration-500 max-w-none">
+      <div className="pr-12">
         <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Admin Profile</h2>
         <p className="text-gray-500 mt-1 text-sm">Update your personal information and security settings.</p>
       </div>
 
       {/* Profile Details */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6">
         <h3 className="font-bold text-lg text-gray-900 mb-5">Personal Information</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -3882,14 +3941,14 @@ function AdminProfileView({ session, profile }) {
         </div>
         <div className="flex justify-end mt-6">
           <button onClick={handleSaveProfile} disabled={saving}
-            className="px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full sm:w-auto px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
 
       {/* Change Password */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6">
         <h3 className="font-bold text-lg text-gray-900 mb-5">Security</h3>
         <div>
           <label className="block text-xs font-bold text-gray-500 mb-1">New Password</label>
@@ -3899,7 +3958,7 @@ function AdminProfileView({ session, profile }) {
         </div>
         <div className="flex justify-end mt-6">
           <button onClick={handleChangePassword} disabled={savingPassword || !newPassword}
-            className="px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full sm:w-auto px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             {savingPassword ? 'Updating...' : 'Update Password'}
           </button>
         </div>
@@ -4684,3 +4743,4 @@ function PaginationControls({ currentPage, totalItems, pageSize, onPageChange, l
     </div>
   )
 }
+

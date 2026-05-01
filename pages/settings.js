@@ -141,30 +141,39 @@ export default function Settings() {
 
   // Handle subscription_success / subscription_cancelled redirect from PayMongo
   useEffect(() => {
-    const { subscription_success, payment_id, subscription_cancelled, landlord_slot_success, landlord_slot_cancelled, landlord_payment_id } = router.query
-    if (subscription_success === 'true' && payment_id) {
-      confirmSubscriptionPayment(payment_id)
-      router.replace('/settings?tab=subscription', undefined, { shallow: true })
+    const handlePaymentRedirect = async () => {
+      const { subscription_success, payment_id, subscription_cancelled, landlord_slot_success, landlord_slot_cancelled, landlord_payment_id } = router.query
+      if (subscription_success === 'true' && payment_id) {
+        confirmSubscriptionPayment(payment_id)
+        router.replace('/settings?tab=subscription', undefined, { shallow: true })
+      }
+      if (subscription_cancelled === 'true') {
+        cancelPendingPayments()
+        router.replace('/settings?tab=subscription', undefined, { shallow: true })
+      }
+      if (landlord_slot_success === 'true' && landlord_payment_id) {
+        await confirmLandlordSlotPayment(landlord_payment_id)
+        router.replace('/settings?tab=subscription', undefined, { shallow: true })
+      }
+      if (landlord_slot_cancelled === 'true') {
+        showToast.warning('Property slot purchase was cancelled.')
+        router.replace('/settings?tab=subscription', undefined, { shallow: true })
+      }
+      if (router.query.tab === 'subscription') {
+        setActiveTab('subscription')
+        loadSubscription()
+        loadLandlordSubscription()
+      }
     }
-    if (subscription_cancelled === 'true') {
-      // Cancel any pending payments when user closes/cancels PayMongo checkout
-      cancelPendingPayments()
-      router.replace('/settings?tab=subscription', undefined, { shallow: true })
-    }
-    if (landlord_slot_success === 'true' && landlord_payment_id) {
-      confirmLandlordSlotPayment(landlord_payment_id)
-      router.replace('/settings?tab=subscription', undefined, { shallow: true })
-    }
-    if (landlord_slot_cancelled === 'true') {
-      showToast.warning('Property slot purchase was cancelled.')
-      router.replace('/settings?tab=subscription', undefined, { shallow: true })
-    }
-    if (router.query.tab === 'subscription') {
-      setActiveTab('subscription')
-      loadSubscription()
+    handlePaymentRedirect()
+  }, [router.query])
+
+  // Auto-load landlord subscription once session/profile are ready and tab is subscription
+  useEffect(() => {
+    if (activeTab === 'subscription' && session?.user?.id && profile?.role === 'landlord') {
       loadLandlordSubscription()
     }
-  }, [router.query])
+  }, [activeTab, session?.user?.id, profile?.role])
 
   useEffect(() => {
     if (phoneOtpCooldown <= 0 && gcashOtpCooldown <= 0 && mayaOtpCooldown <= 0 && deleteOtpCooldown <= 0) return
@@ -990,7 +999,9 @@ export default function Settings() {
       const data = await res.json()
       if (data.success) {
         showToast.success(data.message || 'Property slot purchased successfully!')
+        // Try to load immediately, and retry after session loads
         loadLandlordSubscription()
+        setTimeout(() => loadLandlordSubscription(), 2000)
       } else {
         showToast.error(data.error || 'Failed to confirm slot purchase')
       }
