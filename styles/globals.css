@@ -17,6 +17,16 @@ body {
   color: #000000;
 }
 
+/* Hide scrollbars but keep scroll behavior. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Allow spinner animations */
 .animate-spin {
   animation: spin 1s linear infinite !important;

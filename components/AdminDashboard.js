@@ -512,34 +512,33 @@ export default function AdminDashboard({ session, profile }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
 
   return (
-    <div className="h-screen w-full flex flex-col md:flex-row font-sans bg-gray-50 [&_button]:cursor-pointer overflow-hidden">
+    <div className="h-screen w-full flex flex-col md:flex-row font-['Poppins'] bg-[#dfe4ea] text-gray-900 [&_button]:cursor-pointer overflow-hidden">
       {/* SIDEBAR (Desktop) */}
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} hidden md:flex flex-col flex-shrink-0 h-full z-20 transition-all duration-300 bg-black`}>
-        <div className={`p-6 ${sidebarCollapsed ? 'px-4' : ''} flex items-center justify-between`}>
-          {!sidebarCollapsed && (
-            <h1 className="text-xl font-black tracking-tighter uppercase flex items-center gap-2">
-              <span className="w-1 h-8 rounded-full bg-white"></span>
-              <span className="text-white">Admin</span><span className="text-gray-400">TOOLS</span>
-            </h1>
-          )}
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 transition-all cursor-pointer">
+      <div className="hidden md:flex flex-col flex-shrink-0 h-full pt-2 pb-2 pl-2 pr-1">
+        <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} flex flex-col h-full z-20 transition-[width] duration-300 ease-in-out bg-[#f5f6f8] border border-gray-200 rounded-2xl overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_4px_rgba(15,23,42,0.08)_inset,0_4px_8px_rgba(15,23,42,0.08)]`}>
+        <div className={`p-5 ${sidebarCollapsed ? 'px-3' : ''} flex items-center justify-between`}>
+          <h1 className={`text-lg font-black tracking-tight uppercase flex items-center gap-2 whitespace-nowrap overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[180px] opacity-100'}`}>
+            <span className="w-1 h-8 rounded-full bg-gray-900"></span>
+            <span className="text-gray-900">Admin</span><span className="text-gray-400">Tools</span>
+          </h1>
+          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 transition-all cursor-pointer hover:bg-gray-100">
             <svg className={`w-4 h-4 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
           </button>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto mt-2">
+        <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto no-scrollbar mt-2">
           {navItems.map(item => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               title={sidebarCollapsed ? item.label : ''}
-              className={`relative w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer ${activeTab === item.id
-                ? 'text-white bg-white/15'
-                : 'text-gray-400'
+              className={`relative w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 gap-0' : 'px-4 gap-3'} py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 ease-in-out border ${activeTab === item.id
+                ? 'text-gray-900 bg-white border-gray-200 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_2px_6px_rgba(15,23,42,0.12)]'
+                : 'text-gray-600 border-transparent hover:bg-white/80 hover:text-gray-900'
                 }`}
             >
               <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
-              {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+              <span className={`truncate overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[140px] opacity-100'}`}>{item.label}</span>
               {item.badge > 0 && (
                 <span className={`${sidebarCollapsed ? 'absolute top-1 right-1' : 'ml-auto'} min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center`}>
                   {item.badge > 99 ? '99+' : item.badge}
@@ -549,29 +548,30 @@ export default function AdminDashboard({ session, profile }) {
           ))}
         </nav>
 
-        <div className={`p-4 border-t border-white/5 space-y-3 ${sidebarCollapsed ? 'px-2' : ''}`}>
+        <div className={`p-4 border-t border-gray-200 space-y-3 ${sidebarCollapsed ? 'px-2' : ''}`}>
           <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white bg-gray-600 flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-gray-700 bg-gray-100 border border-gray-200 flex-shrink-0">
               {profile?.first_name?.[0]}
             </div>
-            {!sidebarCollapsed && (
-              <div className="overflow-hidden">
-                <p className="text-sm font-bold text-white truncate">{profile?.first_name} {profile?.last_name}</p>
-                <p className="text-[10px] text-gray-400 truncate uppercase tracking-wider font-bold">Administrator</p>
-              </div>
-            )}
+            <div className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[180px] opacity-100'}`}>
+              <p className="text-sm font-bold text-gray-900 truncate">{profile?.first_name} {profile?.last_name}</p>
+              <p className="text-[10px] text-gray-500 truncate uppercase tracking-wider font-bold">Administrator</p>
+            </div>
           </div>
-          <button onClick={() => setShowLogoutModal(true)} className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-center gap-2'} px-3 py-2.5 bg-red-700 text-black-700 rounded-xl text-xs font-bold transition-all cursor-pointer group border border-white-300`}>
+          <button onClick={() => setShowLogoutModal(true)} className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-center gap-2'} px-3 py-2.5 bg-white text-red-600 rounded-xl text-xs font-bold transition-all cursor-pointer group border border-gray-200 hover:bg-red-50`}>
             <svg className="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            {!sidebarCollapsed && 'Log Out'}
+            <span className={`overflow-hidden transition-all duration-300 ${sidebarCollapsed ? 'max-w-0 opacity-0' : 'max-w-[80px] opacity-100'}`}>
+              Log Out
+            </span>
           </button>
         </div>
-      </aside>
+        </aside>
+      </div>
 
       {/* MOBILE NAV (Bottom Fixed) */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-between px-4 py-3 pb-5 overflow-x-auto border-t border-gray-800 bg-black">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex justify-between px-4 py-3 pb-5 overflow-x-auto border-t border-gray-200 bg-white">
         {navItems.map(item => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`relative p-3 rounded-2xl transition-all cursor-pointer flex-shrink-0 ${activeTab === item.id ? 'text-white bg-white/15 transform -translate-y-1.5' : 'text-gray-500'}`}>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`relative p-3 rounded-2xl transition-all cursor-pointer flex-shrink-0 border ${activeTab === item.id ? 'text-gray-900 bg-white border-gray-200 shadow-sm -translate-y-1' : 'text-gray-500 border-transparent hover:text-gray-900'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} /></svg>
             {item.badge > 0 && (
               <span className="absolute top-1 right-1 min-w-[1.1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">
@@ -580,93 +580,99 @@ export default function AdminDashboard({ session, profile }) {
             )}
           </button>
         ))}
-        <button onClick={() => setShowLogoutModal(true)} className="p-3 rounded-2xl text-gray-700 cursor-pointer flex-shrink-0">
+        <button onClick={() => setShowLogoutModal(true)} className="p-3 rounded-2xl text-gray-500 hover:text-gray-900 cursor-pointer flex-shrink-0">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-y-auto overflow-x-hidden relative">
-        <header className="hidden md:flex items-center justify-between px-8 py-5 bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-              <span>Admin</span><span>/</span><span className="text-gray-700 font-semibold">{currentLabel}</span>
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative bg-[#dfe4ea]">
+        <div className="flex-1 h-full pt-2 pb-2 pr-2 pl-1 flex flex-col">
+          <header className="hidden md:flex items-center justify-between px-4 md:px-8 py-3 md:py-4 text-gray-900">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                <span>Admin</span><span>/</span><span className="text-gray-700 font-semibold">{currentLabel}</span>
+              </div>
+              <h2 className="text-xl font-black text-gray-900 tracking-tight">{greeting}, {profile?.first_name}</h2>
             </div>
-            <h2 className="text-xl font-black text-gray-900 tracking-tight">{greeting}, {profile?.first_name}</h2>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-bold text-gray-900 tabular-nums">{clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-              <p className="text-[10px] text-gray-400 font-medium">{clock.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-bold text-gray-900 tabular-nums">{clock.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                <p className="text-[10px] text-gray-500 font-medium">{clock.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+              </div>
+              <button
+                onClick={() => setShowAdminProfileModal(true)}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-800 font-bold text-sm bg-white border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
+                title="View Profile"
+              >
+                {profile?.first_name?.[0]}
+              </button>
             </div>
-            <button 
-              onClick={() => setShowAdminProfileModal(true)} 
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm bg-gray-700 hover:bg-gray-800 transition-colors cursor-pointer"
-              title="View Profile"
-            >
-              {profile?.first_name?.[0]}
-            </button>
-          </div>
-        </header>
+          </header>
 
-        <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full max-w-[1400px] mx-auto">
-          {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} session={session} />}
-          {activeTab === 'users' && <UsersView refreshTrigger={refreshTrigger} />}
-          {activeTab === 'properties' && <PropertiesView refreshTrigger={refreshTrigger} />}
-          {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} />}
-          {activeTab === 'payments' && (
-            <PaymentsView 
-              refreshTrigger={refreshTrigger} 
-              setPaymentForm={setPaymentForm}
-              setEditingPayment={setEditingPayment}
-              setShowPaymentModal={setShowPaymentModal}
-              handleCancelPayment={handleCancelPayment}
-              handleDeletePayment={handleDeletePayment}
-            />
-          )}
-          {activeTab === 'bookings' && (
-            <BookingsView 
-              refreshTrigger={refreshTrigger} 
-              setBookingForm={setBookingForm}
-              setEditingBooking={setEditingBooking}
-              setShowBookingEditModal={setShowBookingEditModal}
-              handleCancelBooking={handleCancelBooking}
-            />
-          )}
-          {activeTab === 'schedules' && (
-            <SchedulesView 
-              refreshTrigger={refreshTrigger} 
-              setScheduleForm={setScheduleForm}
-              setEditingSchedule={setEditingSchedule}
-              setShowScheduleFormModal={setShowScheduleFormModal}
-            />
-          )}
-          {activeTab === 'maintenance' && (
-            <MaintenanceMonitoringView 
-              refreshTrigger={refreshTrigger} 
-              setMaintenanceForm={setMaintenanceForm}
-              setEditingMaintenance={setEditingMaintenance}
-              setShowMaintenanceModal={setShowMaintenanceModal}
-              handleCancelMaintenance={handleCancelMaintenance}
-              handleDeleteMaintenance={handleDeleteMaintenance}
-            />
-          )}
-          {activeTab === 'leaves' && (
-            <LeaveMonitoringView 
-              refreshTrigger={refreshTrigger} 
-              setLeaveForm={setLeaveForm}
-              setEditingLeave={setEditingLeave}
-              setShowLeaveModal={setShowLeaveModal}
-              handleDeleteLeave={handleDeleteLeave}
-            />
-          )}
-          {activeTab === 'support_tickets' && (
-            <PendingTicketsView
-              session={session}
-              refreshTrigger={refreshTrigger}
-              onPendingCountChange={setPendingTicketsCount}
-            />
-          )}
-        </main>
+          <div className="flex-1 bg-white border border-gray-200 rounded-2xl overflow-hidden flex flex-col shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_-1px_4px_rgba(15,23,42,0.08)_inset,0_4px_8px_rgba(15,23,42,0.08)]">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col no-scrollbar">
+              <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 w-full">
+              {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} session={session} />}
+              {activeTab === 'users' && <UsersView refreshTrigger={refreshTrigger} />}
+              {activeTab === 'properties' && <PropertiesView refreshTrigger={refreshTrigger} />}
+              {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} />}
+              {activeTab === 'payments' && (
+                <PaymentsView 
+                  refreshTrigger={refreshTrigger} 
+                  setPaymentForm={setPaymentForm}
+                  setEditingPayment={setEditingPayment}
+                  setShowPaymentModal={setShowPaymentModal}
+                  handleCancelPayment={handleCancelPayment}
+                  handleDeletePayment={handleDeletePayment}
+                />
+              )}
+              {activeTab === 'bookings' && (
+                <BookingsView 
+                  refreshTrigger={refreshTrigger} 
+                  setBookingForm={setBookingForm}
+                  setEditingBooking={setEditingBooking}
+                  setShowBookingEditModal={setShowBookingEditModal}
+                  handleCancelBooking={handleCancelBooking}
+                />
+              )}
+              {activeTab === 'schedules' && (
+                <SchedulesView 
+                  refreshTrigger={refreshTrigger} 
+                  setScheduleForm={setScheduleForm}
+                  setEditingSchedule={setEditingSchedule}
+                  setShowScheduleFormModal={setShowScheduleFormModal}
+                />
+              )}
+              {activeTab === 'maintenance' && (
+                <MaintenanceMonitoringView 
+                  refreshTrigger={refreshTrigger} 
+                  setMaintenanceForm={setMaintenanceForm}
+                  setEditingMaintenance={setEditingMaintenance}
+                  setShowMaintenanceModal={setShowMaintenanceModal}
+                  handleCancelMaintenance={handleCancelMaintenance}
+                  handleDeleteMaintenance={handleDeleteMaintenance}
+                />
+              )}
+              {activeTab === 'leaves' && (
+                <LeaveMonitoringView 
+                  refreshTrigger={refreshTrigger} 
+                  setLeaveForm={setLeaveForm}
+                  setEditingLeave={setEditingLeave}
+                  setShowLeaveModal={setShowLeaveModal}
+                  handleDeleteLeave={handleDeleteLeave}
+                />
+              )}
+              {activeTab === 'support_tickets' && (
+                <PendingTicketsView
+                  session={session}
+                  refreshTrigger={refreshTrigger}
+                  onPendingCountChange={setPendingTicketsCount}
+                />
+              )}
+              </main>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* MODALS */}
@@ -991,7 +997,7 @@ const CHART_COLORS = ['#000000', '#374151', '#6b7280', '#9ca3af', '#d1d5db', '#1
 function ChartCard({ title, data }) {
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col h-72 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col h-56 shadow-sm">
         <h4 className="font-bold text-gray-900 text-sm mb-4 text-center">{title}</h4>
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm font-medium">No data</div>
       </div>
@@ -999,7 +1005,7 @@ function ChartCard({ title, data }) {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col h-72 shadow-sm hover:shadow-lg transition-all duration-300">
+    <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col h-56 shadow-sm hover:shadow-lg transition-all duration-300">
       <h4 className="font-bold text-gray-900 text-sm mb-2 text-center">{title}</h4>
       <div className="flex-1 min-h-0">
         <ResponsiveContainer width="100%" height="100%">
@@ -1007,9 +1013,9 @@ function ChartCard({ title, data }) {
             <Pie
               data={data}
               cx="50%"
-              cy="45%"
-              innerRadius={45}
-              outerRadius={70}
+              cy="47%"
+              innerRadius={36}
+              outerRadius={56}
               paddingAngle={3}
               dataKey="value"
               nameKey="name"
@@ -1024,11 +1030,11 @@ function ChartCard({ title, data }) {
               contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
               itemStyle={{ fontSize: '13px', fontWeight: 'bold', color: '#111827' }}
             />
-            <Legend 
-              verticalAlign="bottom" 
-              height={40} 
+            <Legend
+              verticalAlign="bottom"
+              height={34}
               iconType="circle"
-              wrapperStyle={{ fontSize: '11px', fontWeight: '600', color: '#4b5563', paddingTop: '10px' }}
+              wrapperStyle={{ fontSize: '11px', fontWeight: '600', color: '#4b5563', paddingTop: '6px' }}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -1046,6 +1052,7 @@ function OverviewView({ refreshTrigger, session }) {
   const [monthlyStatementLastRun, setMonthlyStatementLastRun] = useState(null)
   const [monthlyStatementLastSource, setMonthlyStatementLastSource] = useState(null)
   const [monthlyStatementHistory, setMonthlyStatementHistory] = useState([])
+  const [sendingMonthlyStatements, setSendingMonthlyStatements] = useState(false)
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [togglingReminders, setTogglingReminders] = useState(false)
   const [showBulkEmailModal, setShowBulkEmailModal] = useState(false)
@@ -1053,8 +1060,10 @@ function OverviewView({ refreshTrigger, session }) {
   const [bulkEmailSubject, setBulkEmailSubject] = useState('')
   const [bulkEmailBody, setBulkEmailBody] = useState('')
   const [sendingBulkEmail, setSendingBulkEmail] = useState(false)
+  const [pendingTickets, setPendingTickets] = useState([])
+  const [pendingTicketsLoading, setPendingTicketsLoading] = useState(false)
 
-  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); }, [refreshTrigger, session?.access_token])
+  useEffect(() => { loadStats(); checkReminderStatus(); loadMonthlyStatementStatus(); loadPendingTickets(); }, [refreshTrigger, session?.access_token])
 
   async function checkReminderStatus() {
     try {
@@ -1099,6 +1108,49 @@ function OverviewView({ refreshTrigger, session }) {
       setMonthlyStatementHistory(parsedHistory.slice(0, 10))
     } catch {
       // Ignore read errors so dashboard remains usable.
+    }
+  }
+
+  async function loadPendingTickets() {
+    if (!session?.access_token) return
+    setPendingTicketsLoading(true)
+    try {
+      const res = await fetch('/api/admin/support-tickets?status=pending', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load pending tickets')
+      setPendingTickets(data.tickets || [])
+    } catch (error) {
+      console.error('Failed to load pending tickets:', error)
+      setPendingTickets([])
+    } finally {
+      setPendingTicketsLoading(false)
+    }
+  }
+
+  async function sendMonthlyStatementsFromAdmin() {
+    setSendingMonthlyStatements(true)
+    try {
+      const res = await fetch('/api/admin/send-monthly-statements', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setMonthlyStatementReport(data)
+        setMonthlyStatementLastRun(data.lastRunAt || null)
+        setMonthlyStatementLastSource(data.source || 'manual_admin')
+        if (Array.isArray(data.historyPreview)) {
+          setMonthlyStatementHistory(data.historyPreview)
+        }
+        showToast.success(`Sent to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`)
+      } else {
+        showToast.error(data.error || 'Failed to send statements')
+      }
+    } catch {
+      showToast.error("Failed to connect to server")
+    } finally {
+      setSendingMonthlyStatements(false)
     }
   }
 
@@ -1221,17 +1273,25 @@ function OverviewView({ refreshTrigger, session }) {
 
       {/* Analytics Charts */}
       {chartData && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 mb-8">
-          <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-black flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-              </svg>
-            </span>
-            Analytics Overview
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="p-4 mb-6">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h3 className="font-bold text-base flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-black flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+              </span>
+              Analytics Overview
+            </h3>
+            <button
+              onClick={() => setShowBulkEmailModal(true)}
+              className="px-5 py-2.5 bg-black text-white font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap"
+            >
+              Send Email
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             <ChartCard title="Total Users" data={chartData.users} />
             <ChartCard title="Bookings" data={chartData.bookings} />
             <ChartCard title="Properties" data={chartData.properties} />
@@ -1243,172 +1303,163 @@ function OverviewView({ refreshTrigger, session }) {
         </div>
       )}
 
-      {/* Automated Processes */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-        <h3 className="font-bold text-lg mb-5 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center"><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></span>
-          Automated Processes
-        </h3>
-        <div className="flex flex-col lg:flex-row items-stretch gap-4 p-5 bg-gray-50 rounded-xl border border-gray-200">
-          <div className="flex-1">
-            <h4 className="font-bold text-gray-900 text-base">Monthly Statements</h4>
-            <p className="text-sm text-gray-500 mt-1">Send payment statements to tenants and financial overviews to landlords via email.</p>
-            <p className="text-xs text-gray-600 font-semibold mt-3 bg-gray-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full">
-              Auto-sends via Supabase cron at end of month, 12:00 AM PH time / Click to send manually
-            </p>
-            {monthlyStatementLastRun && (
-              <p className="text-xs text-gray-500 mt-2">
-                Last run: {new Date(monthlyStatementLastRun).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                {' '}({monthlyStatementLastSource === 'pg_cron' ? 'cron' : 'manual'})
-              </p>
-            )}
-
-            {monthlyStatementHistory.length > 0 && (
-              <div className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 space-y-1.5">
-                <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Recent Run Records</p>
-                {monthlyStatementHistory.map((item) => (
-                  <div
-                    key={item.id || `${item.runAt}-${item.source}`}
-                    className="text-xs text-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-t border-gray-100 pt-1.5 first:border-t-0 first:pt-0"
-                  >
-                    <span>
-                      {item.runAt ? new Date(item.runAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown time'}
-                      {' '}({item.source === 'pg_cron' ? 'cron' : 'manual'})
-                    </span>
-                    <span>
-                      T: {item.tenants?.processed || 0}/{item.tenants?.total || 0} | L: {item.landlords?.processed || 0} | F: {(item.tenants?.failed || 0) + (item.landlords?.failed || 0)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        {/* Automated Processes */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 h-full min-h-0 flex flex-col">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center"><svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg></span>
+              Automated Processes
+            </h3>
+            <button
+              onClick={sendMonthlyStatementsFromAdmin}
+              disabled={sendingMonthlyStatements}
+              className="w-full sm:w-auto px-6 py-3 bg-gray-800 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+            >
+              {sendingMonthlyStatements ? 'Sending...' : 'Send Now'}
+            </button>
           </div>
-          <button
-            onClick={async (e) => {
-              const btn = e.currentTarget
-              const originalText = btn.innerText
-              btn.innerText = 'Sending...'
-              btn.disabled = true
-              try {
-                const res = await fetch('/api/admin/send-monthly-statements', { method: 'POST' })
-                const data = await res.json()
-                if (res.ok) {
-                  setMonthlyStatementReport(data)
-                  setMonthlyStatementLastRun(data.lastRunAt || null)
-                  setMonthlyStatementLastSource(data.source || 'manual_admin')
-                  if (Array.isArray(data.historyPreview)) {
-                    setMonthlyStatementHistory(data.historyPreview)
-                  }
-                  showToast.success(`Sent to ${data.tenants?.processed || 0} tenants and ${data.landlords?.processed || 0} landlords`)
-                }
-                else { showToast.error(data.error || 'Failed to send statements') }
-              } catch (err) { showToast.error("Failed to connect to server") }
-              finally { btn.innerText = originalText; btn.disabled = false }
-            }}
-            className="self-center px-6 py-3 bg-gray-800 text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
-          >
-            Send Now
-          </button>
-        </div>
 
-        {monthlyStatementReport && (
-          <div className="mt-4 p-5 bg-gray-50 rounded-xl border border-gray-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <h5 className="font-bold text-gray-900">Last Monthly Statement Report</h5>
-              <span className="text-xs font-semibold text-gray-600 bg-gray-200 px-2 py-1 rounded-full">{monthlyStatementReport.period}</span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-3">
-                <p className="text-sm font-bold text-gray-900">Tenants</p>
-                <p className="text-xs text-gray-500 mt-1">Processed: {monthlyStatementReport.tenants?.processed || 0} / {monthlyStatementReport.tenants?.total || 0}</p>
-                <p className="text-xs text-gray-700 mt-1">Failed: {monthlyStatementReport.tenants?.errors?.length || 0}</p>
-                {(monthlyStatementReport.tenants?.sentRecipients?.length || 0) > 0 && (
-                  <div className="mt-2 max-h-28 overflow-y-auto text-xs text-gray-700 space-y-1">
-                    {monthlyStatementReport.tenants.sentRecipients.map((r, i) => (
-                      <p key={`tenant-sent-${i}`}>Sent: {r.email}</p>
-                    ))}
-                  </div>
+        <div className="p-5 bg-gray-50 rounded-xl border border-gray-200 flex-1 overflow-y-auto no-scrollbar">
+            <div className="flex flex-col items-stretch gap-4">
+              <div className="flex-1">
+                <h4 className="font-bold text-gray-900 text-base">Monthly Statements</h4>
+                <p className="text-sm text-gray-500 mt-1">Send payment statements to tenants and financial overviews to landlords via email.</p>
+                <p className="text-xs text-gray-600 font-semibold mt-3 bg-gray-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full">
+                  Auto-sends via Supabase cron at end of month, 12:00 AM PH time / Click to send manually
+                </p>
+                {monthlyStatementLastRun && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Last run: {new Date(monthlyStatementLastRun).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {' '}({monthlyStatementLastSource === 'pg_cron' ? 'cron' : 'manual'})
+                  </p>
                 )}
-              </div>
 
-              <div className="bg-white rounded-lg border border-gray-200 p-3">
-                <p className="text-sm font-bold text-gray-900">Landlords</p>
-                <p className="text-xs text-gray-500 mt-1">Processed: {monthlyStatementReport.landlords?.processed || 0}</p>
-                <p className="text-xs text-gray-700 mt-1">Skipped overlap: {monthlyStatementReport.landlords?.skippedTenantOverlap || 0}</p>
-                <p className="text-xs text-gray-700 mt-1">Failed: {monthlyStatementReport.landlords?.errors?.length || 0}</p>
-                {(monthlyStatementReport.landlords?.sentRecipients?.length || 0) > 0 && (
-                  <div className="mt-2 max-h-28 overflow-y-auto text-xs text-gray-700 space-y-1">
-                    {monthlyStatementReport.landlords.sentRecipients.map((r, i) => (
-                      <p key={`landlord-sent-${i}`}>Sent: {r.email}</p>
+                {monthlyStatementHistory.length > 0 && (
+                  <div className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 space-y-1.5 no-scrollbar">
+                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Recent Run Records</p>
+                    {monthlyStatementHistory.map((item) => (
+                      <div
+                        key={item.id || `${item.runAt}-${item.source}`}
+                        className="text-xs text-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-t border-gray-100 pt-1.5 first:border-t-0 first:pt-0"
+                      >
+                        <span>
+                          {item.runAt ? new Date(item.runAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown time'}
+                          {' '}({item.source === 'pg_cron' ? 'cron' : 'manual'})
+                        </span>
+                        <span>
+                          T: {item.tenants?.processed || 0}/{item.tenants?.total || 0} | L: {item.landlords?.processed || 0} | F: {(item.tenants?.failed || 0) + (item.landlords?.failed || 0)}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
 
-            {(monthlyStatementReport.tenants?.errors?.length || 0) > 0 && (
-              <div className="bg-gray-100 rounded-lg border border-gray-300 p-3 text-xs text-gray-700 max-h-28 overflow-y-auto space-y-1">
-                {monthlyStatementReport.tenants.errors.map((e, i) => (
-                  <p key={`tenant-err-${i}`}>Tenant error: {e.tenant || e.occupancyId || 'Unknown'} - {e.error}</p>
-                ))}
+            {monthlyStatementReport && (
+              <div className="mt-4 p-5 bg-gray-50 rounded-xl border border-gray-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h5 className="font-bold text-gray-900">Last Monthly Statement Report</h5>
+                  <span className="text-xs font-semibold text-gray-600 bg-gray-200 px-2 py-1 rounded-full">{monthlyStatementReport.period}</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="bg-white rounded-lg border border-gray-200 p-3">
+                    <p className="text-sm font-bold text-gray-900">Tenants</p>
+                    <p className="text-xs text-gray-500 mt-1">Processed: {monthlyStatementReport.tenants?.processed || 0} / {monthlyStatementReport.tenants?.total || 0}</p>
+                    <p className="text-xs text-gray-700 mt-1">Failed: {monthlyStatementReport.tenants?.errors?.length || 0}</p>
+                    {(monthlyStatementReport.tenants?.sentRecipients?.length || 0) > 0 && (
+                      <div className="mt-2 max-h-28 overflow-y-auto text-xs text-gray-700 space-y-1 no-scrollbar">
+                        {monthlyStatementReport.tenants.sentRecipients.map((r, i) => (
+                          <p key={`tenant-sent-${i}`}>Sent: {r.email}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-lg border border-gray-200 p-3">
+                    <p className="text-sm font-bold text-gray-900">Landlords</p>
+                    <p className="text-xs text-gray-500 mt-1">Processed: {monthlyStatementReport.landlords?.processed || 0}</p>
+                    <p className="text-xs text-gray-700 mt-1">Skipped overlap: {monthlyStatementReport.landlords?.skippedTenantOverlap || 0}</p>
+                    <p className="text-xs text-gray-700 mt-1">Failed: {monthlyStatementReport.landlords?.errors?.length || 0}</p>
+                    {(monthlyStatementReport.landlords?.sentRecipients?.length || 0) > 0 && (
+                      <div className="mt-2 max-h-28 overflow-y-auto text-xs text-gray-700 space-y-1 no-scrollbar">
+                        {monthlyStatementReport.landlords.sentRecipients.map((r, i) => (
+                          <p key={`landlord-sent-${i}`}>Sent: {r.email}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {(monthlyStatementReport.tenants?.errors?.length || 0) > 0 && (
+                  <div className="bg-gray-100 rounded-lg border border-gray-300 p-3 text-xs text-gray-700 max-h-28 overflow-y-auto space-y-1 no-scrollbar">
+                    {monthlyStatementReport.tenants.errors.map((e, i) => (
+                      <p key={`tenant-err-${i}`}>Tenant error: {e.tenant || e.occupancyId || 'Unknown'} - {e.error}</p>
+                    ))}
+                  </div>
+                )}
+
+                {(monthlyStatementReport.landlords?.errors?.length || 0) > 0 && (
+                  <div className="bg-gray-100 rounded-lg border border-gray-300 p-3 text-xs text-gray-700 max-h-28 overflow-y-auto space-y-1 no-scrollbar">
+                    {monthlyStatementReport.landlords.errors.map((e, i) => (
+                      <p key={`landlord-err-${i}`}>Landlord error: {e.landlord || e.landlordId || 'Unknown'} - {e.error}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-
-            {(monthlyStatementReport.landlords?.errors?.length || 0) > 0 && (
-              <div className="bg-gray-100 rounded-lg border border-gray-300 p-3 text-xs text-gray-700 max-h-28 overflow-y-auto space-y-1">
-                {monthlyStatementReport.landlords.errors.map((e, i) => (
-                  <p key={`landlord-err-${i}`}>Landlord error: {e.landlord || e.landlordId || 'Unknown'} - {e.error}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Reminder Toggle */}
-        <div className="flex flex-col lg:flex-row items-stretch gap-4 p-5 bg-gray-50 rounded-xl border border-gray-200 mt-4">
-          <div className="flex-1">
-            <h4 className="font-bold text-gray-900 text-base">Payment Reminders</h4>
-            <p className="text-sm text-gray-500 mt-1">Automatically email/SMS tenants about upcoming due dates.</p>
-            <div className="mt-2">
-              {remindersEnabled ? (
-                <span className="text-xs text-gray-700 font-bold bg-gray-100 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
-                  <span className="w-2 h-2 rounded-full bg-gray-700 animate-pulse"></span> ACTIVE
-                </span>
-              ) : (
-                <span className="text-xs text-gray-700 font-bold bg-gray-100 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
-                  <span className="w-2 h-2 rounded-full bg-black"></span> STOPPED
-                </span>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={toggleReminders}
-            disabled={togglingReminders}
-            className={`self-center px-6 py-3 font-bold rounded-xl transition-all cursor-pointer min-w-[140px] whitespace-nowrap ${remindersEnabled
-              ? 'bg-gray-100 text-gray-700 border border-gray-300'
-              : 'text-white shadow-lg'
-              }`}
-            style={!remindersEnabled ? { backgroundColor: '#000000' } : {}}
-          >
-            {togglingReminders ? 'Processing...' : remindersEnabled ? 'Stop Reminders' : 'Start Reminders'}
-          </button>
+        </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row items-stretch gap-4 p-5 bg-gray-50 rounded-xl border border-gray-200 mt-4">
-          <div className="flex-1">
-            <h4 className="font-bold text-gray-900 text-base">Bulk Email</h4>
-            <p className="text-sm text-gray-500 mt-1">Compose and send one message to multiple email recipients.</p>
-            <p className="text-xs text-gray-600 font-semibold mt-3 bg-gray-100 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full">
-              Add recipients separated by comma, semicolon, or new line
-            </p>
+        {/* Pending Tickets */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 h-full min-h-0 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-4 mb-5">
+            <h3 className="font-bold text-lg flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </span>
+              Pending Tickets
+            </h3>
+            <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-full">{pendingTickets.length}</span>
           </div>
-          <button
-            onClick={() => setShowBulkEmailModal(true)}
-            className="self-center px-6 py-3 bg-black text-white font-bold rounded-xl transition-all cursor-pointer min-w-[170px] whitespace-nowrap"
-          >
-            Compose Bulk Email
-          </button>
+
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar pr-1">
+          {pendingTicketsLoading && (
+            <div className="text-sm text-gray-500">Loading pending tickets...</div>
+          )}
+          {!pendingTicketsLoading && pendingTickets.length === 0 && (
+            <div className="text-sm text-gray-500">No pending tickets.</div>
+          )}
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
+            {pendingTickets.map((ticket) => {
+              const requesterName = ticket.requester
+                ? `${ticket.requester.first_name || ''} ${ticket.requester.last_name || ''}`.trim()
+                : 'Unknown requester'
+              const subject = ticket.subject
+                || getSupportOptionLabel(SUPPORT_TICKET_ISSUES, ticket.issue)
+                || 'Support ticket'
+
+              return (
+                <div key={ticket.id} className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{subject}</p>
+                      <p className="text-xs text-gray-500 mt-1">{requesterName}</p>
+                      {ticket.created_at && (
+                        <p className="text-[11px] text-gray-400 mt-1">{new Date(ticket.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      )}
+                    </div>
+                    <SupportTicketStatusBadge status={ticket.status} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
         </div>
       </div>
 
