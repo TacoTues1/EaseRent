@@ -88,11 +88,13 @@ export default async function handler(req, res) {
       // 3. Send Email to Primary Tenant
       const emailLib = await import('../../lib/email')
       if (emailLib.sendEndContractEmail) {
+        const resolvedEndDate = occupancy.end_request_date || occupancy.end_date || occupancy.contract_end_date || new Date()
+
         const result = await emailLib.sendEndContractEmail({
           to: tenantEmail,
           tenantName: occupancy.tenant?.first_name || 'Tenant',
           propertyTitle: occupancy.property?.title || 'Property',
-          endDate: new Date(),
+          endDate: resolvedEndDate,
           customMessage: customMessage
         })
 
@@ -117,7 +119,7 @@ export default async function handler(req, res) {
                     to: fmEmail,
                     tenantName: fm.member_profile?.first_name || 'Family Member',
                     propertyTitle: occupancy.property?.title || 'Property',
-                    endDate: new Date(),
+                    endDate: resolvedEndDate,
                     customMessage: customMessage
                   })
                   console.log(`[End Contract] ✅ Email sent to family member: ${fm.member_profile?.first_name} (${fmEmail})`)

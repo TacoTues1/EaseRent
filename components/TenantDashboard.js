@@ -3,6 +3,11 @@ import { showToast } from 'nextjs-toast-notify'
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { createNotification } from '../lib/notifications'
+import {
+  attachUpcomingAvailability,
+  getPropertyStatusLabel,
+  prepareListableProperties
+} from '../lib/propertyAvailability'
 import { supabase } from '../lib/supabaseClient'
 import Footer from './Footer'
 import {
@@ -12,6 +17,18 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from './ui/carousel'
+
+function renderPropertyStatusBadge(property) {
+  const hasUpcomingAvailableDate = Boolean(property?.upcoming_available_date)
+
+  return (
+    <span
+      className={`px-1.5 py-0.5 text-[7px] sm:text-[8px] font-bold rounded shadow-sm backdrop-blur-md leading-tight ${hasUpcomingAvailableDate ? 'normal-case tracking-normal max-w-[9rem] sm:max-w-[11rem]' : 'uppercase tracking-wider'} ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}
+    >
+      {getPropertyStatusLabel(property)}
+    </span>
+  )
+}
 
 // Helper Component for Bill Rows inside Active Property
 function BillRow({ label, icon, value, compact = false }) {
@@ -192,11 +209,11 @@ export default function TenantDashboard({ session, profile }) {
           .from('properties')
           .select('id, title, city, price, images, status')
           .eq('is_deleted', false)
-          .eq('status', 'available')
+          .in('status', ['available', 'occupied'])
           .or(`title.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
           .limit(6)
         if (data && !error) {
-          setSearchResults(data)
+          setSearchResults(prepareListableProperties(await attachUpcomingAvailability(data)))
           setShowSearchDropdown(true)
         }
       } catch (err) {
@@ -1299,10 +1316,11 @@ export default function TenantDashboard({ session, profile }) {
       .from('properties')
       .select('*, landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)')
       .eq('is_deleted', false)
-      .eq('status', 'available')
+      .in('status', ['available', 'occupied'])
     const { data, error } = await query
     if (error) console.error('Error loading properties:', error)
-    const randomized = [...(data || [])].sort(() => Math.random() - 0.5)
+    const propsWithAvailability = await attachUpcomingAvailability(data || [])
+    const randomized = prepareListableProperties(propsWithAvailability).sort(() => Math.random() - 0.5)
     setProperties(randomized)
   }
 
@@ -1500,10 +1518,11 @@ export default function TenantDashboard({ session, profile }) {
   }
 
   async function loadFeaturedSections(locationCityOverride = '', locationPermissionOverride = locationPermission, locationCoordsOverride = null) {
-    const { data: allProps } = await supabase.from('properties').select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)').eq('is_deleted', false).eq('status', 'available')
+    const { data: allProps } = await supabase.from('properties').select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)').eq('is_deleted', false).in('status', ['available', 'occupied'])
     const { data: stats } = await supabase.from('property_stats').select('*')
 
     if (allProps && stats) {
+      const listableProps = prepareListableProperties(await attachUpcomingAvailability(allProps))
       const statsMap = {}
       stats.forEach(s => {
         statsMap[s.property_id] = { favorite_count: s.favorite_count || 0, avg_rating: s.avg_rating || 0, review_count: s.review_count || 0 }
@@ -1512,7 +1531,7 @@ export default function TenantDashboard({ session, profile }) {
 
       const effectiveLocationCity = (locationCityOverride || userLocationCity || '').toLowerCase()
       if (locationPermissionOverride === 'granted' && effectiveLocationCity) {
-        const favs = allProps
+        const favs = listableProps
           .filter(p => {
             const propertyCity = (p.city || '').toLowerCase()
             return propertyCity.includes(effectiveLocationCity) || effectiveLocationCity.includes(propertyCity)
@@ -1528,7 +1547,7 @@ export default function TenantDashboard({ session, profile }) {
         Number.isFinite(effectiveLocationCoords?.lat) &&
         Number.isFinite(effectiveLocationCoords?.lng)
       ) {
-        const nearby = allProps
+        const nearby = listableProps
           .map((property) => {
             const coords = extractCoordinates(property.location_link)
             if (!coords) return null
@@ -1552,7 +1571,7 @@ export default function TenantDashboard({ session, profile }) {
         setNearbyProperties([])
       }
 
-      const mostFavorited = allProps
+      const mostFavorited = listableProps
         .filter((property) => (statsMap[property.id]?.favorite_count || 0) > 0)
         .sort((a, b) => {
           const favoriteDiff = (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0)
@@ -1568,7 +1587,7 @@ export default function TenantDashboard({ session, profile }) {
         })
       setMostFavoriteProperties(mostFavorited)
 
-      const rated = allProps
+      const rated = listableProps
         .filter((property) => (statsMap[property.id]?.review_count || 0) > 0)
         .sort((a, b) => {
           const favoriteDiff = (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0)
@@ -1851,21 +1870,7 @@ export default function TenantDashboard({ session, profile }) {
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
         <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-          <span
-            className={`px-1 py-0.5
-                text-[7px] sm:text-[8px] uppercase font-bold tracking-wider
-                rounded shadow-sm backdrop-blur-md
-                ${property.status === 'available'
-                ? 'bg-white text-black'
-                : 'bg-black/80 text-white'
-              }`}
-          >
-            {property.status === 'available'
-              ? 'Available'
-              : property.status === 'occupied'
-                ? 'Occupied'
-                : 'Not Available'}
-          </span>
+          {renderPropertyStatusBadge(property)}
           {stats.favorite_count >= 1 && (
             <span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5">
               <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
@@ -2532,7 +2537,7 @@ export default function TenantDashboard({ session, profile }) {
                       <div className="w-12 h-12 bg-green-300 text-black-600 rounded-full flex items-center justify-center mx-auto mb-2">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                       </div>
-                      <p className="text-sm text-slate-500 font-medium">No pending payments. You're all caught up!</p>
+                      <p className="text-sm text-slate-500 font-medium">No pending payments. You&apos;re all caught up!</p>
                     </div>
                   )}
                   <p className="text-sm text-slate-500 font-medium">Note: Please ensure all electricity, water and wifi bills are paid before the due date. The landlord is not liable for late payments.</p>
@@ -2840,14 +2845,14 @@ export default function TenantDashboard({ session, profile }) {
                             onClick={() => { handleSearch(); setShowSearchDropdown(false) }}
                             className="w-full text-center py-2 text-sm font-bold text-gray-900 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            View all results for "{searchQuery}"
+                            View all results for &quot;{searchQuery}&quot;
                           </button>
                         </div>
                       </div>
                     )}
                     {showSearchDropdown && searchQuery.trim() && searchResults.length === 0 && !isSearching && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 p-4 text-center">
-                        <p className="text-sm font-medium text-gray-500">No properties found for "{searchQuery}"</p>
+                        <p className="text-sm font-medium text-gray-500">No properties found for &quot;{searchQuery}&quot;</p>
                       </div>
                     )}
                   </div>
@@ -3173,7 +3178,7 @@ export default function TenantDashboard({ session, profile }) {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Cancel Move-Out?</h3>
               <p className="text-sm text-gray-600 mb-5">
-                Are you sure you want to cancel your move-out request? This will require your landlord's approval again to keep your stay active.
+                Are you sure you want to cancel your move-out request? This will require your landlord&apos;s approval again to keep your stay active.
               </p>
 
               <div className="flex gap-2">

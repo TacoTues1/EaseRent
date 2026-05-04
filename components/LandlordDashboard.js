@@ -1767,8 +1767,9 @@ export default function LandlordDashboard({ session, profile }) {
   }
 
   function openEndContractModal(occupancy) {
+    const isImmediateEnd = occupancy?.end_request_status === 'approved'
     setEndContractModal({ isOpen: true, occupancy })
-    setEndContractDate('')
+    setEndContractDate(isImmediateEnd ? formatDateInputValue(new Date()) : '')
     setEndContractReason('')
   }
 
@@ -2003,7 +2004,10 @@ export default function LandlordDashboard({ session, profile }) {
       }
     }
 
-    if (!endContractDate) {
+    const isImmediateEnd = occupancy.end_request_status === 'approved'
+    const effectiveEndDate = isImmediateEnd ? formatDateInputValue(new Date()) : endContractDate
+
+    if (!isImmediateEnd && !endContractDate) {
       showToast.error('Please select an end date', { duration: 3000, transition: "bounceIn" })
       return
     }
@@ -2060,7 +2064,7 @@ export default function LandlordDashboard({ session, profile }) {
     await cancelOpenMaintenanceRequests(occupancy.property_id)
 
     // Notification Message
-    const formattedDate = new Date(endContractDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    const formattedDate = new Date(effectiveEndDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const message = `Your contract for "${occupancy.property?.title}" has been ended by the landlord.\n\nEnd Date: ${formattedDate}\nReason: ${endContractReason}\n\nPlease vacate the premises by the end date.`
 
     // 1. In-App
@@ -3077,6 +3081,7 @@ export default function LandlordDashboard({ session, profile }) {
                         today.setHours(0, 0, 0, 0);
                         if (occStartDate) occStartDate.setHours(0, 0, 0, 0);
                         const hasStarted = !occStartDate || today >= occStartDate;
+                        const hasApprovedMoveOut = occ.end_request_status === 'approved';
 
                         return (
                           <div key={occ.id} className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
@@ -3095,7 +3100,7 @@ export default function LandlordDashboard({ session, profile }) {
                                 </button>
                                 <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
                                   className="text-xs text-white font-bold text-red-600 bg-red-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                                  End
+                                  {hasApprovedMoveOut ? 'End Immediately' : 'End'}
                                 </button>
                               </>
                             ) : (
@@ -3646,16 +3651,22 @@ export default function LandlordDashboard({ session, profile }) {
               </p>
 
               <div className="mb-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
-                    value={endContractDate}
-                    onChange={(e) => setEndContractDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                </div>
+                {endContractModal.occupancy?.end_request_status === 'approved' ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                    End Date: Today
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">End Date <span className="text-red-500">*</span></label>
+                    <input
+                      type="date"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-black"
+                      value={endContractDate}
+                      onChange={(e) => setEndContractDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Reason <span className="text-red-500">*</span></label>
                   <textarea
@@ -3678,7 +3689,7 @@ export default function LandlordDashboard({ session, profile }) {
                 <button
                   onClick={confirmEndContract}
                   className="flex-1 px-4 py-2 text-white font-bold rounded-xl md:cursor-pointer shadow-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!endContractDate || !endContractReason}
+                  disabled={endContractModal.occupancy?.end_request_status === 'approved' ? !endContractReason : (!endContractDate || !endContractReason)}
                 >
                   End Contract
                 </button>

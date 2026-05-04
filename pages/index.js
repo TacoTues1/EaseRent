@@ -11,8 +11,23 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '../components/ui/carousel'
+import {
+  attachUpcomingAvailability,
+  getPropertyStatusLabel,
+  prepareListableProperties
+} from '../lib/propertyAvailability'
 
 const NEARBY_RADIUS_KM = 1
+
+function renderPropertyStatusBadge(property) {
+  const hasUpcomingAvailableDate = Boolean(property?.upcoming_available_date)
+
+  return (
+    <span className={`px-1.5 py-0.5 text-[7px] sm:text-[8px] font-bold rounded shadow-sm backdrop-blur-md leading-tight ${hasUpcomingAvailableDate ? 'normal-case tracking-normal max-w-[9rem] sm:max-w-[11rem]' : 'uppercase tracking-wider'} ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>
+      {getPropertyStatusLabel(property)}
+    </span>
+  )
+}
 
 function toRadians(degrees) {
   return degrees * (Math.PI / 180)
@@ -188,12 +203,12 @@ export default function Home({ setHomeNavbarLoading }) {
         .from('properties')
         .select('id, title, city, price, images, status')
         .eq('is_deleted', false)
-        .eq('status', 'available')
+        .in('status', ['available', 'occupied'])
         .order('created_at', { ascending: false })
         .limit(6)
 
       if (data && !error) {
-        setSuggestedProperties(data)
+        setSuggestedProperties(prepareListableProperties(await attachUpcomingAvailability(data)))
         setSuggestionsLoaded(true)
       }
     } catch (err) {
@@ -216,7 +231,7 @@ export default function Home({ setHomeNavbarLoading }) {
         const data = await response.json()
 
         if (response.ok && data.results) {
-          setSearchResults(data.results)
+          setSearchResults(prepareListableProperties(data.results))
           setShowSearchDropdown(true)
         }
       } catch (err) {
@@ -313,7 +328,9 @@ export default function Home({ setHomeNavbarLoading }) {
         const searchData = await response.json()
 
         if (response.ok && searchData.results) {
-          let results = (searchData.results || []).filter((p) => p?.status === 'available' && p?.is_deleted !== true)
+          let results = prepareListableProperties(
+            (searchData.results || []).filter((p) => (p?.status === 'available' || p?.status === 'occupied') && p?.is_deleted !== true)
+          )
 
           // Apply additional filters client-side
           if (priceRange.min) results = results.filter(p => p.price >= parseInt(priceRange.min))
@@ -346,7 +363,7 @@ export default function Home({ setHomeNavbarLoading }) {
         landlord_profile:profiles!properties_landlord_fkey(id, first_name, middle_name, last_name, role)
       `)
       .eq('is_deleted', false)
-      .eq('status', 'available')
+      .in('status', ['available', 'occupied'])
 
     if (priceRange.min) {
       query = query.gte('price', parseInt(priceRange.min))
@@ -368,7 +385,8 @@ export default function Home({ setHomeNavbarLoading }) {
     }
 
     const { data, error } = await query
-    let nextProperties = data || []
+    const propsWithAvailability = await attachUpcomingAvailability(data || [])
+    let nextProperties = prepareListableProperties(propsWithAvailability)
 
     if (!searchQuery) {
       nextProperties = [...nextProperties].sort(() => Math.random() - 0.5)
@@ -458,12 +476,12 @@ export default function Home({ setHomeNavbarLoading }) {
     const resolvedCity = locationData?.city ?? userLocationCity
     const resolvedCoords = locationData?.coords ?? userLocationCoords
 
-    // 1. Fetch properties (Available only, or remove .eq for all)
+    // 1. Fetch properties, including occupied homes that have scheduled availability.
     const { data: allProps } = await supabase
       .from('properties')
       .select('*')
       .eq('is_deleted', false)
-      .eq('status', 'available')
+      .in('status', ['available', 'occupied'])
 
     // 2. Fetch stats
     const { data: stats } = await supabase
@@ -471,6 +489,8 @@ export default function Home({ setHomeNavbarLoading }) {
       .select('*')
 
     if (allProps && stats) {
+      const listableProps = prepareListableProperties(await attachUpcomingAvailability(allProps))
+
       // Create a map for easy lookup: statsMap[propertyId] = { ... }
       const statsMap = {}
       stats.forEach(s => {
@@ -487,7 +507,7 @@ export default function Home({ setHomeNavbarLoading }) {
       // 3. Available in [User Location] (shown only when location permission is granted)
       if (resolvedPermission === 'granted' && resolvedCity) {
         const normalizedCity = resolvedCity.toLowerCase()
-        const favorites = allProps
+        const favorites = listableProps
           .filter(p => {
             const propertyCity = (p.city || '').toLowerCase()
             return propertyCity.includes(normalizedCity) || normalizedCity.includes(propertyCity)
@@ -503,7 +523,7 @@ export default function Home({ setHomeNavbarLoading }) {
         Number.isFinite(resolvedCoords?.lat) &&
         Number.isFinite(resolvedCoords?.lng)
       ) {
-        const nearby = allProps
+        const nearby = listableProps
           .map((property) => {
             const coords = extractCoordinates(property.location_link)
             if (!coords) return null
@@ -527,7 +547,7 @@ export default function Home({ setHomeNavbarLoading }) {
         setNearbyProperties([])
       }
 
-      const mostFavorited = allProps
+      const mostFavorited = listableProps
         .filter((property) => (statsMap[property.id]?.favorite_count || 0) > 0)
         .sort((a, b) => {
           const favoriteDiff = (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0)
@@ -544,7 +564,7 @@ export default function Home({ setHomeNavbarLoading }) {
       setMostFavoriteProperties(mostFavorited)
 
       // 4. Top Rated (Highest Average Rating with at least 1 review)
-      const rated = allProps
+      const rated = listableProps
         .filter(p => (statsMap[p.id]?.review_count || 0) > 0) // Must have reviews
         .sort((a, b) => {
           const favoriteDiff = (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0)
@@ -794,7 +814,7 @@ export default function Home({ setHomeNavbarLoading }) {
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
                             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {renderPropertyStatusBadge(property)}
                               {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                             </div>
                             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
@@ -908,7 +928,7 @@ export default function Home({ setHomeNavbarLoading }) {
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
                             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {renderPropertyStatusBadge(item)}
                               {stats.favorite_count >= 1 && (
                                 <span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5">
                                   <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24">
@@ -1027,7 +1047,7 @@ export default function Home({ setHomeNavbarLoading }) {
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
                             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {renderPropertyStatusBadge(item)}
                               {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                             </div>
                             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">
@@ -1139,7 +1159,7 @@ export default function Home({ setHomeNavbarLoading }) {
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
                             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {renderPropertyStatusBadge(item)}
                               {stats.favorite_count >= 1 && (
                                 <span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5">
                                   <svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24">
@@ -1258,7 +1278,7 @@ export default function Home({ setHomeNavbarLoading }) {
                             {/* Gradient & Labels */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-60"></div>
                             <div className="absolute top-1.5 sm:top-2 md:top-3 left-1.5 sm:left-2 md:left-3 z-10 flex flex-col gap-0.5 sm:gap-1 items-start">
-                              <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${item.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'}`}>{item.status === 'available' ? 'Available' : item.status === 'occupied' ? 'Occupied' : 'Not Available'}</span>
+                              {renderPropertyStatusBadge(item)}
                               {stats.favorite_count >= 1 && (<span className="px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md bg-rose-500 text-white flex items-center gap-0.5"><svg className="w-2 h-2 sm:w-2.5 sm:h-2.5 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>{stats.favorite_count}</span>)}
                             </div>
                             <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 z-10 text-white">

@@ -5,6 +5,69 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+const ACTIVE_OCCUPANCY_STATUSES = new Set(['active', 'pending_end'])
+const SCHEDULED_END_REQUEST_STATUSES = new Set(['approved', 'pending', 'cancel_pending'])
+
+function parseOccupancyDate(value) {
+    if (!value) return null
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return null
+    date.setHours(0, 0, 0, 0)
+    return date
+}
+
+function getOccupancyAvailabilityDate(occupancy) {
+    if (!occupancy || !ACTIVE_OCCUPANCY_STATUSES.has(occupancy.status)) return null
+
+    const dateCandidates = []
+    if (occupancy.end_request_date && SCHEDULED_END_REQUEST_STATUSES.has(occupancy.end_request_status)) {
+        dateCandidates.push(occupancy.end_request_date)
+    }
+    if (occupancy.contract_end_date) dateCandidates.push(occupancy.contract_end_date)
+    if (occupancy.end_date) dateCandidates.push(occupancy.end_date)
+
+    return dateCandidates
+        .map((value) => ({ value, date: parseOccupancyDate(value) }))
+        .filter((item) => item.date)
+        .sort((a, b) => a.date.getTime() - b.date.getTime())[0]?.value || null
+}
+
+async function loadUpcomingAvailability(properties = []) {
+    const occupiedPropertyIds = Array.from(new Set(
+        properties
+            .filter((property) => property?.status === 'occupied')
+            .map((property) => property.id)
+            .filter(Boolean)
+    ))
+
+    if (occupiedPropertyIds.length === 0) return {}
+
+    const { data, error } = await supabase
+        .from('tenant_occupancies')
+        .select('property_id, end_request_date, end_request_status, status')
+        .in('property_id', occupiedPropertyIds)
+        .in('status', Array.from(ACTIVE_OCCUPANCY_STATUSES))
+
+    if (error) {
+        console.error('Search availability error:', error)
+        return {}
+    }
+
+    const availability = {}
+    ;(data || []).forEach((occupancy) => {
+        const upcomingDate = getOccupancyAvailabilityDate(occupancy)
+        const parsedDate = parseOccupancyDate(upcomingDate)
+        if (!occupancy.property_id || !parsedDate) return
+
+        const currentDate = parseOccupancyDate(availability[occupancy.property_id])
+        if (!currentDate || parsedDate < currentDate) {
+            availability[occupancy.property_id] = upcomingDate
+        }
+    })
+
+    return availability
+}
+
 /**
  * Elastic-like search API for properties.
  * 
@@ -234,10 +297,18 @@ export default async function handler(req, res) {
         // Then broader set for fuzzy
         if (allProperties) allProperties.forEach(addCandidate)
 
+        const upcomingAvailability = await loadUpcomingAvailability(candidates)
+
         // Score each candidate
         const scoredResults = candidates.map(property => {
             const { score, highlights, matchedFields } = scoreProperty(property, tokens)
-            return { ...property, _score: score, _highlights: highlights, _matchedFields: matchedFields }
+            return {
+                ...property,
+                upcoming_available_date: upcomingAvailability[property.id] || null,
+                _score: score,
+                _highlights: highlights,
+                _matchedFields: matchedFields
+            }
         })
 
         // Filter by minimum score and sort by relevance

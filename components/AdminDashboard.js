@@ -1275,8 +1275,8 @@ function OverviewView({ refreshTrigger, session }) {
       {chartData && (
         <div className="p-4 mb-6">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h3 className="font-bold text-base flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-black flex items-center justify-center">
+               <h3 className="font-bold text-base flex items-center gap-2">
+                 <span className="w-7 h-7 rounded-lg bg-black flex items-center justify-center">
                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />

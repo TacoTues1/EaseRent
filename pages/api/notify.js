@@ -1098,7 +1098,7 @@ export default async function handler(req, res) {
 
             const results = { email: false, sms: false }
 
-            if (recordId && (!tenantId || !propertyTitle)) {
+            if (recordId && (!tenantId || !propertyTitle || !endDate)) {
                 // Fetch details from occupancy
                 const { data: occ, error } = await supabaseAdmin
                     .from('tenant_occupancies')
@@ -1115,7 +1115,7 @@ export default async function handler(req, res) {
                     tenantName = `${occ.tenant_profile?.first_name || ''} ${occ.tenant_profile?.last_name || ''}`.trim()
                     tenantPhone = occ.tenant_profile?.phone
                     propertyTitle = occ.property?.title
-                    endDate = occ.end_date || new Date().toISOString()
+                    endDate = endDate || occ.end_request_date || occ.end_date || occ.contract_end_date || new Date().toISOString()
                 }
             }
 

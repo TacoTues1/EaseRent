@@ -36,6 +36,117 @@ const DEFAULT_MAP_CENTER = [122.0, 12.5]
 const DEFAULT_MAP_ZOOM = 4.5
 const USER_FOCUS_FALLBACK_ZOOM = 14
 const AMENITIES_VISIBLE_LIMIT = 10
+const ACTIVE_OCCUPANCY_STATUSES = new Set(['active', 'pending_end'])
+const SCHEDULED_END_REQUEST_STATUSES = new Set(['approved', 'pending', 'cancel_pending'])
+const FEATURED_PROPERTY_SELECT = '*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)'
+const DAY_IN_MS = 1000 * 60 * 60 * 24
+
+const parseOccupancyDate = (value) => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+const getDaysUntil = (value) => {
+  const date = parseOccupancyDate(value)
+  if (!date) return null
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.ceil((date.getTime() - today.getTime()) / DAY_IN_MS))
+}
+
+const getOccupancyAvailabilityDate = (occupancy) => {
+  if (!occupancy || !ACTIVE_OCCUPANCY_STATUSES.has(occupancy.status)) return null
+
+  const dateCandidates = []
+  if (occupancy.end_request_date && SCHEDULED_END_REQUEST_STATUSES.has(occupancy.end_request_status)) {
+    dateCandidates.push(occupancy.end_request_date)
+  }
+  if (occupancy.contract_end_date) dateCandidates.push(occupancy.contract_end_date)
+  if (occupancy.end_date) dateCandidates.push(occupancy.end_date)
+
+  return dateCandidates
+    .map((value) => ({ value, date: parseOccupancyDate(value) }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())[0]?.value || null
+}
+
+const getPropertyUpcomingAvailableDate = (property) => {
+  if (property?.status !== 'occupied') return null
+  if (property.upcoming_available_date) return property.upcoming_available_date
+
+  return (property.tenant_occupancies || [])
+    .map(getOccupancyAvailabilityDate)
+    .filter(Boolean)
+    .map((value) => ({ value, date: parseOccupancyDate(value) }))
+    .filter((item) => item.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())[0]?.value || null
+}
+
+const prepareListableProperties = (items = []) => {
+  return items
+    .map((property) => {
+      if (property?.status === 'available') return property
+
+      const upcomingAvailableDate = getPropertyUpcomingAvailableDate(property)
+      if (!upcomingAvailableDate) return null
+
+      return {
+        ...property,
+        upcoming_available_date: upcomingAvailableDate
+      }
+    })
+    .filter(Boolean)
+}
+
+const attachUpcomingAvailability = async (items = []) => {
+  const occupiedPropertyIds = Array.from(new Set(
+    items
+      .filter((property) => property?.status === 'occupied')
+      .map((property) => property.id)
+      .filter(Boolean)
+  ))
+
+  if (occupiedPropertyIds.length === 0) return items
+
+  try {
+    const response = await fetch('/api/upcoming-property-availability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyIds: occupiedPropertyIds })
+    })
+
+    if (!response.ok) throw new Error('Failed to load upcoming availability')
+
+    const data = await response.json()
+    const availability = data?.availability || {}
+
+    return items.map((property) => {
+      const upcomingAvailableDate = availability[property.id]
+      return upcomingAvailableDate
+        ? { ...property, upcoming_available_date: upcomingAvailableDate }
+        : property
+    })
+  } catch (error) {
+    console.error('Error loading upcoming property availability:', error)
+    return items
+  }
+}
+
+const getPropertyStatusLabel = (property) => {
+  if (property?.status === 'available') return 'Available'
+
+  if (property?.upcoming_available_date) {
+    const days = getDaysUntil(property.upcoming_available_date)
+    if (days !== null) return `Will be available in ${days} day${days === 1 ? '' : 's'}`
+  }
+
+  if (property?.status === 'occupied') return 'Occupied'
+  return 'Not Available'
+}
 
 const extractCoordinates = (link) => {
   if (!link) return null;
@@ -600,15 +711,18 @@ export default function AllProperties() {
   async function loadFeaturedProperties() {
     const { data: allProps } = await supabase
       .from('properties')
-      .select('*, landlord_profile:profiles!properties_landlord_fkey(first_name, last_name)')
+      .select(FEATURED_PROPERTY_SELECT)
       .eq('is_deleted', false)
-      .eq('status', 'available')
+      .in('status', ['available', 'occupied'])
 
     const { data: stats } = await supabase
       .from('property_stats')
       .select('*')
 
-    if (allProps && stats) {
+    const propsWithAvailability = await attachUpcomingAvailability(allProps || [])
+    const listableProps = prepareListableProperties(propsWithAvailability)
+
+    if (listableProps && stats) {
       const statsMap = {}
       stats.forEach(s => {
         statsMap[s.property_id] = {
@@ -621,14 +735,14 @@ export default function AllProperties() {
       setPropertyStats(statsMap)
 
       // Guest Favorites
-      const favorites = allProps
+      const favorites = listableProps
         .filter(p => (statsMap[p.id]?.favorite_count || 0) >= 1)
         .sort((a, b) => (statsMap[b.id]?.favorite_count || 0) - (statsMap[a.id]?.favorite_count || 0))
         .slice(0, 16)
       setGuestFavorites(favorites)
 
       // Top Rated
-      const rated = allProps
+      const rated = listableProps
         .filter(p => (statsMap[p.id]?.review_count || 0) > 0)
         .sort((a, b) => (statsMap[b.id]?.avg_rating || 0) - (statsMap[a.id]?.avg_rating || 0))
         .slice(0, 16)
@@ -678,19 +792,21 @@ export default function AllProperties() {
         const response = await fetch(`/api/elastic-search?q=${encodeURIComponent(searchQuery)}&limit=50&minScore=5`)
         const searchData = await response.json()
 
-        if (response.ok && searchData.results) {
-          filteredData = (searchData.results || []).filter((p) => p?.status === 'available' && p?.is_deleted !== true)
-        }
+        if (!response.ok) throw new Error(searchData?.error || 'Search failed')
+
+        const searchResults = (searchData.results || []).filter((p) => (p?.status === 'available' || p?.status === 'occupied') && p?.is_deleted !== true)
+        filteredData = prepareListableProperties(searchResults)
       } catch (err) {
         console.error('Elastic search error, falling back to basic search:', err)
         // Fallback to basic search if elastic search API fails
-        const { data } = await supabase.from('properties').select('*').eq('is_deleted', false).eq('status', 'available')
+        const { data } = await supabase.from('properties').select('*').eq('is_deleted', false).in('status', ['available', 'occupied'])
           .or(`title.ilike.%${searchQuery}%,city.ilike.%${searchQuery}%,address.ilike.%${searchQuery}%`)
-        filteredData = data || []
+        const propsWithAvailability = await attachUpcomingAvailability(data || [])
+        filteredData = prepareListableProperties(propsWithAvailability)
       }
     } else {
       // No text query - use standard Supabase query
-      let query = supabase.from('properties').select('*').eq('is_deleted', false).eq('status', 'available')
+      let query = supabase.from('properties').select('*').eq('is_deleted', false).in('status', ['available', 'occupied'])
 
       if (sortBy === 'newest') query = query.order('created_at', { ascending: false })
       else if (sortBy === 'oldest') query = query.order('created_at', { ascending: true })
@@ -706,7 +822,8 @@ export default function AllProperties() {
         setLoading(false)
         return
       }
-      filteredData = data || []
+      const propsWithAvailability = await attachUpcomingAvailability(data || [])
+      filteredData = prepareListableProperties(propsWithAvailability)
     }
 
     // Apply price range filter
@@ -1116,6 +1233,8 @@ export default function AllProperties() {
     const isFavorite = favorites.includes(property.id)
     const stats = propertyStats[property.id] || { favorite_count: 0, avg_rating: 0, review_count: 0 }
     const isTenantsFavorite = stats.favorite_count >= 1
+    const statusLabel = getPropertyStatusLabel(property)
+    const hasUpcomingAvailableDate = Boolean(property.upcoming_available_date)
 
     return (
       <div
@@ -1185,9 +1304,9 @@ export default function AllProperties() {
 
           {/* Top Left Badges */}
           <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 items-start">
-            <span className={`px-1 py-0.5 text-[7px] sm:text-[8px] uppercase font-bold tracking-wider rounded shadow-sm backdrop-blur-md ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'
+            <span className={`px-1.5 py-0.5 text-[7px] sm:text-[8px] font-bold rounded shadow-sm backdrop-blur-md leading-tight ${hasUpcomingAvailableDate ? 'normal-case tracking-normal max-w-[9rem] sm:max-w-[11rem]' : 'uppercase tracking-wider'} ${property.status === 'available' ? 'bg-white text-black' : 'bg-black/80 text-white'
               }`}>
-              {property.status === 'available' ? 'Available' : property.status === 'occupied' ? 'Occupied' : 'Not Available'}
+              {statusLabel}
             </span>
 
             {/* Tenants Favorite Badge */}
@@ -1547,7 +1666,7 @@ export default function AllProperties() {
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">No properties found</h3>
                 <p className="text-gray-500 mb-6 max-w-sm mx-auto text-sm">
-                  We couldn't find any properties matching your filters.
+                  We couldn&apos;t find any properties matching your filters.
                 </p>
                 <button onClick={clearFilters} className="px-5 py-2 bg-black text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors cursor-pointer">
                   Clear Filters
