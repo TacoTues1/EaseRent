@@ -1231,7 +1231,7 @@ function OverviewView({ refreshTrigger, session }) {
       resetBulkEmailForm()
       setShowBulkEmailModal(false)
     } catch (err) {
-      showToast.error(err.message || 'Failed to send bulk email')
+      showToast.error(err.message || 'Failed to   ')
     } finally {
       setSendingBulkEmail(false)
     }
@@ -1467,7 +1467,7 @@ function OverviewView({ refreshTrigger, session }) {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-2xl p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-black text-gray-900">Send Bulk Email</h3>
+              <h3 className="text-xl font-black text-gray-900">Send Email</h3>
               <button
                 onClick={() => {
                   if (!sendingBulkEmail) {

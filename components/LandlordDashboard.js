@@ -40,6 +40,7 @@ export default function LandlordDashboard({ session, profile }) {
   const [refreshing, setRefreshing] = useState(false)
   const [statsLoaded, setStatsLoaded] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState({})
+  const [hoveredPropertyId, setHoveredPropertyId] = useState(null)
 
   // Modal States
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -150,26 +151,32 @@ export default function LandlordDashboard({ session, profile }) {
     occupancy: null
   })
   const [processingCancelOccupancy, setProcessingCancelOccupancy] = useState(false)
+  
+  const [editDateModal, setEditDateModal] = useState({
+    isOpen: false,
+    requestId: null,
+    currentDate: ''
+  })
+  const [updatingDate, setUpdatingDate] = useState(false)
 
   const router = useRouter()
 
-  // Auto-slide images
+  // Auto-slide images on hover
   useEffect(() => {
-    if (properties.length === 0) return
+    if (!hoveredPropertyId) return
+    
     const interval = setInterval(() => {
-      setCurrentImageIndex(prev => {
-        const newIndex = { ...prev }
-        properties.forEach(property => {
-          if (property.images && Array.isArray(property.images) && property.images.length > 1) {
-            const currentIdx = prev[property.id] || 0
-            newIndex[property.id] = (currentIdx + 1) % property.images.length
-          }
-        })
-        return newIndex
-      })
-    }, 3000)
+      const property = properties.find(p => p.id === hoveredPropertyId)
+      if (property && property.images && property.images.length > 1) {
+        setCurrentImageIndex(prev => ({
+          ...prev,
+          [property.id]: ((prev[property.id] || 0) + 1) % property.images.length
+        }))
+      }
+    }, 1500) // Slightly faster slide for hover interaction
+    
     return () => clearInterval(interval)
-  }, [properties])
+  }, [hoveredPropertyId, properties])
 
   useEffect(() => {
     if (profile) {
@@ -1042,6 +1049,46 @@ export default function LandlordDashboard({ session, profile }) {
       })
 
       setIncomingEnds(filtered)
+    }
+  }
+
+  function openEditDateModal(req) {
+    const rawDate = req.end_request_status === 'approved' ? req.end_request_date : req.contract_end_date
+    setEditDateModal({
+      isOpen: true,
+      requestId: req.id,
+      currentDate: rawDate ? new Date(rawDate).toISOString().split('T')[0] : ''
+    })
+  }
+
+  function closeEditDateModal() {
+    setEditDateModal({ isOpen: false, requestId: null, currentDate: '' })
+  }
+
+  async function submitEditDate() {
+    if (!editDateModal.currentDate) {
+      showToast.error("Please select a valid date", { duration: 3000, transition: 'bounceIn' })
+      return
+    }
+    setUpdatingDate(true)
+    try {
+      const { error } = await supabase
+        .from('tenant_occupancies')
+        .update({
+          end_request_date: editDateModal.currentDate
+        })
+        .eq('id', editDateModal.requestId)
+
+      if (error) throw error
+
+      showToast.success('Date updated successfully!', { duration: 3000, transition: 'bounceIn' })
+      closeEditDateModal()
+      loadIncomingEnds()
+    } catch (err) {
+      console.error(err)
+      showToast.error('Failed to update date', { duration: 3000, transition: 'bounceIn' })
+    } finally {
+      setUpdatingDate(false)
     }
   }
 
@@ -2587,61 +2634,72 @@ export default function LandlordDashboard({ session, profile }) {
             {activePanel === 'metrics' && (
               <div className="space-y-6 mb-8">
               <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-4 md:gap-6">
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
-                  <div className="flex items-center justify-between mb-2 sm:mb-4">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-xl sm:rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                <div 
+                  onClick={() => router.push('/properties/my-properties')}
+                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:text-black transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                     </div>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? properties.length : 0} /></h3>
-                  <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Properties Managed</p>
+                  <h3 className="text-3xl font-bold text-black tracking-tight"><CountUpAnimation target={statsLoaded ? properties.length : 0} /></h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">Properties</p>
                 </div>
 
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
-                  <div className="flex items-center justify-between mb-2 sm:mb-4">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-xl sm:rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <div 
+                  onClick={() => setActivePanel('properties')}
+                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     </div>
-                    <span className="bg-emerald-50 text-emerald-700 text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg">
+                    <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100 uppercase tracking-wider">
                       {properties.length > 0 ? Math.round((occupancies.length / properties.length) * 100) : 0}% Occ
                     </span>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? occupancies.length : 0} /></h3>
-                  <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Active Tenants</p>
+                  <h3 className="text-3xl font-bold text-black tracking-tight"><CountUpAnimation target={statsLoaded ? occupancies.length : 0} /></h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">Tenants</p>
                 </div>
 
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
-                  <div className="flex items-center justify-between mb-2 sm:mb-4">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-xl sm:rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div 
+                  onClick={() => router.push('/payments')}
+                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </div>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight truncate"><CountUpAnimation target={statsLoaded ? totalIncome : 0} decimals={2} prefix="₱" /></h3>
-                  <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Total Income</p>
+                  <h3 className="text-3xl font-bold text-black tracking-tight truncate"><CountUpAnimation target={statsLoaded ? totalIncome : 0} decimals={2} prefix="₱" /></h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">Total Income</p>
                 </div>
 
-
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm hover:-translate-y-1 transition-transform duration-300">
-                  <div className="flex items-center justify-between mb-2 sm:mb-4">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-xl sm:rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                <div 
+                  onClick={() => setActivePanel('actions')}
+                  className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     </div>
                   </div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight"><CountUpAnimation target={statsLoaded ? actionsToolCount : 0} /></h3>
-                  <p className="text-[10px] sm:text-xs md:text-sm font-medium text-gray-500 mt-0.5 sm:mt-1">Pending Tasks</p>
+                  <h3 className="text-3xl font-bold text-black tracking-tight"><CountUpAnimation target={statsLoaded ? actionsToolCount : 0} /></h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">Tasks</p>
                 </div>
               </div>  
 
                 {/* PROPERTIES GRID */}
-                <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-200/60 shadow-sm">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+                <div className="bg-white rounded-2xl p-6 sm:p-10 border border-gray-100 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 sm:mb-10">
                     <div>
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Your Properties</h3>
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">Manage all your uploaded properties here</p>
+                      <h3 className="text-2xl font-bold text-black tracking-tight">Your Properties</h3>
+                      <p className="text-sm font-medium text-gray-400 mt-1">Manage all your uploaded properties here</p>
                       {propertySlotPlan && (
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-gray-200 text-black-200 border border-gray-900">
-                            {propertySlotPlan.used_slots}/{propertySlotPlan.total_slots} slots used
+                        <div className="flex items-center gap-2 mt-2.5">
+                          <span className="text-[10px] font-black px-3 py-1.5 rounded bg-gray-50 text-gray-400 border border-gray-100 uppercase tracking-widest">
+                            {propertySlotPlan.used_slots} / {propertySlotPlan.total_slots} Slots
                           </span>
                         </div>
                       )}
@@ -2684,7 +2742,17 @@ export default function LandlordDashboard({ session, profile }) {
                         const imgs = (property.images && Array.isArray(property.images) && property.images.length > 0) ? property.images : ['/placeholder-property.jpg']
                         const currentIndex = currentImageIndex[property.id] || 0
                         return (
-                          <div key={property.id} onClick={() => router.push(`/properties/${property.id}`)} className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer flex flex-col hover:shadow-lg transition-all">
+                          <div 
+                            key={property.id} 
+                            onClick={() => router.push(`/properties/${property.id}`)} 
+                            onMouseEnter={() => setHoveredPropertyId(property.id)}
+                            onMouseLeave={() => {
+                              setHoveredPropertyId(null)
+                              // Optional: Reset to first image on leave
+                              setCurrentImageIndex(prev => ({ ...prev, [property.id]: 0 }))
+                            }}
+                            className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer flex flex-col hover:shadow-lg transition-all"
+                          >
                             <div className="relative aspect-[4/3] overflow-hidden bg-gray-100 rounded-xl sm:rounded-2xl">
                                 <img src={imgs[currentIndex]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="" />
                                 <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 items-start">
@@ -2696,13 +2764,7 @@ export default function LandlordDashboard({ session, profile }) {
                                     <p className="text-white font-black text-base sm:text-xl leading-none">₱{Number(property.price).toLocaleString()}</p>
                                     <p className="text-white/80 text-[10px] font-bold uppercase tracking-wider mt-1">per month</p>
                                 </div>
-                                {imgs.length > 1 && (
-                                    <div className="absolute bottom-4 right-4 flex gap-1 z-10">
-                                        {imgs.map((_, idx) => (
-                                            <div key={idx} className={`h-1.5 rounded-full shadow-sm transition-all ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/50'}`} />
-                                        ))}
-                                    </div>
-                                )}
+                                {/* Image pagination dots removed per user request */}
                             </div>
                             <div className="p-3 sm:p-5 flex-1 flex flex-col">
                                 <h3 className="text-sm sm:text-base font-black text-gray-900 truncate mb-1 sm:mb-1.5">{property.title}</h3>
@@ -3061,11 +3123,11 @@ export default function LandlordDashboard({ session, profile }) {
 
               {/* ACTIVE PROPERTIES */}
               {activePanel === 'properties' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm">
-                  <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm">
+                  <div className="flex items-center justify-between mb-8">
                     <div>
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Active Properties</h3>
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">{activeOccupancies.length} occupied units</p>
+                      <h3 className="text-2xl font-bold text-black tracking-tight">Active Properties</h3>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">{activeOccupancies.length} Occupied Units</p>
                     </div>
                   </div>
 
@@ -3084,38 +3146,41 @@ export default function LandlordDashboard({ session, profile }) {
                         const hasApprovedMoveOut = occ.end_request_status === 'approved';
 
                         return (
-                          <div key={occ.id} className="flex items-center gap-4 p-3 rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all group bg-white">
-                            <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 shadow-inner">
-                              <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-sm text-gray-900 truncate group-hover:text-black transition-colors">{occ.property?.title}</p>
-                              <p className="text-xs font-medium text-gray-500 mt-0.5 truncate">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
-                            </div>
-                            {hasStarted ? (
-                              <>
-                                <button onClick={(e) => { e.stopPropagation(); openFamilyModal(occ) }}
-                                  className="text-xs text-white font-bold text-blue-600 bg-blue-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                                  Show Details
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
-                                  className="text-xs text-white font-bold text-red-600 bg-red-600 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                                  {hasApprovedMoveOut ? 'End Immediately' : 'End'}
-                                </button>
-                              </>
-                            ) : (
-                              <div className="flex flex-col items-end gap-2">
-                                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
-                                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
-                                    Start on {new Date(occ.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
-                                  </span>
-                                </div>
-                                <button onClick={(e) => { e.stopPropagation(); setCancelOccupancyModal({ isOpen: true, occupancy: occ }) }}
-                                  className="text-[10px] text-red-600 font-bold hover:text-red-700 cursor-pointer transition-colors px-1">
-                                  Cancel Occupancy
-                                </button>
+                          <div key={occ.id} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0">
+                            <div className="flex items-center gap-5 flex-1">
+                              <div className="w-14 h-14 rounded-xl bg-gray-50 overflow-hidden shrink-0 border border-gray-100">
+                                <img src={occ.property?.images?.[0] || '/placeholder-property.jpg'} className="w-full h-full object-cover" alt="" />
                               </div>
-                            )}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-lg text-black truncate">{occ.property?.title}</h4>
+                                <p className="text-sm font-medium text-gray-400 mt-0.5">{occ.tenant?.first_name} {occ.tenant?.last_name}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-3">
+                              {hasStarted ? (
+                                <>
+                                  <button onClick={(e) => { e.stopPropagation(); openFamilyModal(occ) }}
+                                    className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">
+                                    Details
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); openEndContractModal(occ) }}
+                                    className="px-6 py-2.5 border border-gray-200 bg-white text-black rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-all cursor-pointer">
+                                    {hasApprovedMoveOut ? 'End Immediately' : 'End Contract'}
+                                  </button>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-4">
+                                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-md border border-gray-100">
+                                    Starts {new Date(occ.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                  </span>
+                                  <button onClick={(e) => { e.stopPropagation(); setCancelOccupancyModal({ isOpen: true, occupancy: occ }) }}
+                                    className="text-[10px] font-black text-red-500 uppercase tracking-widest hover:text-red-600 cursor-pointer transition-colors">
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })
@@ -3126,143 +3191,113 @@ export default function LandlordDashboard({ session, profile }) {
 
               {/* ACTION CENTER */}
               {activePanel === 'actions' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm">
-                  <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                    <div>
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
-                        Pending Tasks
-                        {(pendingEndRequests.filter(r => r.end_request_status === 'pending').length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
-                          <span className="flex h-2.5 w-2.5 relative">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                          </span>
-                        )}
-                      </h3>
-                    </div>
+                <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm">
+                  <div className="mb-6 sm:mb-8">
+                    <h3 className="text-2xl font-bold text-black tracking-tight flex items-center gap-2">
+                      Pending Tasks
+                      {(pendingEndRequests.filter(r => r.end_request_status === 'pending').length + pendingRenewalRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 && (
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">Action Required</p>
                   </div>
 
                   {(pendingEndRequests.filter(r => r.end_request_status === 'pending').length + pendingRenewalRequests.length + pendingCancelEndRequests.length + dashboardTasks.payments.length + dashboardTasks.maintenance.length) > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                    <div className="flex flex-col">
                       {pendingCancelEndRequests.map(req => (
-                        <div key={req.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group" onClick={() => openEndConfirmation('approve_cancel_end', req.id)}>
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-                              <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        <div key={req.id} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group cursor-pointer" onClick={() => openEndConfirmation('approve_cancel_end', req.id)}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                Cancel Move-Out
+                              </span>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-md cursor-pointer">Cancel Move-Out</span>
-                                <span className="text-[10px] text-gray-400 font-medium">Tenant Request</span>
-                              </div>
-                              <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors truncate">{req.property?.title}</h4>
-                              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                {req.tenant?.first_name} {req.tenant?.last_name}
-                              </p>
-                            </div>
+                            <h4 className="font-bold text-lg text-black truncate mb-1">{req.property?.title}</h4>
+                            <p className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                              {req.tenant?.first_name} {req.tenant?.last_name}
+                            </p>
                           </div>
+                          <button className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">Review</button>
                         </div>
                       ))}
 
                       {pendingEndRequests.filter(req => req.end_request_status === 'pending').map(req => {
                         const isApproved = req.end_request_status === 'approved';
                         return (
-                          <div key={req.id} className={`p-4 bg-gray-50 rounded-2xl border transition-all cursor-pointer group ${isApproved ? 'border-emerald-200 hover:border-emerald-300' : 'border-gray-200 hover:border-orange-300'} hover:shadow-md`} onClick={() => isApproved ? setActivePanel('terminations') : openEndConfirmation('approve', req.id)}>
-                            <div className="flex items-start gap-4">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isApproved ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
-                                {isApproved ? (
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                ) : (
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3M13 19H7a2 2 0 01-2-2V7a2 2 0 012-2h6" /></svg>
+                          <div key={req.id} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group cursor-pointer" onClick={() => isApproved ? setActivePanel('terminations') : openEndConfirmation('approve', req.id)}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                  {isApproved ? 'Scheduled Move-Out' : 'Move-Out Request'}
+                                </span>
+                              </div>
+                              <h4 className="font-bold text-lg text-black truncate mb-1">{req.property?.title}</h4>
+                              <div className="flex flex-col gap-1">
+                                <p className="text-sm font-medium text-gray-400">{req.tenant?.first_name} {req.tenant?.last_name}</p>
+                                {req.end_request_date && (
+                                  <p className="text-xs font-bold text-black flex items-center gap-1.5 mt-1">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    Leaves {new Date(req.end_request_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
                                 )}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2 mb-1">
-                                  <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
-                                    {isApproved ? 'Scheduled Move-Out' : 'Move-Out'}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 font-medium">{isApproved ? 'Already Approved' : 'Request Pending'}</span>
-                                </div>
-                                <h4 className={`font-bold text-sm text-gray-900 transition-colors truncate ${isApproved ? 'group-hover:text-emerald-700' : 'group-hover:text-orange-700'}`}>{req.property?.title}</h4>
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                                  <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                    {req.tenant?.first_name} {req.tenant?.last_name}
-                                  </p>
-                                  {req.end_request_date && (
-                                    <p className={`text-xs font-bold flex items-center gap-1.5 ${isApproved ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                      Leaves: {new Date(req.end_request_date).toLocaleDateString()}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
                             </div>
+                            <button className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">{isApproved ? 'View' : 'Review'}</button>
                           </div>
                         )
                       })}
 
                       {pendingRenewalRequests.map(req => (
-                        <div key={req.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group" onClick={() => openRenewalModal(req, 'approve')}>
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-                              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        <div key={req.id} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group cursor-pointer" onClick={() => openRenewalModal(req, 'approve')}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                Renewal Request
+                              </span>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-md">Renewal</span>
-                                <span className="text-[10px] text-gray-400 font-medium">Action Required</span>
-                              </div>
-                              <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
-                              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                {req.tenant?.first_name} {req.tenant?.last_name}
-                              </p>
-                            </div>
+                            <h4 className="font-bold text-lg text-black truncate mb-1">{req.property?.title}</h4>
+                            <p className="text-sm font-medium text-gray-400">{req.tenant?.first_name} {req.tenant?.last_name}</p>
                           </div>
+                          <button className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">Review</button>
                         </div>
                       ))}
-                      {/* ... rest of actions ... */}
 
                       {dashboardTasks.maintenance.length > 0 && (
-                        <div onClick={() => router.push('/maintenance')} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-rose-300 hover:shadow-md transition-all cursor-pointer group">
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
-                              <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <div onClick={() => router.push('/maintenance')} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group cursor-pointer">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                Maintenance
+                              </span>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-bold uppercase tracking-wider rounded-md">Maintenance</span>
-                                <span className="text-[10px] text-gray-400 font-medium">To Review</span>
-                              </div>
-                              <h4 className="font-bold text-sm text-gray-900 group-hover:text-rose-700 transition-colors">{dashboardTasks.maintenance.length} Pending Reports</h4>
-                              <p className="text-xs text-gray-500 mt-1">Review and assign maintenance tasks.</p>
-                            </div>
+                            <h4 className="font-bold text-lg text-black truncate mb-1">{dashboardTasks.maintenance.length} Pending Reports</h4>
+                            <p className="text-sm font-medium text-gray-400">Review and assign maintenance tasks.</p>
                           </div>
+                          <button className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">Review</button>
                         </div>
                       )}
 
                       {dashboardTasks.payments.length > 0 && (
-                        <div onClick={() => router.push('/payments')} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group">
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-                              <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 1.343-3 3s1.343 3 3 3 3-1.343 3-3-1.343-3-3-3z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2a10 10 0 100 20 10 10 0 000-20zM12 20V4M12 20V4" /></svg>
+                        <div onClick={() => router.push('/payments')} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group cursor-pointer">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                Payments
+                              </span>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider rounded-md">Payments</span>
-                                <span className="text-[10px] text-gray-400 font-medium">Check Receipts</span>
-                              </div>
-                              <h4 className="font-bold text-sm text-gray-900 group-hover:text-emerald-700 transition-colors">{dashboardTasks.payments.length} Pending Confirmations</h4>
-                              <p className="text-xs text-gray-500 mt-1">Verify tenant payment submissions.</p>
-                            </div>
+                            <h4 className="font-bold text-lg text-black truncate mb-1">{dashboardTasks.payments.length} Pending Confirmations</h4>
+                            <p className="text-sm font-medium text-gray-400">Verify tenant payment submissions.</p>
                           </div>
+                          <button className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer">Review</button>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="py-8 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                      <p className="text-gray-400 text-sm font-medium">All caught up! No pending tasks.</p>
+                    <div className="py-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-100">
+                      <p className="text-gray-400 text-sm font-medium tracking-wide">All caught up! No pending tasks.</p>
                     </div>
                   )}
                 </div>
@@ -3270,117 +3305,107 @@ export default function LandlordDashboard({ session, profile }) {
 
               {/* PROPERTY TERMINATIONS / ENDS */}
               {activePanel === 'terminations' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 border border-gray-200/60 shadow-sm">
-                  <div className="flex items-center justify-between mb-4 sm:mb-6">
-                    <div>
-                      <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">Property Ends</h3>
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mt-0.5">Pending terminations</p>
-                    </div>
+                <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm">
+                  <div className="mb-8">
+                    <h3 className="text-2xl font-bold text-black tracking-tight">Property Terminations</h3>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">{incomingEnds.length} Pending Terminations</p>
                   </div>
 
-                  <div className="space-y-6">
-
-                    {/* INCOMING / SCHEDULED ENDS */}
-                    <div>
-                      <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-3 px-1">Upcoming End of List ({incomingEnds.length})</h4>
-                      {incomingEnds.length === 0 ? (
-                        <div className="py-4 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                          <p className="text-gray-400 text-xs font-medium">No upcoming terminations</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 gap-3">
-                          {incomingEnds.map(req => {
-                            const isApprovedMoveOut = req.end_request_status === 'approved'
-                            const rawEndDate = isApprovedMoveOut ? req.end_request_date : req.contract_end_date
-                            const endDateObj = new Date(rawEndDate)
-                            const isOverdue = endDateObj < new Date().setHours(0,0,0,0)
-                            
-                            return (
-                              <div key={req.id} className="p-3 bg-white rounded-xl border border-gray-200 hover:border-blue-200 hover:shadow-sm transition-all group">
-                                <div className="flex items-start gap-3">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isApprovedMoveOut ? 'bg-emerald-100 text-emerald-600' : (isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600')}`}>
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      {isApprovedMoveOut ? (
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      ) : (
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      )}
-                                    </svg>
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2 mb-0.5">
-                                      <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isApprovedMoveOut ? 'bg-emerald-50 text-emerald-700' : (isOverdue ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700')}`}>
-                                        {isApprovedMoveOut ? 'Scheduled Move-Out' : (isOverdue ? 'Contract Expired' : 'Expiring Soon')}
-                                      </span>
-                                      <span className="text-[9px] text-gray-400 font-medium">Incoming</span>
-                                    </div>
-                                    <h4 className="font-bold text-xs text-gray-900 group-hover:text-blue-700 transition-colors truncate">{req.property?.title}</h4>
-                                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                                      <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                        {req.tenant?.first_name} {req.tenant?.last_name}
-                                      </p>
-                                      <p className={`text-[10px] font-bold flex items-center gap-1 ${isOverdue && !isApprovedMoveOut ? 'text-rose-600' : 'text-gray-700'}`}>
-                                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                        Ends: {new Date(rawEndDate).toLocaleDateString()}
-                                      </p>
-                                    </div>
-                                    <div className="mt-2 flex justify-end">
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); openEndConfirmation('cancel_end', req.id); }}
-                                        className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg text-[9px] font-black uppercase hover:bg-rose-600 hover:text-white hover:border-rose-600 hover:shadow-md hover:shadow-rose-100 active:scale-95 transition-all shadow-sm cursor-pointer"
-                                      >
-                                        Cancel Move-Out
-                                      </button>
-                                    </div>
-                                  </div>
+                  <div className="flex flex-col">
+                    {incomingEnds.length === 0 ? (
+                      <div className="py-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-100">
+                        <p className="text-gray-400 text-sm font-medium tracking-wide">No upcoming terminations</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        {incomingEnds.map(req => {
+                          const isApprovedMoveOut = req.end_request_status === 'approved'
+                          const rawEndDate = isApprovedMoveOut ? req.end_request_date : req.contract_end_date
+                          const endDateObj = new Date(rawEndDate)
+                          const isOverdue = endDateObj < new Date().setHours(0,0,0,0)
+                          
+                          return (
+                            <div key={req.id} className="py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 last:border-0 group transition-all">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <span className="px-2 py-1 bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded border border-gray-100 text-gray-400">
+                                    {isApprovedMoveOut ? 'Scheduled Move-Out' : (isOverdue ? 'Contract Expired' : 'Expiring Soon')}
+                                  </span>
+                                </div>
+                                <h4 className="font-bold text-lg text-black truncate mb-1">{req.property?.title}</h4>
+                                <div className="flex flex-col gap-1">
+                                  <p className="text-sm font-medium text-gray-400">{req.tenant?.first_name} {req.tenant?.last_name}</p>
+                                  <p className="text-xs font-bold text-black flex items-center gap-1.5 mt-1">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    Ends {new Date(rawEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
                                 </div>
                               </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
+                              <div className="flex items-center gap-3">
+                                {isApprovedMoveOut && (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); openEditDateModal(req); }}
+                                    className="px-6 py-2.5 border border-gray-200 bg-white text-black rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-all cursor-pointer"
+                                  >
+                                    Edit Date
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); openEndConfirmation('cancel_end', req.id); }}
+                                  className="px-6 py-2.5 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-gray-900 transition-all cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* SCHEDULED TODAY */}
               {activePanel === 'scheduled' && (
-                <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-6 text-gray-900 shadow-md shadow-black/10 border border-gray-200">
-                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm">
+                  <div className="flex items-start justify-between mb-8">
                     <div>
-                      <h3 className="font-black text-gray-900 text-base sm:text-lg">Booking Scheduled Today</h3>
-                      <p className="text-gray-500 text-sm mt-1">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                      <h3 className="text-2xl font-bold text-black tracking-tight">Scheduled Viewings</h3>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                     </div>
-                    <button onClick={() => router.push('/bookings')} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer">
-                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    <button onClick={() => router.push('/bookings')} className="p-2 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer border border-gray-100">
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </button>
                   </div>
 
                   {scheduledTodayBookings.length === 0 ? (
-                    <div className="py-6 text-center bg-gray-50 rounded-xl border border-gray-200">
-                      <p className="text-gray-500 text-sm font-medium">No Booking scheduled today.</p>
+                    <div className="py-12 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-100">
+                      <p className="text-gray-400 text-sm font-medium tracking-wide">No viewings scheduled today.</p>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="flex flex-col">
                       {scheduledTodayBookings.map((booking) => {
                         const bookingTime = booking.booking_date ? new Date(booking.booking_date) : null
                         const firstName = booking.tenant_profile?.first_name || ''
                         const lastName = booking.tenant_profile?.last_name || ''
 
                         return (
-                          <div key={booking.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-200">
-                            <div className="w-10 h-10 rounded-full bg-white text-blue-700 font-bold flex items-center justify-center text-sm shadow-sm">
-                              {firstName.charAt(0)}{lastName.charAt(0)}
+                          <div key={booking.id} className="py-5 flex items-center justify-between gap-4 border-b border-gray-100 last:border-0">
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-100 text-black font-bold flex items-center justify-center text-xs shrink-0">
+                                {firstName.charAt(0)}{lastName.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-bold text-sm text-black truncate">{`${firstName} ${lastName}`.trim() || 'Tenant'}</p>
+                                <p className="text-xs text-gray-400 mt-0.5 truncate">{booking.property?.title || 'Property'}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-sm text-gray-900 truncate">{`${firstName} ${lastName}`.trim() || 'Tenant'}</p>
-                              <p className="text-xs text-gray-500 mt-0.5 truncate">{booking.property?.title || 'Property'}</p>
-                              {bookingTime && !Number.isNaN(bookingTime.getTime()) && (
-                                <p className="text-[11px] text-gray-400 mt-0.5">{bookingTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
-                              )}
-                            </div>
+                            {bookingTime && !Number.isNaN(bookingTime.getTime()) && (
+                              <div className="px-3 py-1 bg-gray-50 rounded border border-gray-100">
+                                <p className="text-[10px] font-black text-black uppercase tracking-widest">{bookingTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -4555,6 +4580,42 @@ export default function LandlordDashboard({ session, profile }) {
                 ) : (
                   'Proceed to Payment'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Edit Date Modal */}
+      {editDateModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeEditDateModal}></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-black text-gray-900 mb-4 tracking-tight">Edit Move-Out Date</h3>
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-700 mb-2">New Date</label>
+              <input
+                type="date"
+                value={editDateModal.currentDate}
+                onChange={(e) => setEditDateModal({ ...editDateModal, currentDate: e.target.value })}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-black focus:border-black transition-all bg-gray-50"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={closeEditDateModal}
+                disabled={updatingDate}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitEditDate}
+                disabled={updatingDate}
+                className="flex-1 py-3 bg-black hover:bg-gray-800 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {updatingDate ? 'Saving...' : 'Save Date'}
               </button>
             </div>
           </div>

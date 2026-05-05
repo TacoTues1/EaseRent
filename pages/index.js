@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+﻿import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
@@ -708,7 +708,7 @@ export default function Home({ setHomeNavbarLoading }) {
         <div className="splash-screen">
           <img src="/home.png" alt="Abalay" className="splash-logo" />
           <div className="splash-brand">Abalay</div>
-          <div className="splash-tagline">Find your perfect home</div>
+          <div className="splash-tagline">Live at your comfort</div>
         </div>
       )}
 

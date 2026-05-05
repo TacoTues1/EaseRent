@@ -1,23 +1,27 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-)
+import { supabaseAdmin } from '../../../lib/supabaseAdmin'
+import { getAdminProfile, getAuthenticatedUser } from '../../../lib/apiAuth'
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST')
         return res.status(405).json({ error: 'Method not allowed' })
     }
 
-    const { table, select, filters, order, pagination, includeCount } = req.body
-
-    const allowedTables = ['properties', 'bookings', 'payment_requests', 'profiles', 'applications', 'available_time_slots', 'tenant_occupancies', 'maintenance_requests']
-    if (!allowedTables.includes(table)) {
-        return res.status(400).json({ error: 'Invalid table' })
+    if (!supabaseAdmin) {
+        return res.status(500).json({ error: 'Supabase admin client is not configured' })
     }
 
     try {
+        const user = await getAuthenticatedUser(req)
+        await getAdminProfile(supabaseAdmin, user.id)
+
+        const { table, select, filters, order, pagination, includeCount } = req.body
+
+        const allowedTables = ['properties', 'bookings', 'payment_requests', 'profiles', 'applications', 'available_time_slots', 'tenant_occupancies', 'maintenance_requests']
+        if (!allowedTables.includes(table)) {
+            return res.status(400).json({ error: 'Invalid table' })
+        }
+
         let query = includeCount
             ? supabaseAdmin.from(table).select(select || '*', { count: 'exact' })
             : supabaseAdmin.from(table).select(select || '*')
@@ -55,6 +59,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ data, count: includeCount ? (count || 0) : undefined })
     } catch (err) {
         console.error('Admin list-data exception:', err)
-        return res.status(500).json({ error: err.message })
+        const message = err.message || 'Request failed'
+        const status = message.includes('Only admins') ? 403 : message.includes('unreachable') ? 503 : 401
+        return res.status(status).json({ error: message })
     }
 }

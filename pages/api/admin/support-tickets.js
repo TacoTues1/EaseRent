@@ -129,7 +129,7 @@ export default async function handler(req, res) {
     return handlePatch(req, res, profile)
   } catch (error) {
     const message = error.message || 'Request failed'
-    const status = message.includes('Only admins') ? 403 : 401
+    const status = message.includes('Only admins') ? 403 : message.includes('unreachable') ? 503 : 401
     return res.status(status).json({ error: message })
   }
 }
