@@ -1342,7 +1342,7 @@ export default async function handler(req, res) {
                     await sendNotificationEmail({
                         to: recipientEmail,
                         subject: `Family Payment - ${familyMemberName || 'A family member'} paid ₱${(amount || 0).toLocaleString()}`,
-                        message: `Hi ${recipientName || 'Tenant'},\n\nYour family member ${familyMemberName || 'a family member'} has paid ₱${(amount || 0).toLocaleString()} for ${propertyTitle || 'your property'} via ${methodLabel}.\n\nThe payment is now awaiting landlord confirmation.\n\nThank you,\nEaseRent`
+                        message: `Hi ${recipientName || 'Tenant'},\n\nYour family member ${familyMemberName || 'a family member'} has paid ₱${(amount || 0).toLocaleString()} for ${propertyTitle || 'your property'} via ${methodLabel}.\n\nThe payment is now awaiting landlord confirmation.\n\nThank you,\Abalay`
                     })
                     results.email = true
                     console.log(`✅ Family payment email sent to ${recipientEmail}`)
@@ -1357,7 +1357,7 @@ export default async function handler(req, res) {
                 if (phone) {
                     try {
                         const { sendSMS } = await import('../../lib/sms')
-                        await sendSMS(phone, `[EaseRent] Your family member ${familyMemberName || 'someone'} paid ₱${(amount || 0).toLocaleString()} for ${propertyTitle || 'your property'} via ${methodLabel}. Awaiting landlord confirmation.`)
+                        await sendSMS(phone, `[Abalay] Your family member ${familyMemberName || 'someone'} paid ₱${(amount || 0).toLocaleString()} for ${propertyTitle || 'your property'} via ${methodLabel}. Awaiting landlord confirmation.`)
                         results.sms = true
                         console.log(`✅ Family payment SMS sent to ${phone}`)
                     } catch (err) {

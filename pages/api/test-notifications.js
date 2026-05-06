@@ -111,7 +111,7 @@ export default async function handler(req, res) {
         const dummyApp = { applicantName: 'Test Tenant', propertyName: 'Sunset Villa', status: 'pending' };
         const dummyMaintenance = { title: 'Broken AC', status: 'In Progress', note: 'Technician arriving at 2pm' };
 
-        await runSafe('SMS: Direct', () => sendSMS(phone, 'This is a direct test SMS from EaseRent.'));
+        await runSafe('SMS: Direct', () => sendSMS(phone, 'This is a direct test SMS from Abalay.'));
         await runSafe('SMS: OTP', () => sendOTP(phone, '123456'));
         await runSafe('SMS: Booking Confirmation', () => sendBookingConfirmation(phone, dummyBooking));
 

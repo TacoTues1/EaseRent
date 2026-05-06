@@ -65,7 +65,7 @@ export default function Compare() {
   return (
     <div className="min-h-screen bg-gray-50 text-black font-sans flex flex-col selection:bg-black selection:text-white">
       <Head>
-        <title>Compare Properties | EaseRent</title>
+        <title>Compare Properties | Abalay</title>
       </Head>
 
       <Navbar />

@@ -1267,7 +1267,7 @@ async function sendUtilityReminder(supabase, tenant, type, message, subject) {
                         <div style="padding: 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
                             <h2 style="color: #166534; margin-top: 0;">${subject}</h2>
                             <p>${message}</p>
-                            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/payments" 
+                            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/payments" 
                                style="display: inline-block; background-color: #166534; color: white; padding: 10px 20px; margin-top: 15px; text-decoration: none; rounded: 5px; font-weight: bold;">
                                View Payments
                             </a>
@@ -1284,7 +1284,7 @@ async function sendUtilityReminder(supabase, tenant, type, message, subject) {
   // 3. SMS
   if (phone) {
     try {
-      await sendSMS(phone, `[EaseRent] ${message}`);
+      await sendSMS(phone, `[Abalay] ${message}`);
       console.log(`[Utility Reminder] SMS sent to ${phone}`);
     } catch (e) { console.error("SMS error:", e); }
   } else {
@@ -1345,7 +1345,7 @@ async function sendLandlordUtilityReminder(supabase, landlordId, tenant, utility
                 <h2 style="color: #92400e; margin-top: 0;">${subject}</h2>
                 <p>Hi ${landlordName},</p>
                 <p>${landlordMessage}</p>
-                <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/payments" 
+                <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/payments" 
                    style="display: inline-block; background-color: #92400e; color: white; padding: 10px 20px; margin-top: 15px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                    View Payments
                 </a>
@@ -1363,7 +1363,7 @@ async function sendLandlordUtilityReminder(supabase, landlordId, tenant, utility
     const landlordPhone = formatPhoneNumber(landlordProfile?.phone);
     if (landlordPhone) {
       try {
-        await sendSMS(landlordPhone, `[EaseRent] ${landlordMessage}`);
+        await sendSMS(landlordPhone, `[Abalay] ${landlordMessage}`);
         console.log(`[Landlord Utility Reminder] SMS sent to ${landlordPhone}`);
       } catch (e) {
         console.error(`[Landlord Utility Reminder] SMS error:`, e);

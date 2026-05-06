@@ -154,7 +154,7 @@ export default function Contact() {
   return (
     <div className="min-h-screen bg-[#f6f4ef] text-black flex flex-col">
       <Head>
-        <title>Emergency Contacts | EaseRent</title>
+        <title>Emergency Contacts | Abalay</title>
         <meta name="description" content="Location-based emergency hotline numbers" />
       </Head>
 

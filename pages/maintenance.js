@@ -977,7 +977,7 @@ export default function MaintenancePage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 phoneNumber: landlordProfile.phone,
-                message: `EaseRent Alert: New maintenance request for "${property.title}". Title: ${formData.title}. Log in to view.`
+                message: `Abalay: New maintenance request for "${property.title}". Title: ${formData.title}. Log in to view.`
               })
             })
           }

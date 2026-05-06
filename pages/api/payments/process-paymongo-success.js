@@ -315,7 +315,7 @@ export default async function handler(req, res) {
             if (tenantProfile?.phone) {
                 try {
                     if (isFamilyPayer) {
-                        await sendSMS(tenantProfile.phone, `[EaseRent] Your family member ${payerName} paid ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" via PayMongo.`);
+                        await sendSMS(tenantProfile.phone, `[Abalay] Your family member ${payerName} paid ₱${amountPaid.toLocaleString()} for "${request.properties?.title}" via PayMongo.`);
                     } else {
                         await sendSMS(tenantProfile.phone, message);
                     }
@@ -524,7 +524,7 @@ export default async function handler(req, res) {
                                 <p>Tenant: ${payoutDisplayName}</p>
                                 <p>Reference Number: <strong>${payoutRefNumber}</strong></p>
                                 <p>Transaction ID: <strong>${transactionId}</strong></p>
-                                <p>Thank you for using EaseRent!</p>
+                                <p>Thank you for using Abalay!</p>
                             </div>`
                         });
                         console.log(`✅ Payout notification email sent to ${landlordEmail2}`);
@@ -538,9 +538,9 @@ export default async function handler(req, res) {
                     try {
                         await sendSMS(
                             landlordProfile2.phone,
-                            `EaseRent: ₱${payoutAmount.toLocaleString()} sent to your ${methodLabel} (${payoutDestination}) from ${payoutDisplayName}'s payment for "${request.properties?.title}". Ref: ${payoutRefNumber}`
+                            `Abalay: ₱${payoutAmount.toLocaleString()} sent to your ${methodLabel} (${payoutDestination}) from ${payoutDisplayName}'s payment for "${request.properties?.title}". Ref: ${payoutRefNumber}`
                         );
-                        console.log(`✅ Payout SMS sent to ${landlordProfile2.phone}`);
+                        console.log(`Payout SMS sent to ${landlordProfile2.phone}`);
                     } catch (smsErr) {
                         console.error('Payout SMS error:', smsErr);
                     }

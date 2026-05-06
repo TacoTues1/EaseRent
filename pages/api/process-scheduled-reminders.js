@@ -485,7 +485,7 @@ async function processUnreadMessageReminder(reminder) {
             <h2 style="color: #111827; margin-top: 0;">💬 Unread Message</h2>
             <p>Hi <strong>${receiver?.first_name || 'there'}</strong>,</p>
             <p>You have an unread message from <strong>${senderName}</strong> that's been waiting for 6+ hours.</p>
-            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/messages" 
+            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/messages" 
                style="display: inline-block; background-color: #000000; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 16px;">
               View Message
             </a>
@@ -577,7 +577,7 @@ async function processBookingReminder(reminder) {
                             <p style="margin: 4px 0;"><strong>Time (PH):</strong> ${scheduleDisplay.timeRangeText}</p>
             </div>
             <p>Please be on time. See you there!</p>
-            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/bookings" 
+            <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/bookings" 
                style="display: inline-block; background-color: #1e40af; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 16px;">
               View Booking Details
             </a>

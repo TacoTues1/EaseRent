@@ -148,19 +148,6 @@ export default function Privacy() {
               </p>
             </section>
 
-            {/* 8. Compliance */}
-            {/* <section id="compliance">
-              <h2 className="text-2xl font-bold mb-4">8. Legal Compliance & Protection</h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
-                EaseRent operates in full compliance with applicable local, state, and international data protection laws, including consumer protection regulations. We are committed to transparency and do not engage in unauthorized data mining or the sale of your personal information to third-party marketers.
-              </p>
-              <ul className="list-disc pl-5 space-y-2 text-gray-600">
-                <li><strong>GDPR & CCPA Compliant:</strong> If you are a resident of the European Economic Area (EEA) or California (USA), you have specific data protection and privacy rights. EaseRent ensures standard, legally binding protections for all platform users.</li>
-                <li><strong>Law Enforcement:</strong> We will not disclose your personal data unless strictly required by a valid legal process, subpoena, or court order.</li>
-                <li><strong>Platform Integrity:</strong> We strictly monitor for fraud, money laundering, and illicit activities to ensure the platform remains secure, safe, and fully lawful for all verified users.</li>
-              </ul>
-            </section> */}
-
             {/* Contact */}
             <section className="bg-black text-white rounded-2xl p-8 mt-8">
               <h2 className="text-xl font-bold mb-2">Have questions?</h2>

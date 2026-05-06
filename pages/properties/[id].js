@@ -1267,7 +1267,7 @@ export default function PropertyDetail() {
       // 8. SMS Notification
       if (landlordProfile?.phone) {
         try {
-          const smsMessage = `EaseRent Alert: New viewing request from ${profile?.first_name || 'A Tenant'} for "${property.title}". Log in to review.`
+          const smsMessage = `Abalay: New viewing request from ${profile?.first_name || 'A Tenant'} for "${property.title}". Log in to review.`
           await fetch('/api/send-sms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

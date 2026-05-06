@@ -147,7 +147,7 @@ export default async function handler(req, res) {
                 <div style="padding: 20px; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;">
                   <h2 style="color: #0369a1; margin-top: 0;">⚠️ ${utilityLabel} Reminder</h2>
                   <p>${reminderMessage}</p>
-                  <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/dashboard" 
+                  <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/dashboard" 
                      style="display: inline-block; background-color: #0369a1; color: white; padding: 10px 20px; margin-top: 15px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                     View Dashboard
                   </a>
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
 
       if (phone) {
         try {
-          await sendSMS(phone, `[EaseRent] ${reminderMessage}`)
+          await sendSMS(phone, `[Abalay] ${reminderMessage}`)
           results.sms_sent = true
         } catch (e) {
           console.error('SMS error:', e)
@@ -334,7 +334,7 @@ export default async function handler(req, res) {
               <div style="padding: 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;">
                 <h2 style="color: #166534; margin-top: 0;">🏠 Rent Bill</h2>
                 <p>${rentMessage}</p>
-                <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://easerent.vercel.app'}/payments" 
+                <a href="${process.env.NEXT_PUBLIC_SITE_URL || 'https://abalay-rent.me'}/payments" 
                    style="display: inline-block; background-color: #166534; color: white; padding: 10px 20px; margin-top: 15px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                   View Payments
                 </a>
@@ -351,7 +351,7 @@ export default async function handler(req, res) {
     // 3. SMS
     if (phone) {
       try {
-        await sendSMS(phone, `[EaseRent] ${rentMessage}`)
+        await sendSMS(phone, `[Abalay] ${rentMessage}`)
         results.sms_sent = true
       } catch (e) {
         console.error("SMS error:", e)

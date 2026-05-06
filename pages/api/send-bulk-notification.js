@@ -126,7 +126,7 @@ ${body}
 
       // Send SMS if phone is verified
       if (tenant.phone && tenant.phone_verified) {
-        const smsMessage = `[EaseRent] ${subject}\n\n${body}${ending ? `\n\n${ending}` : ''}\n\n- ${landlordName}`
+        const smsMessage = `[Abalay] ${subject}\n\n${body}${ending ? `\n\n${ending}` : ''}\n\n- ${landlordName}`
 
         try {
           await sendSMS(tenant.phone, smsMessage.substring(0, 500))
