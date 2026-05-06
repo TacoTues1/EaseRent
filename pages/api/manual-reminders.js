@@ -1086,6 +1086,27 @@ export default async function handler(req, res) {
                     }
                   } else {
                     console.log(`[Late Fee Check] No available security deposit for occupancy ${bill.occupancy?.id} — penalty added to bill only.`);
+
+                    // Notify Tenant (no deposit available)
+                    const noDepositTenantMsg = `₱${lateFee.toLocaleString()} has been auto-added as a late payment penalty for "${bill.property?.title}".`;
+                    await supabaseAdmin.from('notifications').insert({
+                      recipient: bill.tenant,
+                      actor: bill.landlord || bill.occupancy?.landlord_id,
+                      type: 'late_fee_no_deposit',
+                      message: noDepositTenantMsg,
+                      link: '/payments'
+                    });
+
+                    // Notify Landlord (no deposit available)
+                    if (bill.occupancy?.landlord_id) {
+                      await supabaseAdmin.from('notifications').insert({
+                        recipient: bill.occupancy.landlord_id,
+                        actor: bill.tenant,
+                        type: 'late_fee_no_deposit',
+                        message: `₱${lateFee.toLocaleString()} has been auto-added as a late payment penalty for "${bill.property?.title}".`,
+                        link: '/dashboard'
+                      });
+                    }
                   }
 
                   // Notify Tenant about late fee

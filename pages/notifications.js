@@ -111,7 +111,7 @@ export default function NotificationsPage() {
       'payment', 'payment_confirmed', 'payment_rejected', 'payment_request',
       'payment_bill', 'payment_confirmation_needed', 'cash_payment',
       'confirm_payment', 'cancel_bill', 'reject_payment',
-      'rent_bill_reminder', 'security_deposit_deduction'
+      'rent_bill_reminder', 'security_deposit_deduction', 'late_fee_no_deposit'
     ].includes(type)) {
       router.push('/payments')
     }

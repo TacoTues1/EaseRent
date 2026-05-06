@@ -77,7 +77,7 @@ export default function Team() {
         {
             id: 2,
             role: 'Lead Designer',
-            name: 'UI and UX Design',
+            name: 'Researcher and Designer',
             image: '/teampicture/designer.png',
             description:
                 'Crafting a beautiful and highly intuitive interface to make the process of renting simple, fast, and accessible for everyone.',

@@ -35,7 +35,7 @@ export default function NotificationToast() {
         if (['payment', 'payment_confirmed', 'payment_rejected', 'payment_request',
             'payment_bill', 'payment_confirmation_needed', 'cash_payment',
             'confirm_payment', 'cancel_bill', 'reject_payment',
-            'rent_bill_reminder', 'security_deposit_deduction', 'payment_late_fee', 'payment_paid'
+            'rent_bill_reminder', 'security_deposit_deduction', 'payment_late_fee', 'payment_paid', 'late_fee_no_deposit'
         ].includes(type)) return '/payments'
 
         if (['maintenance', 'maintenance_status', 'maintenance_request'].includes(type)) return '/maintenance'
