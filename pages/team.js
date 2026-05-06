@@ -76,7 +76,7 @@ export default function Team() {
         },
         {
             id: 2,
-            role: 'Lead Designer',
+            role: 'Team Leader and Designer',
             name: 'Researcher and Designer',
             image: '/teampicture/designer.png',
             description:
