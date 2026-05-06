@@ -177,6 +177,25 @@ export default function Messages() {
     return `Last seen ${timestamp.toLocaleDateString()}`
   }
 
+  const formatMessageDate = (dateString) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const diffDays = Math.round((today - messageDay) / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: now.getFullYear() !== date.getFullYear() ? 'numeric' : undefined })
+  }
+
+  const shouldShowDateSeparator = (currentMsg, prevMsg) => {
+    if (!prevMsg) return true
+    const currentDate = new Date(currentMsg.created_at)
+    const prevDate = new Date(prevMsg.created_at)
+    return currentDate.toDateString() !== prevDate.toDateString()
+  }
+
   const emitTypingSignal = () => {
     const now = Date.now()
     if (now - typingEmitAtRef.current < 900) return
@@ -2475,8 +2494,21 @@ export default function Messages() {
                       ? (profile?.first_name?.[0] || '?').toUpperCase()
                       : (selectedConversation?.other_user?.first_name?.[0] || '?').toUpperCase()
 
+                    const prevMsg = index > 0 ? messages[index - 1] : null
+                    const showDateSep = shouldShowDateSeparator(msg, prevMsg)
+
                     return (
-                      <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                      <div key={msg.id}>
+                        {showDateSep && (
+                          <div className="flex items-center justify-center my-4">
+                            <div className="flex-1 h-px bg-gray-200" />
+                            <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                              {formatMessageDate(msg.created_at)}
+                            </span>
+                            <div className="flex-1 h-px bg-gray-200" />
+                          </div>
+                        )}
+                      <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                         <div className={`flex gap-2 max-w-[75%] sm:max-w-[60%] ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
 
                           {/* Profile Circle for Messages */}
@@ -2553,6 +2585,7 @@ export default function Messages() {
                             <span>- {msg.read ? 'Seen' : 'Sent'}</span>
                           )}
                         </div>
+                      </div>
                       </div>
                     )
                   })}
@@ -2678,16 +2711,30 @@ export default function Messages() {
                     </div>
                   ) : (
                     <div>
-                      {groupMessages.map((msg) => {
+                      {groupMessages.map((msg, index) => {
                         const isOwn = msg.sender_id === session.user.id
                         const systemEventText = getGroupSystemEventText(msg)
 
+                        const prevMsg = index > 0 ? groupMessages[index - 1] : null
+                        const showDateSep = shouldShowDateSeparator(msg, prevMsg)
+
                         if (systemEventText) {
                           return (
-                            <div key={msg.id} className="flex items-center justify-center my-3 animate-in fade-in duration-200">
-                              <p className="text-xs text-gray-500 text-center font-medium">
-                                {systemEventText}
-                              </p>
+                            <div key={msg.id}>
+                              {showDateSep && (
+                                <div className="flex items-center justify-center my-4">
+                                  <div className="flex-1 h-px bg-gray-200" />
+                                  <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                    {formatMessageDate(msg.created_at)}
+                                  </span>
+                                  <div className="flex-1 h-px bg-gray-200" />
+                                </div>
+                              )}
+                              <div className="flex items-center justify-center my-3 animate-in fade-in duration-200">
+                                <p className="text-xs text-gray-500 text-center font-medium">
+                                  {systemEventText}
+                                </p>
+                              </div>
                             </div>
                           )
                         }
@@ -2708,7 +2755,17 @@ export default function Messages() {
                           : null
 
                         return (
-                          <div key={msg.id} className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} mb-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                          <div key={msg.id}>
+                            {showDateSep && (
+                              <div className="flex items-center justify-center my-4">
+                                <div className="flex-1 h-px bg-gray-200" />
+                                <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                                  {formatMessageDate(msg.created_at)}
+                                </span>
+                                <div className="flex-1 h-px bg-gray-200" />
+                              </div>
+                            )}
+                          <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} mb-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                             {/* Show sender name for non-own messages in group */}
                             {!isOwn && senderName && (
                               <div className="text-[10px] text-gray-500 font-medium mb-0.5 pl-9">
@@ -2766,6 +2823,7 @@ export default function Messages() {
                             <div className={`text-[10px] text-gray-400 mt-1 ${isOwn ? 'pr-1' : 'pl-9'}`}>
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase()}
                             </div>
+                          </div>
                           </div>
                         )
                       })}

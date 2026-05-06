@@ -400,77 +400,70 @@ export default async function handler(req, res) {
 
             if (error) throw error
 
-            const initialGroupIds = (memberships || []).map(m => m.group_conversation_id)
-            await syncGroupMembershipForGroups(initialGroupIds)
-
-            const { data: refreshedMemberships, error: refreshedError } = await supabaseAdmin
-                .from('group_conversation_members')
-                .select('group_conversation_id')
-                .eq('user_id', userId)
-
-            if (refreshedError) throw refreshedError
-
-            const groupIds = (refreshedMemberships || []).map(m => m.group_conversation_id)
+            const groupIds = (memberships || []).map(m => m.group_conversation_id)
             if (groupIds.length === 0) {
                 return res.status(200).json({ groups: [] })
             }
 
-            const { data: groups, error: groupError } = await supabaseAdmin
-                .from('group_conversations')
-                .select('*')
-                .in('id', groupIds)
-                .order('updated_at', { ascending: false })
+            // Fetch groups and all members in parallel (no sync on list — sync runs on message load)
+            const [groupsResult, allMembersResult] = await Promise.all([
+                supabaseAdmin
+                    .from('group_conversations')
+                    .select('*')
+                    .in('id', groupIds)
+                    .order('updated_at', { ascending: false }),
+                supabaseAdmin
+                    .from('group_conversation_members')
+                    .select('group_conversation_id, user_id, role, user:profiles!group_conversation_members_user_id_fkey(id, first_name, middle_name, last_name, role, avatar_url)')
+                    .in('group_conversation_id', groupIds)
+            ])
 
-            if (groupError) throw groupError
+            if (groupsResult.error) throw groupsResult.error
 
-            // Enrich with member count and member profiles
-            const enrichedGroups = await Promise.all(
-                (groups || []).map(async group => {
-                    const { data: members } = await supabaseAdmin
-                        .from('group_conversation_members')
-                        .select('user_id, role, user:profiles!group_conversation_members_user_id_fkey(id, first_name, middle_name, last_name, role, avatar_url)')
-                        .eq('group_conversation_id', group.id)
+            const groups = groupsResult.data || []
+            const allMembers = allMembersResult.data || []
 
-                    const memberProfiles = (members || []).map(member => member.user).filter(Boolean)
-                    const enrichedMemberProfiles = await enrichProfilesWithFamilyPrimary(memberProfiles)
-                    const enrichedMemberMap = (enrichedMemberProfiles || []).reduce((acc, row) => {
-                        acc[row.id] = row
-                        return acc
-                    }, {})
+            // Build members-by-group map
+            const membersByGroup = {}
+            for (const member of allMembers) {
+                const gid = member.group_conversation_id
+                if (!membersByGroup[gid]) membersByGroup[gid] = []
+                membersByGroup[gid].push(member)
+            }
 
-                    const normalizedMembers = (members || []).map(member => ({
-                        ...member,
-                        user: member.user_id ? (enrichedMemberMap[member.user_id] || member.user) : member.user
-                    }))
+            // Batch unread counts: get read message IDs for this user across all groups
+            const [allOtherMessagesResult, allReadsResult] = await Promise.all([
+                supabaseAdmin
+                    .from('group_messages')
+                    .select('id, group_conversation_id')
+                    .in('group_conversation_id', groupIds)
+                    .neq('sender_id', userId),
+                supabaseAdmin
+                    .from('group_message_reads')
+                    .select('group_message_id')
+                    .eq('user_id', userId)
+            ])
 
-                    // Get unread count for this user
-                    const { data: allMessages } = await supabaseAdmin
-                        .from('group_messages')
-                        .select('id')
-                        .eq('group_conversation_id', group.id)
-                        .neq('sender_id', userId)
-
-                    const messageIds = (allMessages || []).map(m => m.id)
-                    let unreadCount = messageIds.length
-
-                    if (messageIds.length > 0) {
-                        const { data: reads } = await supabaseAdmin
-                            .from('group_message_reads')
-                            .select('group_message_id')
-                            .eq('user_id', userId)
-                            .in('group_message_id', messageIds)
-
-                        unreadCount = messageIds.length - (reads || []).length
-                    }
-
-                    return {
-                        ...group,
-                        members: normalizedMembers,
-                        member_count: normalizedMembers.length,
-                        unread_count: Math.max(0, unreadCount)
-                    }
-                })
+            const readMessageIdSet = new Set(
+                (allReadsResult.data || []).map(r => r.group_message_id)
             )
+
+            const unreadCountByGroup = {}
+            for (const msg of (allOtherMessagesResult.data || [])) {
+                if (!readMessageIdSet.has(msg.id)) {
+                    unreadCountByGroup[msg.group_conversation_id] = (unreadCountByGroup[msg.group_conversation_id] || 0) + 1
+                }
+            }
+
+            const enrichedGroups = groups.map(group => {
+                const members = membersByGroup[group.id] || []
+                return {
+                    ...group,
+                    members,
+                    member_count: members.length,
+                    unread_count: Math.max(0, unreadCountByGroup[group.id] || 0)
+                }
+            })
 
             return res.status(200).json({ groups: enrichedGroups })
         } catch (err) {
