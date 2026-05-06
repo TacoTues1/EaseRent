@@ -67,7 +67,8 @@ export default function Team() {
         {
             id: 1,
             role: 'Lead Researcher',
-            name: 'Research and Strategy',
+            name: 'Nicole Ann Flores',
+            email: 'annics12345@gmail.com',
             image: '/teampicture/researcher.png',
             description:
                 'Dedicated to uncovering the best rental experiences, ensuring the platform truly serves user needs through continuous study and analysis.',
@@ -77,7 +78,8 @@ export default function Team() {
         {
             id: 2,
             role: 'Team Leader and Designer',
-            name: 'Researcher and Designer',
+            name: 'Alejo Jr. Batohanon',
+            email: 'alejobatohanon@gmail.com',
             image: '/teampicture/designer.png',
             description:
                 'Crafting a beautiful and highly intuitive interface to make the process of renting simple, fast, and accessible for everyone.',
@@ -86,8 +88,9 @@ export default function Team() {
         },
         {
             id: 3,
-            role: 'Programmer',
-            name: 'Software Engineer',
+            role: 'Full Stack Developer',
+            name: 'Alfonz Pereez',
+            email: 'alfonzperez92@gmail.com',
             image: '/teampicture/developer.png',
             description:
                 "Building and maintaining the platform's core features to keep Abalay reliable, secure, and fast for every user.",
@@ -145,6 +148,17 @@ export default function Team() {
                                     <h2 className="text-2xl sm:text-[28px] font-black text-gray-900 leading-tight mt-3">
                                         {member.name}
                                     </h2>
+
+                                    {member.email && (
+                                        <a
+                                            href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(member.email.trim())}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-2 inline-flex items-center text-sm font-semibold text-gray-700 transition-colors hover:text-black"
+                                        >
+                                            {member.email}
+                                        </a>
+                                    )}
 
                                     <p className="text-gray-600 text-sm sm:text-base font-medium leading-relaxed mt-3 min-h-[96px]">
                                         {member.description}
