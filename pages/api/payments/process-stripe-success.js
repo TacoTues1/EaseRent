@@ -45,9 +45,6 @@ export default async function handler(req, res) {
             parseFloat(request.rent_amount || 0) +
             parseFloat(request.advance_amount || 0) +
             parseFloat(request.security_deposit_amount || 0) +
-            parseFloat(request.water_bill || 0) +
-            parseFloat(request.electrical_bill || 0) +
-            parseFloat(request.wifi_bill || 0) +
             parseFloat(request.other_bills || 0)
         );
 
@@ -142,9 +139,6 @@ export default async function handler(req, res) {
                 tenant: request.tenant,
                 landlord: request.landlord,
                 amount: amountPaid,
-                water_bill: request.water_bill,
-                electrical_bill: request.electrical_bill,
-                wifi_bill: request.wifi_bill,
                 other_bills: request.other_bills,
                 bills_description: request.bills_description,
                 method: 'stripe',
@@ -228,8 +222,6 @@ export default async function handler(req, res) {
                     property_id: request.property_id,
                     occupancy_id: request.occupancy_id,
                     rent_amount: monthlyRent, // 1 month rent
-                    water_bill: 0,
-                    electrical_bill: 0,
                     other_bills: 0,
                     bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1}) - via Stripe`,
                     due_date: futureDueDate.toISOString(),

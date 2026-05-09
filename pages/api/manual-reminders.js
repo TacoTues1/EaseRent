@@ -636,8 +636,6 @@ export default async function handler(req, res) {
                     property_id: occ.property?.id,
                     occupancy_id: occ.id,
                     rent_amount: rentAmount,
-                    water_bill: 0,
-                    electrical_bill: 0,
                     other_bills: 0,
                     bills_description: `Monthly Rent for ${monthName}`,
                     due_date: dueDate.toISOString(),
@@ -1002,7 +1000,8 @@ export default async function handler(req, res) {
           `)
           .eq('status', 'pending')
           .lt('due_date', todayISO) // Due date is in the past
-          .gt('rent_amount', 0); // Only apply to RENT bills (usually have rent_amount > 0)
+          .gt('rent_amount', 0) // Only apply to RENT bills (usually have rent_amount > 0)
+          .or('is_move_in_payment.is.null,is_move_in_payment.eq.false'); // Skip first-time / newly assigned tenant bills
 
         if (overdueError) {
           console.error('[Late Fee Check] Error fetching overdue bills:', overdueError);
@@ -1112,9 +1111,6 @@ export default async function handler(req, res) {
                   // Notify Tenant about late fee
                   const totalDue = (
                     (parseFloat(bill.rent_amount) || 0) +
-                    (parseFloat(bill.water_bill) || 0) +
-                    (parseFloat(bill.electrical_bill) || 0) +
-                    (parseFloat(bill.wifi_bill) || 0) +
                     newOtherBills
                   );
                   let message = `A late payment fee of ₱${lateFee.toLocaleString()} has been added to your rent bill for "${bill.property?.title}". Total due: ₱${totalDue.toLocaleString()}. Please pay immediately.`;

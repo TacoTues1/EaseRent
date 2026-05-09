@@ -1314,7 +1314,7 @@ export default function BookingsPage() {
       const { error: billError } = await supabase.from('payment_requests').insert({
         landlord: session.user.id, tenant: assignBooking.tenant, property_id: selectedPropertyId, occupancy_id: occupancyId,
         rent_amount: rentAmount, security_deposit_amount: securityDepositAmount, advance_amount: advanceAmount,
-        water_bill: 0, electrical_bill: 0, other_bills: 0,
+        other_bills: 0,
         bills_description: 'Move-in Payment (Rent + Advance + Security Deposit)',
         due_date: dueDate.toISOString(), status: 'pending', is_move_in_payment: true
       })
@@ -2385,10 +2385,9 @@ export default function BookingsPage() {
               </p>
             )}
 
-            <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-5">
+            {/* <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-5">
               <p className="text-xs uppercase tracking-wider font-bold text-red-600 mb-1">Warning</p>
-              {/* <p className="text-sm text-red-700">This action cannot be undone.</p> */}
-            </div>
+            </div> */}
 
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-5">
               <p className="text-xs uppercase tracking-wider font-bold text-amber-700 mb-1">Selected Request</p>

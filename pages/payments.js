@@ -48,8 +48,6 @@ export default function PaymentsPage() {
   const [editingBill, setEditingBill] = useState(null)
   const [editFormData, setEditFormData] = useState({
     rent_amount: '',
-    water_bill: '',
-    electrical_bill: '',
     other_bills: '',
     bills_description: '',
     due_date: ''
@@ -71,9 +69,6 @@ export default function PaymentsPage() {
     occupancy_id: '', // NEW: Track current occupancy
     tenant: '',
     amount: '', // Rent Amount
-    water_bill: '',
-    electrical_bill: '',
-    wifi_bill: '', // Added
     other_bills: '',
     bills_description: '',
     due_date: '', // General/Rent due date
@@ -181,9 +176,6 @@ export default function PaymentsPage() {
       parseFloat(bill.rent_amount || 0) +
       parseFloat(bill.security_deposit_amount || 0) +
       parseFloat(bill.advance_amount || 0) +
-      parseFloat(bill.water_bill || 0) +
-      parseFloat(bill.electrical_bill || 0) +
-      parseFloat(bill.wifi_bill || 0) +
       parseFloat(bill.other_bills || 0)
     );
     return Math.max(0, total - (parseFloat(credit) || 0));
@@ -355,7 +347,7 @@ export default function PaymentsPage() {
 
     const { data, error } = await supabase
       .from('payment_requests')
-      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills')
+      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, other_bills')
       .eq('landlord', session.user.id)
       .eq('status', 'paid')
       .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
@@ -461,15 +453,12 @@ export default function PaymentsPage() {
       finalDueDate = formData.due_date;
       billTypeLabel = 'Rent';
     } else if (activeTab === 'water') {
-      water = parseFloat(formData.water_bill) || 0;
       finalDueDate = formData.water_due_date || formData.due_date;
       billTypeLabel = 'Water Bill';
     } else if (activeTab === 'electricity') {
-      electrical = parseFloat(formData.electrical_bill) || 0;
       finalDueDate = formData.electrical_due_date || formData.due_date;
       billTypeLabel = 'Electricity Bill';
     } else if (activeTab === 'internet') {
-      wifi = parseFloat(formData.wifi_bill) || 0;
       finalDueDate = formData.wifi_due_date || formData.due_date;
       billTypeLabel = 'Internet Bill';
     } else if (activeTab === 'other') {
@@ -514,9 +503,6 @@ export default function PaymentsPage() {
 
           // Amounts
           rent_amount: rent,
-          water_bill: water,
-          electrical_bill: electrical,
-          wifi_bill: wifi, // Make sure this column exists in your DB
           other_bills: other,
 
           bills_description: formData.bills_description || `No Message`,
@@ -564,7 +550,7 @@ export default function PaymentsPage() {
       // Reset Form
       setFormData({
         property_id: '', application_id: '', occupancy_id: '', tenant: '',
-        amount: '', water_bill: '', electrical_bill: '', wifi_bill: '', other_bills: '',
+        amount: '', other_bills: '',
         bills_description: '',
         due_date: '', electrical_due_date: '', water_due_date: '', wifi_due_date: '', other_due_date: '',
         method: 'bank_transfer'
@@ -721,8 +707,6 @@ export default function PaymentsPage() {
       const isMoveIn = selectedBill.is_move_in_payment;
       const oneTimeCharges = (
         parseFloat(selectedBill.security_deposit_amount || 0) +
-        parseFloat(selectedBill.water_bill || 0) +
-        parseFloat(selectedBill.electrical_bill || 0) +
         parseFloat(selectedBill.other_bills || 0) +
         (isMoveIn ? parseFloat(selectedBill.advance_amount || 0) : 0)
       );
@@ -1316,9 +1300,6 @@ export default function PaymentsPage() {
           tenant: request.tenant,
           landlord: session.user.id,
           amount: recordedAmount,
-          water_bill: request.water_bill,
-          electrical_bill: request.electrical_bill,
-          wifi_bill: request.wifi_bill,
           other_bills: request.other_bills,
           bills_description: request.bills_description,
           method: request.payment_method || 'cash',
@@ -1385,8 +1366,6 @@ export default function PaymentsPage() {
               property_id: request.property_id,
               occupancy_id: effectiveOccupancyId || null,
               rent_amount: monthlyRent,
-              water_bill: 0,
-              electrical_bill: 0,
               other_bills: 0,
               bills_description: `Advance Payment (Month ${i + 1} of ${extraMonths + 1})`,
               due_date: futureDueDate.toISOString(),
@@ -1414,9 +1393,6 @@ export default function PaymentsPage() {
           parseFloat(request.rent_amount || 0) +
           parseFloat(request.security_deposit_amount || 0) +
           parseFloat(request.advance_amount || 0) + // Advance is part of the bill owed and consumed immediately
-          parseFloat(request.water_bill || 0) +
-          parseFloat(request.electrical_bill || 0) +
-          parseFloat(request.wifi_bill || 0) +
           parseFloat(request.other_bills || 0)
         );
 
@@ -1560,8 +1536,6 @@ export default function PaymentsPage() {
             parseFloat(request.rent_amount || 0) +
             parseFloat(request.security_deposit_amount || 0) +
             parseFloat(request.advance_amount || 0) +
-            parseFloat(request.water_bill || 0) +
-            parseFloat(request.electrical_bill || 0) +
             parseFloat(request.other_bills || 0)
           ).toLocaleString()} for ${request.properties?.title || 'property'} was rejected by the landlord. Please contact your landlord for details.`,
           link: '/payments'
@@ -1597,8 +1571,6 @@ export default function PaymentsPage() {
     setEditingBill(request)
     setEditFormData({
       rent_amount: request.rent_amount || '',
-      water_bill: request.water_bill || '',
-      electrical_bill: request.electrical_bill || '',
       other_bills: request.other_bills || '',
       bills_description: request.bills_description || '',
       due_date: request.due_date ? request.due_date.split('T')[0] : ''
@@ -1614,8 +1586,6 @@ export default function PaymentsPage() {
       .from('payment_requests')
       .update({
         rent_amount: parseFloat(editFormData.rent_amount) || 0,
-        water_bill: parseFloat(editFormData.water_bill) || 0,
-        electrical_bill: parseFloat(editFormData.electrical_bill) || 0,
         other_bills: parseFloat(editFormData.other_bills) || 0,
         bills_description: editFormData.bills_description,
         due_date: editFormData.due_date
@@ -1758,11 +1728,8 @@ export default function PaymentsPage() {
                     'Property': r.properties?.title || '-',
                     'Tenant': r.tenant_profile ? `${r.tenant_profile.first_name || ''} ${r.tenant_profile.middle_name || ''} ${r.tenant_profile.last_name || ''}`.replace(/\s+/g, ' ').trim() : '-',
                     'Rent': r.rent_amount || 0,
-                    'Water': r.water_bill || 0,
-                    'Electricity': r.electrical_bill || 0,
-                    'Internet': r.wifi_bill || 0,
                     'Other': r.other_bills || 0,
-                    'Total': (parseFloat(r.rent_amount || 0) + parseFloat(r.water_bill || 0) + parseFloat(r.electrical_bill || 0) + parseFloat(r.wifi_bill || 0) + parseFloat(r.other_bills || 0)).toFixed(2),
+                    'Total': (parseFloat(r.rent_amount || 0) + parseFloat(r.other_bills || 0)).toFixed(2),
                     'Status': (r.status || '').replace(/_/g, ' '),
                     'Due Date': r.due_date ? new Date(r.due_date).toLocaleDateString() : '-',
                     'Created': r.created_at ? new Date(r.created_at).toLocaleDateString() : '-',
@@ -2066,12 +2033,10 @@ export default function PaymentsPage() {
                   const rent = parseFloat(request.rent_amount) || 0
                   const securityDeposit = parseFloat(request.security_deposit_amount) || 0
                   const advance = parseFloat(request.advance_amount) || 0
-                  const total = rent + (parseFloat(request.water_bill) || 0) + (parseFloat(request.electrical_bill) || 0) + (parseFloat(request.other_bills) || 0) + securityDeposit + advance
+                  const total = rent + (parseFloat(request.other_bills) || 0) + securityDeposit + advance
                   const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
                   let billType = 'Other Bill';
                   if (rent > 0) billType = 'House Rent';
-                  else if ((parseFloat(request.electrical_bill) || 0) > 0) billType = 'Electric Bill';
-                  else if ((parseFloat(request.water_bill) || 0) > 0) billType = 'Water Bill';
                   const refNum = request.tenant_reference_number || ''
                   const maskedRef = refNum.length > 5 ? '•••••' + refNum.slice(-5) : refNum
 
@@ -2154,19 +2119,13 @@ export default function PaymentsPage() {
                   <tbody className="divide-y divide-gray-100">
                     {paymentRequests.filter(req => !req.is_advance_payment).map(request => {
                       const rent = parseFloat(request.rent_amount) || 0
-                      const water = parseFloat(request.water_bill) || 0
-                      const electric = parseFloat(request.electrical_bill) || 0
-                      const wifi = parseFloat(request.wifi_bill) || 0
                       const other = parseFloat(request.other_bills) || 0
                       const securityDeposit = parseFloat(request.security_deposit_amount) || 0
                       const advance = parseFloat(request.advance_amount) || 0
-                      const total = rent + water + electric + wifi + other + securityDeposit + advance
+                      const total = rent + other + securityDeposit + advance
                       const isPastDue = request.due_date && new Date(request.due_date) < new Date() && request.status === 'pending'
                       let billType = 'Other Bill';
                       if (rent > 0) billType = 'House Rent';
-                      else if (electric > 0) billType = 'Electric Bill';
-                      else if (water > 0) billType = 'Water Bill';
-                      else if (wifi > 0) billType = 'Wifi Bill';
                       const refNum = request.tenant_reference_number || ''
                       const maskedRef = refNum.length > 5 ? '•••••' + refNum.slice(-5) : refNum
 
@@ -2311,19 +2270,13 @@ export default function PaymentsPage() {
         {selectedDetailBill && (() => {
           const r = selectedDetailBill
           const rent = parseFloat(r.rent_amount) || 0
-          const water = parseFloat(r.water_bill) || 0
-          const electric = parseFloat(r.electrical_bill) || 0
-          const wifi = parseFloat(r.wifi_bill) || 0
           const other = parseFloat(r.other_bills) || 0
           const securityDeposit = parseFloat(r.security_deposit_amount) || 0
           const advance = parseFloat(r.advance_amount) || 0
-          const total = rent + water + electric + wifi + other + securityDeposit + advance
+          const total = rent + other + securityDeposit + advance
           const isPastDue = r.due_date && new Date(r.due_date) < new Date() && r.status === 'pending'
           let billType = 'Other Bill';
           if (rent > 0) billType = 'House Rent';
-          else if (electric > 0) billType = 'Electric Bill';
-          else if (water > 0) billType = 'Water Bill';
-          else if (wifi > 0) billType = 'Wifi Bill';
 
           return (
             <div className="fixed inset-0 z-50 flex justify-end">
@@ -2380,9 +2333,6 @@ export default function PaymentsPage() {
                       {rent > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Rent</span><span className="font-bold">₱{rent.toLocaleString()}</span></div>}
                       {securityDeposit > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Security Deposit</span><span className="font-bold">₱{securityDeposit.toLocaleString()}</span></div>}
                       {advance > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-bold">₱{advance.toLocaleString()}</span></div>}
-                      {water > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Water Bill</span><span className="font-bold">₱{water.toLocaleString()}</span></div>}
-                      {electric > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Electric Bill</span><span className="font-bold">₱{electric.toLocaleString()}</span></div>}
-                      {wifi > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Wifi Bill</span><span className="font-bold">₱{wifi.toLocaleString()}</span></div>}
                       {other > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Other Charges</span><span className="font-bold">₱{other.toLocaleString()}</span></div>}
                       <div className="border-t border-gray-100 pt-2 flex justify-between font-bold">
                         <span>Total</span>
@@ -2679,9 +2629,7 @@ export default function PaymentsPage() {
                               { label: 'House Rent', value: selectedBill.rent_amount },
                               { label: 'Security Deposit', value: selectedBill.security_deposit_amount },
                               { label: 'Advance Payment', value: selectedBill.advance_amount },
-                              { label: 'Water', value: selectedBill.water_bill },
-                              { label: 'Electricity', value: selectedBill.electrical_bill },
-                              { label: 'Late Payment', value: selectedBill.other_bills }
+                              { label: selectedBill.is_move_in_payment ? 'Other Charges' : 'Late Payment', value: selectedBill.other_bills }
                             ].map((item, idx) => (
                               parseFloat(item.value || 0) > 0 && (
                                 <div key={idx} className="flex justify-between items-center">
@@ -2711,8 +2659,6 @@ export default function PaymentsPage() {
                                   parseFloat(selectedBill.rent_amount || 0) +
                                   parseFloat(selectedBill.security_deposit_amount || 0) +
                                   parseFloat(selectedBill.advance_amount || 0) +
-                                  parseFloat(selectedBill.water_bill || 0) +
-                                  parseFloat(selectedBill.electrical_bill || 0) +
                                   parseFloat(selectedBill.other_bills || 0)
                                 );
                                 return Math.max(0, baseTotal - appliedCredit).toLocaleString('en-US', { minimumFractionDigits: 2 });

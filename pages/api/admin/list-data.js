@@ -34,6 +34,10 @@ export default async function handler(req, res) {
                 else if (f.type === 'is') query = query.is(f.column, f.value)
                 else if (f.type === 'not_null') query = query.not(f.column, 'is', null)
                 else if (f.type === 'ilike') query = query.ilike(f.column, `%${f.value}%`)
+                else if (f.type === 'gte') query = query.gte(f.column, f.value)
+                else if (f.type === 'lte') query = query.lte(f.column, f.value)
+                else if (f.type === 'gt') query = query.gt(f.column, f.value)
+                else if (f.type === 'lt') query = query.lt(f.column, f.value)
             }
         }
 

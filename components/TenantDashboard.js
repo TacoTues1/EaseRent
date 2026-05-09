@@ -2480,24 +2480,19 @@ export default function TenantDashboard({ session, profile }) {
                     <div className="space-y-3 mb-9">
                       {pendingPayments.map((bill) => {
                         const rent = parseFloat(bill.rent_amount) || 0;
-                        const water = parseFloat(bill.water_bill) || 0;
-                        const electric = parseFloat(bill.electrical_bill) || 0;
-                        const wifi = parseFloat(bill.wifi_bill) || 0;
                         const other = parseFloat(bill.other_bills) || 0;
                         const security = parseFloat(bill.security_deposit_amount) || 0;
                         const advance = parseFloat(bill.advance_amount) || 0;
 
                         // FIX: Include security and advance in total
-                        const total = rent + water + electric + wifi + other + security + advance;
+                        const total = rent + other + security + advance;
 
                         let billType = 'Other Bill';
                         if ((rent > 0 && security > 0) || (rent > 0 && advance > 0 && security > 0)) billType = 'Move-In Bill';
                         else if (rent > 0) billType = 'House Rent';
                         else if (advance > 0) billType = 'Advance Payment';
                         else if (security > 0) billType = 'Security Deposit';
-                        else if (electric > 0) billType = 'Electric Bill';
-                        else if (water > 0) billType = 'Water Bill';
-                        else if (wifi > 0) billType = 'Wifi Bill';
+
 
                         return (
                           <div key={bill.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3">

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin'
+import { getAdminProfile, getAuthenticatedUser } from '../../../lib/apiAuth'
 
 const FREE_SLOTS = 1
 
@@ -17,6 +18,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const user = await getAuthenticatedUser(req)
+    await getAdminProfile(supabaseAdmin, user.id)
+
     const { data: occupancy, error: occupancyError } = await supabaseAdmin
       .from('tenant_occupancies')
       .select(`
@@ -78,6 +82,8 @@ export default async function handler(req, res) {
     })
   } catch (error) {
     console.error('admin/occupancy-details error:', error)
-    return res.status(500).json({ error: error.message || 'Server error' })
+    const message = error.message || 'Server error'
+    const status = message.includes('Only admins') ? 403 : message.includes('access token') || message.includes('Unauthorized') ? 401 : 500
+    return res.status(status).json({ error: message })
   }
 }

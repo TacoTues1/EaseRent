@@ -277,8 +277,6 @@ export default async function handler(req, res) {
         property_id: occupancy.property?.id,
         occupancy_id: occupancy.id,
         rent_amount: rentAmount,
-        water_bill: 0,
-        electrical_bill: 0,
         other_bills: 0,
         bills_description: `Monthly Rent for ${monthName}`,
         due_date: dueDate.toISOString(),

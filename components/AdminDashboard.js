@@ -13,12 +13,23 @@ import {
   getSupportOptionLabel
 } from '../lib/supportTickets'
 
+async function getAdminAuthHeaders() {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw new Error(error.message || 'Unable to load admin session')
+
+  const accessToken = data?.session?.access_token
+  if (!accessToken) throw new Error('Missing access token')
+
+  return { Authorization: `Bearer ${accessToken}` }
+}
+
 async function adminFetch(table, select = '*', filters = [], order = null, pagination = null, includeCount = false) {
   try {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const authHeaders = await getAdminAuthHeaders()
     const res = await fetch(`${baseUrl}/api/admin/list-data`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ table, select, filters, order, pagination, includeCount })
     })
     const json = await res.json()
@@ -31,6 +42,29 @@ async function adminFetch(table, select = '*', filters = [], order = null, pagin
     console.error(`adminFetch failed for ${table}:`, err)
     throw err
   }
+}
+
+async function adminJsonRequest(url, options = {}) {
+  const authHeaders = await getAdminAuthHeaders()
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+      ...(options.headers || {})
+    }
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || 'Request failed')
+  return json
+}
+
+function formatDateTimeLocal(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return localDate.toISOString().slice(0, 16)
 }
 
 function useRealTimeClock() {
@@ -79,9 +113,6 @@ export default function AdminDashboard({ session, profile }) {
     property_id: '',
     landlord_id: '',
     rent_amount: 0,
-    water_bill: 0,
-    electrical_bill: 0,
-    wifi_bill: 0,
     other_bills: 0,
     bills_description: '',
     due_date: '',
@@ -91,8 +122,13 @@ export default function AdminDashboard({ session, profile }) {
   const [showBookingEditModal, setShowBookingEditModal] = useState(false)
   const [editingBooking, setEditingBooking] = useState(null)
   const [bookingForm, setBookingForm] = useState({
+    property_id: '',
+    tenant_id: '',
+    landlord_id: '',
     booking_date: '',
-    status: 'pending'
+    end_time: '',
+    status: 'pending',
+    notes: ''
   })
 
   const [showScheduleFormModal, setShowScheduleFormModal] = useState(false)
@@ -107,11 +143,12 @@ export default function AdminDashboard({ session, profile }) {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
   const [editingMaintenance, setEditingMaintenance] = useState(null)
   const [maintenanceForm, setMaintenanceForm] = useState({
+    property_id: '',
+    tenant_id: '',
     title: '',
     description: '',
     status: 'pending',
     priority: 'medium',
-    category: 'general',
     attachment_urls: []
   })
   const [maintenanceUploading, setMaintenanceUploading] = useState(false)
@@ -124,8 +161,6 @@ export default function AdminDashboard({ session, profile }) {
     end_request_date: ''
   })
 
-  const [showEndOccupancyConfirm, setShowEndOccupancyConfirm] = useState(false)
-  const [occToEnd, setOccToEnd] = useState(null)
   const [landlords, setLandlords] = useState([])
   const [tenants, setTenants] = useState([])
   const [properties, setProperties] = useState([])
@@ -157,13 +192,21 @@ export default function AdminDashboard({ session, profile }) {
   useEffect(() => {
     async function loadResources() {
       try {
-        const { data: lData } = await supabase.from('profiles').select('id, first_name, last_name').eq('role', 'landlord').eq('is_deleted', false).order('first_name')
+        const lData = await adminFetch('profiles', 'id, first_name, last_name', [
+          { type: 'eq', column: 'role', value: 'landlord' },
+          { type: 'eq', column: 'is_deleted', value: false }
+        ], { column: 'first_name', ascending: true })
         setLandlords((lData || []).map(l => ({ id: l.id, name: `${l.first_name} ${l.last_name}` })))
         
-        const { data: tData } = await supabase.from('profiles').select('id, first_name, last_name').eq('role', 'tenant').eq('is_deleted', false).order('first_name')
+        const tData = await adminFetch('profiles', 'id, first_name, last_name', [
+          { type: 'eq', column: 'role', value: 'tenant' },
+          { type: 'eq', column: 'is_deleted', value: false }
+        ], { column: 'first_name', ascending: true })
         setTenants((tData || []).map(t => ({ id: t.id, name: `${t.first_name} ${t.last_name}` })))
 
-        const { data: pData } = await supabase.from('properties').select('id, title').order('title')
+        const pData = await adminFetch('properties', 'id, title, landlord', [
+          { type: 'eq', column: 'is_deleted', value: false }
+        ], { column: 'title', ascending: true })
         setProperties(pData || [])
       } catch (e) { console.error(e) }
     }
@@ -193,14 +236,8 @@ export default function AdminDashboard({ session, profile }) {
         landlord: paymentForm.landlord_id,
         tenant: paymentForm.tenant_id,
         rent_amount: parseFloat(paymentForm.rent_amount) || 0,
-        water_bill: parseFloat(paymentForm.water_bill) || 0,
-        electrical_bill: parseFloat(paymentForm.electrical_bill) || 0,
-        wifi_bill: parseFloat(paymentForm.wifi_bill) || 0,
         other_bills: parseFloat(paymentForm.other_bills) || 0,
         amount: (parseFloat(paymentForm.rent_amount) || 0) + 
-                (parseFloat(paymentForm.water_bill) || 0) + 
-                (parseFloat(paymentForm.electrical_bill) || 0) + 
-                (parseFloat(paymentForm.wifi_bill) || 0) + 
                 (parseFloat(paymentForm.other_bills) || 0)
       }
       delete payload.landlord_id
@@ -258,12 +295,19 @@ export default function AdminDashboard({ session, profile }) {
 
   async function handleSaveBooking() {
     try {
-      const { error } = await supabase.from('bookings').update({
-        booking_date: bookingForm.booking_date,
-        status: bookingForm.status
-      }).eq('id', editingBooking.id)
-      if (error) throw error
-      showToast.success("Booking updated/rescheduled successfully")
+      const payload = { ...bookingForm }
+      if (editingBooking) {
+        await adminJsonRequest('/api/admin/bookings', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: editingBooking.id, ...payload })
+        })
+      } else {
+        await adminJsonRequest('/api/admin/bookings', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
+      }
+      showToast.success(editingBooking ? "Booking updated/rescheduled successfully" : "Booking created")
       setShowBookingEditModal(false)
       setEditingBooking(null)
       refresh()
@@ -278,8 +322,10 @@ export default function AdminDashboard({ session, profile }) {
       return
     }
     try {
-      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id)
-      if (error) throw error
+      await adminJsonRequest('/api/admin/bookings', {
+        method: 'PATCH',
+        body: JSON.stringify({ id, status: 'cancelled' })
+      })
       showToast.success("Booking cancelled")
       refresh()
     } catch (error) {
@@ -290,15 +336,17 @@ export default function AdminDashboard({ session, profile }) {
   async function handleSaveSchedule() {
     try {
       const payload = { ...scheduleForm }
-      let err;
       if (editingSchedule) {
-        const { error } = await supabase.from('available_time_slots').update(payload).eq('id', editingSchedule.id)
-        err = error
+        await adminJsonRequest('/api/admin/schedule-slots', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: editingSchedule.id, ...payload })
+        })
       } else {
-        const { error } = await supabase.from('available_time_slots').insert([payload])
-        err = error
+        await adminJsonRequest('/api/admin/schedule-slots', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
       }
-      if (err) throw err
       showToast.success(editingSchedule ? "Schedule updated" : "Schedule created")
       setShowScheduleFormModal(false)
       setEditingSchedule(null)
@@ -312,15 +360,17 @@ export default function AdminDashboard({ session, profile }) {
     try {
       setMaintenanceUploading(true)
       const payload = { ...maintenanceForm }
-      let err;
       if (editingMaintenance) {
-        const { error } = await supabase.from('maintenance_requests').update(payload).eq('id', editingMaintenance.id)
-        err = error
+        await adminJsonRequest('/api/admin/maintenance-requests', {
+          method: 'PATCH',
+          body: JSON.stringify({ id: editingMaintenance.id, ...payload })
+        })
       } else {
-        const { error } = await supabase.from('maintenance_requests').insert([payload])
-        err = error
+        await adminJsonRequest('/api/admin/maintenance-requests', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        })
       }
-      if (err) throw err
       showToast.success(editingMaintenance ? "Request updated" : "Request created")
       setShowMaintenanceModal(false)
       setEditingMaintenance(null)
@@ -375,8 +425,10 @@ export default function AdminDashboard({ session, profile }) {
       return
     }
     try {
-      const { error } = await supabase.from('maintenance_requests').update({ status: 'cancelled' }).eq('id', id)
-      if (error) throw error
+      await adminJsonRequest('/api/admin/maintenance-requests', {
+        method: 'PATCH',
+        body: JSON.stringify({ id, status: 'cancelled' })
+      })
       showToast.success("Request cancelled")
       refresh()
     } catch (error) {
@@ -386,8 +438,10 @@ export default function AdminDashboard({ session, profile }) {
 
   async function handleDeleteMaintenance(id) {
     try {
-      const { error } = await supabase.from('maintenance_requests').delete().eq('id', id)
-      if (error) throw error
+      await adminJsonRequest('/api/admin/maintenance-requests', {
+        method: 'DELETE',
+        body: JSON.stringify({ id })
+      })
       showToast.success("Request deleted")
       refresh()
     } catch (error) {
@@ -484,27 +538,6 @@ export default function AdminDashboard({ session, profile }) {
     }
   }
 
-
-  async function handleEndOccupancyConfirm() {
-    if (!occToEnd) return
-    try {
-      // 1. Update occupancy status to 'ended'
-      const { error: occError } = await supabase.from('tenant_occupancies').update({ status: 'ended', end_date: new Date().toISOString() }).eq('id', occToEnd.id)
-      if (occError) throw occError
-
-      // 2. Mark property as available if it's not deleted
-      if (occToEnd.property_id) {
-        await supabase.from('properties').update({ status: 'available' }).eq('id', occToEnd.property_id)
-      }
-
-      showToast.success("Occupancy ended successfully")
-      setShowEndOccupancyConfirm(false)
-      setOccToEnd(null)
-      refresh()
-    } catch (error) {
-      showToast.error(error.message)
-    }
-  }
 
   const clock = useRealTimeClock()
   const greeting = clock.getHours() < 12 ? 'Good Morning' : clock.getHours() < 17 ? 'Good Afternoon' : 'Good Evening'
@@ -615,7 +648,7 @@ export default function AdminDashboard({ session, profile }) {
               {activeTab === 'overview' && <OverviewView refreshTrigger={refreshTrigger} session={session} />}
               {activeTab === 'users' && <UsersView refreshTrigger={refreshTrigger} />}
               {activeTab === 'properties' && <PropertiesView refreshTrigger={refreshTrigger} />}
-              {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} />}
+              {activeTab === 'occupancies' && <ActiveOccupanciesView refreshTrigger={refreshTrigger} onRefresh={refresh} />}
               {activeTab === 'payments' && (
                 <PaymentsView 
                   refreshTrigger={refreshTrigger} 
@@ -735,14 +768,6 @@ export default function AdminDashboard({ session, profile }) {
                 <label className="block text-xs font-bold text-gray-500 mb-1">Rent</label>
                 <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.rent_amount} onChange={e => setPaymentForm({...paymentForm, rent_amount: e.target.value})} />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Water</label>
-                <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.water_bill} onChange={e => setPaymentForm({...paymentForm, water_bill: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Electric</label>
-                <input type="number" className="w-full border rounded-xl px-3 py-2 text-sm" value={paymentForm.electrical_bill} onChange={e => setPaymentForm({...paymentForm, electrical_bill: e.target.value})} />
-              </div>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Description</label>
@@ -754,14 +779,52 @@ export default function AdminDashboard({ session, profile }) {
 
       {showBookingEditModal && (
         <ManagementModal 
-          title="Edit/Reschedule Booking" 
+          title={editingBooking ? "Edit/Reschedule Booking" : "Create Booking"}
           onClose={() => { setShowBookingEditModal(false); setEditingBooking(null); }}
           onSave={handleSaveBooking}
         >
           <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Property</label>
+                <select
+                  className="w-full border rounded-xl px-3 py-2 text-sm"
+                  value={bookingForm.property_id}
+                  onChange={e => {
+                    const property = properties.find(p => p.id === e.target.value)
+                    setBookingForm({
+                      ...bookingForm,
+                      property_id: e.target.value,
+                      landlord_id: property?.landlord || bookingForm.landlord_id
+                    })
+                  }}
+                >
+                  <option value="">Select Property</option>
+                  {properties.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Tenant</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.tenant_id} onChange={e => setBookingForm({...bookingForm, tenant_id: e.target.value})}>
+                  <option value="">Select Tenant</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Landlord</label>
+              <select className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.landlord_id} onChange={e => setBookingForm({...bookingForm, landlord_id: e.target.value})}>
+                <option value="">Select Landlord</option>
+                {landlords.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Booking Date & Time</label>
-              <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.booking_date ? new Date(bookingForm.booking_date).toISOString().slice(0, 16) : ''} onChange={e => setBookingForm({...bookingForm, booking_date: e.target.value})} />
+              <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={formatDateTimeLocal(bookingForm.booking_date)} onChange={e => setBookingForm({...bookingForm, booking_date: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">End Time</label>
+              <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={formatDateTimeLocal(bookingForm.end_time)} onChange={e => setBookingForm({...bookingForm, end_time: e.target.value})} />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Status</label>
@@ -772,6 +835,10 @@ export default function AdminDashboard({ session, profile }) {
                 <option value="cancelled">Cancelled</option>
                 <option value="rejected">Rejected</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Notes</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm" value={bookingForm.notes || ''} onChange={e => setBookingForm({...bookingForm, notes: e.target.value})} rows={3}></textarea>
             </div>
           </div>
         </ManagementModal>
@@ -796,11 +863,11 @@ export default function AdminDashboard({ session, profile }) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Start Time</label>
-                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={scheduleForm.start_time ? new Date(scheduleForm.start_time).toISOString().slice(0, 16) : ''} onChange={e => setScheduleForm({...scheduleForm, start_time: e.target.value})} />
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={formatDateTimeLocal(scheduleForm.start_time)} onChange={e => setScheduleForm({...scheduleForm, start_time: e.target.value})} />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">End Time</label>
-                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={scheduleForm.end_time ? new Date(scheduleForm.end_time).toISOString().slice(0, 16) : ''} onChange={e => setScheduleForm({...scheduleForm, end_time: e.target.value})} />
+                <input type="datetime-local" className="w-full border rounded-xl px-3 py-2 text-sm" value={formatDateTimeLocal(scheduleForm.end_time)} onChange={e => setScheduleForm({...scheduleForm, end_time: e.target.value})} />
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -818,6 +885,22 @@ export default function AdminDashboard({ session, profile }) {
           onSave={handleSaveMaintenance}
         >
           <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Property</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.property_id} onChange={e => setMaintenanceForm({...maintenanceForm, property_id: e.target.value})}>
+                  <option value="">Select Property</option>
+                  {properties.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Tenant</label>
+                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.tenant_id} onChange={e => setMaintenanceForm({...maintenanceForm, tenant_id: e.target.value})}>
+                  <option value="">Select Tenant</option>
+                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Title</label>
               <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.title} onChange={e => setMaintenanceForm({...maintenanceForm, title: e.target.value})} />
@@ -840,16 +923,6 @@ export default function AdminDashboard({ session, profile }) {
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
                   <option value="urgent">Urgent</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Category</label>
-                <select className="w-full border rounded-xl px-3 py-2 text-sm" value={maintenanceForm.category} onChange={e => setMaintenanceForm({...maintenanceForm, category: e.target.value})}>
-                  <option value="general">General</option>
-                  <option value="plumbing">Plumbing</option>
-                  <option value="electrical">Electrical</option>
-                  <option value="appliance">Appliance</option>
-                  <option value="other">Other</option>
                 </select>
               </div>
             </div>
@@ -930,16 +1003,6 @@ export default function AdminDashboard({ session, profile }) {
             </div>
           </div>
         </ManagementModal>
-      )}
-
-      {showEndOccupancyConfirm && (
-        <DeleteModal 
-          isOpen={showEndOccupancyConfirm} 
-          onClose={() => setShowEndOccupancyConfirm(false)} 
-          onConfirm={handleEndOccupancyConfirm} 
-          title="End Occupancy" 
-          message={`Are you sure you want to end the occupancy for ${occToEnd?.tenant?.first_name} ${occToEnd?.tenant?.last_name}? This will mark the property as available.`} 
-        />
       )}
 
       <DeleteModal
@@ -2860,7 +2923,7 @@ function PropertiesView({ refreshTrigger }) {
   )
 }
 
-function ActiveOccupanciesView({ refreshTrigger }) {
+function ActiveOccupanciesView({ refreshTrigger, onRefresh }) {
   const ACTIVE_OCCUPANCIES_PAGE_SIZE = 10
   const [activeOccupancies, setActiveOccupancies] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2869,6 +2932,8 @@ function ActiveOccupanciesView({ refreshTrigger }) {
   const [selectedOccupancy, setSelectedOccupancy] = useState(null)
   const [occupancyDetails, setOccupancyDetails] = useState(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
+  const [endTarget, setEndTarget] = useState(null)
+  const [endingOccupancy, setEndingOccupancy] = useState(false)
 
   useEffect(() => { loadActiveOccupancies() }, [currentPage, refreshTrigger])
 
@@ -2899,7 +2964,10 @@ function ActiveOccupanciesView({ refreshTrigger }) {
     setOccupancyDetails(null)
     setDetailsLoading(true)
     try {
-      const response = await fetch(`/api/admin/occupancy-details?occupancy_id=${encodeURIComponent(occupancy.id)}`)
+      const authHeaders = await getAdminAuthHeaders()
+      const response = await fetch(`/api/admin/occupancy-details?occupancy_id=${encodeURIComponent(occupancy.id)}`, {
+        headers: authHeaders
+      })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to load occupancy details')
       setOccupancyDetails(data)
@@ -2914,6 +2982,32 @@ function ActiveOccupanciesView({ refreshTrigger }) {
     setSelectedOccupancy(null)
     setOccupancyDetails(null)
     setDetailsLoading(false)
+  }
+
+  async function confirmEndOccupancy() {
+    if (!endTarget || endingOccupancy) return
+
+    setEndingOccupancy(true)
+    try {
+      await adminJsonRequest('/api/admin/end-occupancy', {
+        method: 'POST',
+        body: JSON.stringify({ occupancyId: endTarget.id })
+      })
+      showToast.success('Occupancy ended successfully')
+      setEndTarget(null)
+      closeOccupancyDetails()
+      await loadActiveOccupancies()
+      onRefresh?.()
+    } catch (error) {
+      showToast.error(error.message || 'Failed to end occupancy')
+    } finally {
+      setEndingOccupancy(false)
+    }
+  }
+
+  function getSelectedTenantName() {
+    const tenant = occupancyDetails?.occupancy?.tenant || selectedOccupancy?.tenant
+    return tenant ? `${tenant.first_name || ''} ${tenant.last_name || ''}`.trim() : 'this tenant'
   }
 
   return (
@@ -2938,6 +3032,7 @@ function ActiveOccupanciesView({ refreshTrigger }) {
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Landlord</th>
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Date Added</th>
                   <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase">Status</th>
+                  <th className="p-4 md:p-5 text-xs font-black text-gray-500 uppercase text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -2959,9 +3054,21 @@ function ActiveOccupanciesView({ refreshTrigger }) {
                     <td className="p-4 md:p-5">
                       <Badge variant='success'>Active</Badge>
                     </td>
+                    <td className="p-4 md:p-5 text-right">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openOccupancyDetails(occ)
+                        }}
+                        className="text-black bg-gray-100 font-bold text-xs cursor-pointer px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Manage
+                      </button>
+                    </td>
                   </tr>
                 ))}
-                {activeOccupancies.length === 0 && <EmptyStateRow colSpan={5} message="No active occupancies found." />}
+                {activeOccupancies.length === 0 && <EmptyStateRow colSpan={6} message="No active occupancies found." />}
               </tbody>
             </table>
           </div>
@@ -3079,12 +3186,11 @@ function ActiveOccupanciesView({ refreshTrigger }) {
                 <div className="pt-4 border-t border-gray-100">
                   <button
                     onClick={() => {
-                      setOccToEnd({
-                        id: selectedOccupancy.id,
-                        property_id: selectedOccupancy.property?.id,
-                        tenant: selectedOccupancy.tenant
-                      });
-                      setShowEndOccupancyConfirm(true);
+                      setEndTarget({
+                        id: occupancyDetails?.occupancy?.id || selectedOccupancy.id,
+                        tenantName: getSelectedTenantName(),
+                        propertyTitle: occupancyDetails?.occupancy?.property?.title || selectedOccupancy.property?.title || 'this property'
+                      })
                     }}
                     className="w-full py-4 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
@@ -3097,6 +3203,18 @@ function ActiveOccupanciesView({ refreshTrigger }) {
           </aside>
         </div>
       )}
+
+      <DeleteModal
+        isOpen={!!endTarget}
+        onClose={() => {
+          if (!endingOccupancy) setEndTarget(null)
+        }}
+        onConfirm={confirmEndOccupancy}
+        title="End Occupancy"
+        message={`End occupancy for ${endTarget?.tenantName || 'this tenant'} at ${endTarget?.propertyTitle || 'this property'}? This will mark the property available and complete related bookings/applications.`}
+        confirmText={endingOccupancy ? 'Ending...' : 'End Occupancy'}
+        zIndexClass="z-[110]"
+      />
     </div>
   )
 }
@@ -3158,7 +3276,7 @@ function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setSh
       // Compute display amount: use amount field, or sum components
       const enriched = rawPayments.map(p => ({
         ...p,
-        display_amount: p.amount || (parseFloat(p.rent_amount || 0) + parseFloat(p.water_bill || 0) + parseFloat(p.electrical_bill || 0) + parseFloat(p.other_bills || 0))
+        display_amount: p.amount || (parseFloat(p.rent_amount || 0) + parseFloat(p.other_bills || 0))
       }))
       setPayments(enriched)
       setTotalPayments(count || 0)
@@ -3244,13 +3362,7 @@ function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setSh
 
   const getBillType = (r) => {
     const rent = parseFloat(r.rent_amount) || 0
-    const water = parseFloat(r.water_bill) || 0
-    const electric = parseFloat(r.electrical_bill) || 0
-    const wifi = parseFloat(r.wifi_bill) || 0
     if (rent > 0) return 'House Rent'
-    if (electric > 0) return 'Electric Bill'
-    if (water > 0) return 'Water Bill'
-    if (wifi > 0) return 'Wifi Bill'
     return 'Other Bill'
   }
 
@@ -3356,9 +3468,6 @@ function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setSh
                   property_id: '',
                   landlord_id: '',
                   rent_amount: 0,
-                  water_bill: 0,
-                  electrical_bill: 0,
-                  wifi_bill: 0,
                   other_bills: 0,
                   bills_description: '',
                   due_date: new Date().toISOString().split('T')[0],
@@ -3424,13 +3533,10 @@ function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setSh
       {selectedPaymentLog && (() => {
         const r = selectedPaymentLog
         const rent = parseFloat(r.rent_amount) || 0
-        const water = parseFloat(r.water_bill) || 0
-        const electric = parseFloat(r.electrical_bill) || 0
-        const wifi = parseFloat(r.wifi_bill) || 0
         const other = parseFloat(r.other_bills) || 0
         const securityDeposit = parseFloat(r.security_deposit_amount) || 0
         const advance = parseFloat(r.advance_amount) || 0
-        const total = rent + water + electric + wifi + other + securityDeposit + advance
+        const total = rent + other + securityDeposit + advance
         const billType = getBillType(r)
         const isPastDue = r.due_date && new Date(r.due_date) < new Date() && r.status === 'pending'
 
@@ -3522,9 +3628,6 @@ function PaymentsView({ refreshTrigger, setPaymentForm, setEditingPayment, setSh
                         property_id: r.property_id,
                         landlord_id: r.landlord,
                         rent_amount: r.rent_amount,
-                        water_bill: r.water_bill,
-                        electrical_bill: r.electrical_bill,
-                        wifi_bill: r.wifi_bill,
                         other_bills: r.other_bills,
                         bills_description: r.bills_description || r.description,
                         due_date: r.due_date,
@@ -3635,9 +3738,16 @@ function BookingsView({ refreshTrigger, setBookingForm, setEditingBooking, setSh
 
   async function confirmDelete() {
     if (!deleteId) return;
-    const { error } = await supabase.from('bookings').delete().eq('id', deleteId)
-    if (error) showToast.error("Failed to delete")
-    else { showToast.success("Deleted"); loadBookings() }
+    try {
+      await adminJsonRequest('/api/admin/bookings', {
+        method: 'DELETE',
+        body: JSON.stringify({ id: deleteId })
+      })
+      showToast.success("Deleted")
+      loadBookings()
+    } catch (error) {
+      showToast.error(error.message || "Failed to delete")
+    }
     setDeleteId(null)
   }
 
@@ -3658,6 +3768,26 @@ function BookingsView({ refreshTrigger, setBookingForm, setEditingBooking, setSh
           <p className="text-gray-500 mt-1 text-sm md:text-base">Manage and review booking requests.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setBookingForm({
+                property_id: '',
+                tenant_id: '',
+                landlord_id: '',
+                booking_date: '',
+                end_time: '',
+                status: 'pending',
+                notes: ''
+              })
+              setEditingBooking(null)
+              setShowBookingEditModal(true)
+            }}
+            className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all cursor-pointer flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Create Booking
+          </button>
           <Input placeholder="Search bookings..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
             <option value="all">All Status</option>
@@ -3691,7 +3821,15 @@ function BookingsView({ refreshTrigger, setBookingForm, setEditingBooking, setSh
                     <td className="p-4 md:p-5 text-right flex justify-end gap-2">
                       <button 
                         onClick={() => {
-                          setBookingForm({ booking_date: b.booking_date, status: b.status });
+                          setBookingForm({
+                            property_id: b.property_id || '',
+                            tenant_id: b.tenant || '',
+                            landlord_id: b.landlord || '',
+                            booking_date: b.booking_date || b.start_time || '',
+                            end_time: b.end_time || '',
+                            status: b.status || 'pending',
+                            notes: b.notes || ''
+                          });
                           setEditingBooking(b);
                           setShowBookingEditModal(true);
                         }} 
@@ -3746,21 +3884,21 @@ function SchedulesView({ refreshTrigger, setScheduleForm, setEditingSchedule, se
   async function loadSlots() {
     setLoading(true)
     try {
-      const from = (currentPage - 1) * SLOTS_PAGE_SIZE
-      const to = from + SLOTS_PAGE_SIZE - 1
-      const { data: slotData, error, count } = await supabase
-        .from('available_time_slots')
-        .select('*', { count: 'exact' })
-        .gte('start_time', new Date().toISOString())
-        .order('start_time', { ascending: true })
-        .range(from, to)
-
-      if (error) throw error
+      const { data: slotData, count } = await adminFetch(
+        'available_time_slots',
+        '*',
+        [{ type: 'gte', column: 'start_time', value: new Date().toISOString() }],
+        { column: 'start_time', ascending: true },
+        { page: currentPage, pageSize: SLOTS_PAGE_SIZE },
+        true
+      )
       setTotalSlots(count || 0)
 
       if (slotData && slotData.length > 0) {
         const userIds = [...new Set(slotData.map(s => s.landlord_id).filter(Boolean))]
-        const { data: users } = await supabase.from('profiles').select('id, first_name, last_name').in('id', userIds)
+        const users = userIds.length
+          ? await adminFetch('profiles', 'id, first_name, last_name', [{ type: 'in', column: 'id', value: userIds }])
+          : []
         const userMap = users?.reduce((acc, u) => ({ ...acc, [u.id]: u }), {}) || {}
         const enriched = slotData.map(s => ({
           ...s,
@@ -3782,9 +3920,16 @@ function SchedulesView({ refreshTrigger, setScheduleForm, setEditingSchedule, se
 
   async function confirmDelete() {
     if (!deleteId) return;
-    const { error } = await supabase.from('available_time_slots').delete().eq('id', deleteId)
-    if (error) showToast.error("Failed to delete")
-    else { showToast.success("Deleted"); loadSlots() }
+    try {
+      await adminJsonRequest('/api/admin/schedule-slots', {
+        method: 'DELETE',
+        body: JSON.stringify({ id: deleteId })
+      })
+      showToast.success("Deleted")
+      loadSlots()
+    } catch (error) {
+      showToast.error(error.message || "Failed to delete")
+    }
     setDeleteId(null)
   }
 
@@ -3849,9 +3994,16 @@ function SchedulesView({ refreshTrigger, setScheduleForm, setEditingSchedule, se
                         <button 
                           onClick={async () => {
                             if (confirm('Cancel this slot? (Mark as unavailable/booked)')) {
-                              const { error } = await supabase.from('available_time_slots').update({ is_booked: true }).eq('id', s.id)
-                              if (error) showToast.error("Failed to cancel slot")
-                              else { showToast.success("Slot cancelled (marked as booked)"); loadSlots() }
+                              try {
+                                await adminJsonRequest('/api/admin/schedule-slots', {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ id: s.id, is_booked: true })
+                                })
+                                showToast.success("Slot cancelled (marked as booked)")
+                                loadSlots()
+                              } catch (error) {
+                                showToast.error(error.message || "Failed to cancel slot")
+                              }
                             }
                           }}
                           className="text-yellow-700 bg-yellow-50 font-bold text-xs cursor-pointer px-3 py-1.5 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors whitespace-nowrap"
@@ -4493,6 +4645,26 @@ function MaintenanceMonitoringView({ refreshTrigger, setMaintenanceForm, setEdit
           <p className="text-gray-500 mt-1 text-sm md:text-base">Monitor all maintenance requests across the platform.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setMaintenanceForm({
+                property_id: '',
+                tenant_id: '',
+                title: '',
+                description: '',
+                status: 'pending',
+                priority: 'medium',
+                attachment_urls: []
+              })
+              setEditingMaintenance(null)
+              setShowMaintenanceModal(true)
+            }}
+            className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all cursor-pointer flex items-center justify-center gap-2 text-sm whitespace-nowrap"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Create Request
+          </button>
           <Input placeholder="Search requests..." value={search} onChange={e => setSearch(e.target.value)} className="w-full md:w-64" />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border rounded px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-black outline-none cursor-pointer font-medium w-full sm:w-auto">
             <option value="all">All Status</option>
@@ -4530,7 +4702,7 @@ function MaintenanceMonitoringView({ refreshTrigger, setMaintenanceForm, setEdit
                       <div className="text-sm font-medium text-gray-900 whitespace-nowrap">{r.property?.title || 'Unknown'}</div>
                     </td>
                     <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
-                      {r.tenant ? `${r.tenant.first_name} ${r.tenant.last_name}` : 'Unknown'}
+                      {r.tenant_profile ? `${r.tenant_profile.first_name} ${r.tenant_profile.last_name}` : 'Unknown'}
                     </td>
                     <td className="p-4 md:p-5 text-sm text-gray-700 whitespace-nowrap">
                       {r.property?.landlord_profile ? `${r.property.landlord_profile.first_name} ${r.property.landlord_profile.last_name}` : 'Unknown'}
@@ -4545,11 +4717,12 @@ function MaintenanceMonitoringView({ refreshTrigger, setMaintenanceForm, setEdit
                         onClick={() => {
                           setEditingMaintenance(r);
                           setMaintenanceForm({
+                            property_id: r.property_id || '',
+                            tenant_id: r.tenant || '',
                             title: r.title,
                             description: r.description,
                             status: r.status,
                             priority: r.priority || 'medium',
-                            category: r.category || 'general',
                             attachment_urls: r.attachment_urls || []
                           });
                           setShowMaintenanceModal(true);

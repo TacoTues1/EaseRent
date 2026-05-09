@@ -109,7 +109,7 @@ export default function PaymentHistoryPage() {
 
     const { data, error } = await supabase
       .from('payment_requests')
-      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at')
+      .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, other_bills, paid_at')
       .eq('landlord', session.user.id)
       .eq('status', 'paid')
       .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
@@ -321,10 +321,8 @@ export default function PaymentHistoryPage() {
               <div className="sm:hidden divide-y divide-gray-100">
                 {paginatedPayments.map(payment => {
                   const rent = parseFloat(payment.amount) || 0
-                  const water = parseFloat(payment.water_bill) || 0
-                  const electrical = parseFloat(payment.electrical_bill) || 0
                   const other = parseFloat(payment.other_bills) || 0
-                  const totalBills = water + electrical + other
+                  const totalBills = other
                   const grandTotal = rent + totalBills
 
                   return (
@@ -384,10 +382,8 @@ export default function PaymentHistoryPage() {
                   <tbody className="divide-y divide-gray-100">
                     {paginatedPayments.map(payment => {
                       const rent = parseFloat(payment.amount) || 0
-                      const water = parseFloat(payment.water_bill) || 0
-                      const electrical = parseFloat(payment.electrical_bill) || 0
                       const other = parseFloat(payment.other_bills) || 0
-                      const totalBills = water + electrical + other
+                      const totalBills = other
                       const grandTotal = rent + totalBills
 
                       return (
@@ -506,11 +502,8 @@ export default function PaymentHistoryPage() {
       {selectedDetailPayment && (() => {
         const r = selectedDetailPayment
         const rent = parseFloat(r.amount) || 0
-        const water = parseFloat(r.water_bill) || 0
-        const electrical = parseFloat(r.electrical_bill) || 0
-        const wifi = parseFloat(r.wifi_bill) || 0
         const other = parseFloat(r.other_bills) || 0
-        const grandTotal = rent + water + electrical + wifi + other
+        const grandTotal = rent + other
 
         return (
           <div className="fixed inset-0 z-50 flex justify-end">

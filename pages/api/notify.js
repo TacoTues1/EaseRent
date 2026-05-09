@@ -273,18 +273,6 @@ export default async function handler(req, res) {
             else if (paymentRequest.rent_amount > 0) {
                 billType = 'rent'
                 amount = paymentRequest.rent_amount
-            } else if (paymentRequest.electrical_bill > 0) {
-                billType = 'electricity'
-                amount = paymentRequest.electrical_bill
-                dueDate = paymentRequest.electrical_due_date || dueDate
-            } else if (paymentRequest.water_bill > 0) {
-                billType = 'water'
-                amount = paymentRequest.water_bill
-                dueDate = paymentRequest.water_due_date || dueDate
-            } else if (paymentRequest.wifi_bill > 0) {
-                billType = 'wifi'
-                amount = paymentRequest.wifi_bill
-                dueDate = paymentRequest.wifi_due_date || dueDate
             } else if (paymentRequest.other_bills > 0) {
                 billType = 'other'
                 amount = paymentRequest.other_bills

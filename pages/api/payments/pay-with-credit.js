@@ -27,9 +27,6 @@ export default async function handler(req, res) {
         const totalBill = (
             parseFloat(request.rent_amount || 0) +
             parseFloat(request.security_deposit_amount || 0) +
-            parseFloat(request.water_bill || 0) +
-            parseFloat(request.electrical_bill || 0) +
-            parseFloat(request.wifi_bill || 0) +
             parseFloat(request.other_bills || 0)
         );
 

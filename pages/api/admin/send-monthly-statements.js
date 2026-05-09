@@ -186,7 +186,7 @@ export default async function handler(req, res) {
                         // Include all paid/confirmed/completed statuses
                         const { data: payments, error: payError } = await supabaseAdmin
                             .from('payment_requests')
-                            .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, created_at, property_id, amount_paid, status, bills_description')
+                            .select('id, rent_amount, security_deposit_amount, advance_amount, other_bills, paid_at, created_at, property_id, amount_paid, status, bills_description')
                             .eq('landlord', landlord.id)
                             .in('status', ['paid', 'confirmed', 'completed'])
                             .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)

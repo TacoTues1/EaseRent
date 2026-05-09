@@ -231,7 +231,7 @@ export default function LandlordDashboard({ session, profile }) {
     try {
       const { data } = await supabase
         .from('payment_requests')
-        .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills')
+        .select('amount_paid, rent_amount, security_deposit_amount, advance_amount, other_bills')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
         .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
@@ -328,7 +328,7 @@ export default function LandlordDashboard({ session, profile }) {
 
     const { data: payments } = await supabase
       .from('payment_requests')
-      .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, status, due_date, property_id')
+      .select('id, rent_amount, security_deposit_amount, advance_amount, other_bills, status, due_date, property_id')
       .in('property_id', propIds)
       .in('status', ['pending', 'pending_confirmation'])
       .order('due_date', { ascending: true })
@@ -340,9 +340,6 @@ export default function LandlordDashboard({ session, profile }) {
         const total = (p.rent_amount || 0) +
           (p.security_deposit_amount || 0) +
           (p.advance_amount || 0) +
-          (p.water_bill || 0) +
-          (p.electrical_bill || 0) +
-          (p.wifi_bill || 0) +
           (p.other_bills || 0)
         return { ...p, amount: total, property_title: propMap[p.property_id] }
       }) || []
@@ -379,7 +376,7 @@ export default function LandlordDashboard({ session, profile }) {
       // Fetch paid payments for the selected month
       const { data: monthPayments } = await supabase
         .from('payment_requests')
-        .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
+        .select('id, rent_amount, security_deposit_amount, advance_amount, other_bills, paid_at, property_id, amount_paid')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
         .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
@@ -389,7 +386,7 @@ export default function LandlordDashboard({ session, profile }) {
       // Fetch paid payments for the year
       const { data: yearPayments } = await supabase
         .from('payment_requests')
-        .select('id, rent_amount, security_deposit_amount, advance_amount, water_bill, electrical_bill, wifi_bill, other_bills, paid_at, property_id, amount_paid')
+        .select('id, rent_amount, security_deposit_amount, advance_amount, other_bills, paid_at, property_id, amount_paid')
         .eq('landlord', session.user.id)
         .eq('status', 'paid')
         .or(NON_ADVANCE_PAYMENT_REQUEST_FILTER)
@@ -439,9 +436,7 @@ export default function LandlordDashboard({ session, profile }) {
 
         const monthTotal = sumRecordedPaymentRequestAmounts(monthPaymentsFiltered)
 
-        const waterTotal = monthPaymentsFiltered.reduce((sum, p) => {
-          return sum + (parseFloat(p.water_bill) || 0)
-        }, 0)
+        const waterTotal = 0
 
         const otherTotal = monthPaymentsFiltered.reduce((sum, p) => {
           return sum + (parseFloat(p.other_bills) || 0)
@@ -1280,8 +1275,6 @@ export default function LandlordDashboard({ session, profile }) {
             rent_amount: rentAmount,
             advance_amount: advanceAmount, // Renewal = Rent + Advance (2 months total)
             security_deposit_amount: 0, // NO security deposit for renewal - it carries forward
-            water_bill: 0,
-            electrical_bill: 0,
             other_bills: 0,
             bills_description: 'Contract Renewal Payment (1 Month Rent + 1 Month Advance)',
             due_date: renewalBillDueDate.toISOString(), // Due on the start of renewal (e.g., April 2)
@@ -1733,8 +1726,6 @@ export default function LandlordDashboard({ session, profile }) {
         rent_amount: rentAmount,
         security_deposit_amount: securityDepositAmount, // New assignment = security deposit required
         advance_amount: advanceAmount, // Advance payment for new assignments
-        water_bill: 0,
-        electrical_bill: 0,
         other_bills: 0,
         bills_description: 'Move-in Payment (Rent + Advance + Security Deposit)',
         due_date: dueDate.toISOString(),
