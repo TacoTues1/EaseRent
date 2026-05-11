@@ -655,7 +655,7 @@ export default function TenantDashboard({ session, profile }) {
         .select('due_date, is_move_in_payment, occupancy_id, property_id, status')
         .eq('tenant', currentOccupancy.tenant_id)
         .eq('status', 'pending')
-        .gt('rent_amount', 0)
+        .or('rent_amount.gt.0,advance_amount.gt.0')
         .order('due_date', { ascending: true })
       allPendingBills = pendingData;
 
@@ -664,14 +664,14 @@ export default function TenantDashboard({ session, profile }) {
         .select('due_date, rent_amount, advance_amount, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
         .eq('tenant', currentOccupancy.tenant_id)
         .in('status', ['paid', 'pending_confirmation'])
-        .gt('rent_amount', 0)
+        .or('rent_amount.gt.0,advance_amount.gt.0')
         .order('due_date', { ascending: false })
 
-      const historyPaidBills = (paymentHistory || []).filter(bill => parseFloat(bill?.rent_amount || 0) > 0)
+      const historyPaidBills = (paymentHistory || []).filter(bill => parseFloat(bill?.rent_amount || 0) > 0 || parseFloat(bill?.advance_amount || 0) > 0)
       allPaidBills = historyPaidBills.length > 0 ? historyPaidBills : (paidData || []);
     } else {
       // Family member: use already-loaded state (from API)
-      allPendingBills = pendingPayments.filter(p => p.status === 'pending' && parseFloat(p.rent_amount) > 0);
+      allPendingBills = pendingPayments.filter(p => p.status === 'pending' && (parseFloat(p.rent_amount || 0) > 0 || parseFloat(p.advance_amount || 0) > 0));
       // Keep next due aligned with the tracker by using paymentHistory first.
       allPaidBills = paymentHistory && paymentHistory.length > 0
         ? [...paymentHistory].sort((a, b) => new Date(b.due_date) - new Date(a.due_date))
@@ -716,44 +716,34 @@ export default function TenantDashboard({ session, profile }) {
 
     console.log('Filtered paid bills for this occupancy/property:', filteredBills);
 
-    // Choose the bill with the farthest paid-through coverage so older renewal rows
-    // do not override newer paid months when calculating next due date.
-    const hasRentAmount = (bill) => parseFloat(bill?.rent_amount || 0) > 0
+    // Calculate total covered months by summing up all rent and advance payments
+    let totalCoveredMonths = 0;
+    const monthlyRentCalc = parseFloat(currentOccupancy?.property?.price || 0);
 
-    const getBillCoverageMonths = (bill) => {
-      const rentAmount = parseFloat(bill?.rent_amount || 0)
-      const advanceAmount = parseFloat(bill?.advance_amount || 0)
-      if (rentAmount > 0 && advanceAmount > 0) {
-        return 1 + Math.floor(advanceAmount / rentAmount)
-      }
-      return 1
+    if (monthlyRentCalc > 0 && filteredBills && filteredBills.length > 0) {
+      filteredBills.forEach(bill => {
+        const rAmt = parseFloat(bill?.rent_amount || 0);
+        const aAmt = parseFloat(bill?.advance_amount || 0);
+        totalCoveredMonths += Math.floor((rAmt + aAmt) / monthlyRentCalc);
+      });
     }
 
-    const getCoverageEndTime = (bill) => {
-      if (!bill?.due_date) return Number.NEGATIVE_INFINITY
-      const dueDate = new Date(bill.due_date)
-      if (Number.isNaN(dueDate.getTime())) return Number.NEGATIVE_INFINITY
-
-      const monthsCovered = getBillCoverageMonths(bill)
-      const endDate = new Date(dueDate)
-      endDate.setMonth(endDate.getMonth() + monthsCovered)
-      return endDate.getTime()
-    }
-
-    const rankableBills = (filteredBills || []).filter(bill => hasRentAmount(bill) && bill?.due_date)
+    const hasRentAmount = (bill) => parseFloat(bill?.rent_amount || 0) > 0 || parseFloat(bill?.advance_amount || 0) > 0;
+    const rankableBills = (filteredBills || []).filter(bill => hasRentAmount(bill) && bill?.due_date);
     const lastBill = rankableBills.length > 0
-      ? [...rankableBills].sort((a, b) => {
-        const coverageDiff = getCoverageEndTime(b) - getCoverageEndTime(a)
-        if (coverageDiff !== 0) return coverageDiff
-        return new Date(b.due_date).getTime() - new Date(a.due_date).getTime()
-      })[0]
+      ? [...rankableBills].sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime())[0]
       : filteredBills?.[0];
 
-    const coverageEndMs = rankableBills.reduce((max, bill) => {
-      const endMs = getCoverageEndTime(bill)
-      return endMs > max ? endMs : max
-    }, Number.NEGATIVE_INFINITY)
-    const coverageEndDate = Number.isFinite(coverageEndMs) ? new Date(coverageEndMs) : null
+    let coverageEndDate = null;
+    if (currentOccupancy?.start_date && totalCoveredMonths > 0) {
+      coverageEndDate = new Date(currentOccupancy.start_date);
+      const targetMonth = coverageEndDate.getMonth() + totalCoveredMonths;
+      const targetYear = coverageEndDate.getFullYear() + Math.floor(targetMonth / 12);
+      let finalMonth = targetMonth % 12;
+      if (finalMonth < 0) finalMonth += 12;
+      coverageEndDate.setFullYear(targetYear);
+      coverageEndDate.setMonth(finalMonth);
+    }
 
     // CRITICAL: For newly assigned tenants with NO paid bills, ALWAYS use pending bill if available
     // This MUST happen before any other calculations to prevent "All Paid" from showing
@@ -775,7 +765,7 @@ export default function TenantDashboard({ session, profile }) {
           .select('due_date, occupancy_id, property_id, is_move_in_payment, status')
           .eq('tenant', currentOccupancy.tenant_id)
           .eq('status', 'pending')
-          .gt('rent_amount', 0)
+          .or('rent_amount.gt.0,advance_amount.gt.0')
           .order('due_date', { ascending: true })
           .limit(5); // Get multiple to see what's available
         aggressivePendingCheck = data;
@@ -949,7 +939,7 @@ export default function TenantDashboard({ session, profile }) {
                   .select('due_date, occupancy_id, property_id')
                   .eq('tenant', currentOccupancy.tenant_id)
                   .eq('status', 'pending')
-                  .gt('rent_amount', 0)
+                  .or('rent_amount.gt.0,advance_amount.gt.0')
                   .order('due_date', { ascending: true })
                   .limit(1)
                   .maybeSingle();
@@ -1002,7 +992,7 @@ export default function TenantDashboard({ session, profile }) {
               .select('due_date, occupancy_id, property_id, is_move_in_payment')
               .eq('tenant', currentOccupancy.tenant_id)
               .eq('status', 'pending')
-              .gt('rent_amount', 0)
+              .or('rent_amount.gt.0,advance_amount.gt.0')
               .order('due_date', { ascending: true })
               .limit(1)
               .maybeSingle();
@@ -1327,12 +1317,16 @@ export default function TenantDashboard({ session, profile }) {
   const handleSeeMore = () => { router.push('/properties/allProperties') }
 
   async function loadTenantOccupancy() {
+    const today = new Date();
+    const localDateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const endOfTodayISO = localDateStr + 'T23:59:59.999Z';
+
     const { data: occupancy, error } = await supabase
       .from('tenant_occupancies')
       .select(`*, property:properties(id, title, address, city, images, price, terms_conditions, amenities), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`)
       .eq('tenant_id', session.user.id)
       .in('status', ['active', 'pending_end'])
-      .lte('start_date', new Date().toISOString())
+      .lte('start_date', endOfTodayISO)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -1350,7 +1344,7 @@ export default function TenantDashboard({ session, profile }) {
         .select(`*, property:properties(id, title, address, city, images, price), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name)`)
         .eq('tenant_id', session.user.id)
         .eq('status', 'active')
-        .gt('start_date', new Date().toISOString())
+        .gt('start_date', endOfTodayISO)
         .order('start_date', { ascending: true })
         .limit(1)
         .maybeSingle()
@@ -1472,9 +1466,22 @@ export default function TenantDashboard({ session, profile }) {
         async (position) => {
           try {
             const { latitude, longitude } = position.coords
-            const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
-            const data = await response.json()
-            const city = (data?.city || data?.locality || data?.principalSubdivision || '').trim()
+            let city = ''
+            try {
+              const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
+              if (!response.ok) throw new Error('BigDataCloud failed')
+              const data = await response.json()
+              city = (data?.city || data?.locality || data?.principalSubdivision || '').trim()
+            } catch (err) {
+              try {
+                const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`)
+                if (!fallbackResponse.ok) throw new Error('Nominatim failed')
+                const fallbackData = await fallbackResponse.json()
+                city = (fallbackData?.address?.city || fallbackData?.address?.town || fallbackData?.address?.village || fallbackData?.address?.county || '').trim()
+              } catch (fallbackErr) {
+                console.warn('Location reverse-geocode failed on all providers:', fallbackErr)
+              }
+            }
             const coords = { lat: latitude, lng: longitude }
 
             setLocationPermission('granted')
@@ -1482,7 +1489,7 @@ export default function TenantDashboard({ session, profile }) {
             setUserLocationCoords(coords)
             resolve({ permission: 'granted', city, coords })
           } catch (err) {
-            console.error('Location reverse-geocode failed:', err)
+            console.error('Location reverse-geocode failed outer:', err)
             const coords = { lat: position.coords.latitude, lng: position.coords.longitude }
             setLocationPermission('granted')
             setUserLocationCity('')
@@ -2618,34 +2625,30 @@ export default function TenantDashboard({ session, profile }) {
                           const currentYear = new Date().getFullYear();
                           const targetAbsoluteMonth = currentYear * 12 + index;
 
-                          const isMonthCoveredByPaidHistory = paymentHistory.some(p => {
-                            if (!p.due_date || parseFloat(p.rent_amount) <= 0) return false;
-
-                            const d = new Date(p.due_date);
-                            if (Number.isNaN(d.getTime())) return false;
-                            const pMonth = d.getMonth();
-                            const pYear = d.getFullYear();
-
-                            const advance = parseFloat(p.advance_amount || 0);
-                            const rent = parseFloat(p.rent_amount || 0);
-                            let monthsCovered = 1;
-
-                            // Any rent bill with advance (including move-in) covers extra months.
-                            if (advance > 0 && rent > 0) {
-                              monthsCovered += Math.floor(advance / rent);
-                            }
-
-                            const paymentStartAbsoluteMonth = pYear * 12 + pMonth;
-                            const paymentEndAbsoluteMonth = paymentStartAbsoluteMonth + monthsCovered - 1;
-
-                            return targetAbsoluteMonth >= paymentStartAbsoluteMonth && targetAbsoluteMonth <= paymentEndAbsoluteMonth;
-                          });
+                          // Calculate total covered months for this occupancy
+                          let totalCoveredMonths = 0;
+                          const monthlyRentTracker = parseFloat(tenantOccupancy?.property?.price || 0);
+                          if (monthlyRentTracker > 0) {
+                            paymentHistory.forEach(p => {
+                              // Ensure bill belongs to this occupancy
+                              if (tenantOccupancy?.id && p.occupancy_id && p.occupancy_id !== tenantOccupancy.id) return;
+                              const rAmt = parseFloat(p.rent_amount || 0);
+                              const aAmt = parseFloat(p.advance_amount || 0);
+                              totalCoveredMonths += Math.floor((rAmt + aAmt) / monthlyRentTracker);
+                            });
+                          }
 
                           const occupancyStartDate = tenantOccupancy?.start_date ? new Date(tenantOccupancy.start_date) : null;
                           const hasValidStartDate = occupancyStartDate && !Number.isNaN(occupancyStartDate.getTime());
                           const occupancyStartAbsoluteMonth = hasValidStartDate
                             ? (occupancyStartDate.getFullYear() * 12 + occupancyStartDate.getMonth())
                             : null;
+
+                          let isMonthCoveredByPaidHistory = false;
+                          if (occupancyStartAbsoluteMonth !== null && totalCoveredMonths > 0) {
+                             const paidEndAbsoluteMonth = occupancyStartAbsoluteMonth + totalCoveredMonths - 1;
+                             isMonthCoveredByPaidHistory = targetAbsoluteMonth >= occupancyStartAbsoluteMonth && targetAbsoluteMonth <= paidEndAbsoluteMonth;
+                          }
 
                           const hasPendingRentForStartMonth = occupancyStartAbsoluteMonth !== null && pendingPayments.some(p => {
                             if (!p?.due_date || parseFloat(p.rent_amount || 0) <= 0) return false;

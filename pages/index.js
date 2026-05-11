@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useRouter } from 'next/router'
 import AuthModal from '../components/AuthModal'
@@ -417,34 +417,36 @@ export default function Home({ setHomeNavbarLoading }) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           setLocationPermission('granted')
+          const { latitude, longitude } = position.coords
+          const coords = { lat: latitude, lng: longitude }
+          let city = ''
           try {
-            const { latitude, longitude } = position.coords
-            const coords = { lat: latitude, lng: longitude }
             const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
+            if (!response.ok) throw new Error('BigDataCloud failed')
             const data = await response.json()
-            const city = (data?.city || data?.locality || data?.principalSubdivision || '').trim()
-            setUserLocationCity(city)
-            setUserLocationCoords(coords)
-            try {
-              localStorage.setItem(LOCATION_PERMISSION_KEY, 'granted')
-              if (city) {
-                localStorage.setItem(LOCATION_CITY_KEY, city)
-              } else {
-                localStorage.removeItem(LOCATION_CITY_KEY)
-              }
-            } catch (_) {}
-            resolve({ permission: 'granted', city, coords })
+            city = (data?.city || data?.locality || data?.principalSubdivision || '').trim()
           } catch (err) {
-            console.error('Location reverse-geocode failed:', err)
-            const coords = { lat: position.coords.latitude, lng: position.coords.longitude }
-            setUserLocationCity('')
-            setUserLocationCoords(coords)
             try {
-              localStorage.setItem(LOCATION_PERMISSION_KEY, 'granted')
-              localStorage.removeItem(LOCATION_CITY_KEY)
-            } catch (_) {}
-            resolve({ permission: 'granted', city: '', coords })
+              const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`)
+              if (!fallbackResponse.ok) throw new Error('Nominatim failed')
+              const fallbackData = await fallbackResponse.json()
+              city = (fallbackData?.address?.city || fallbackData?.address?.town || fallbackData?.address?.village || fallbackData?.address?.county || '').trim()
+            } catch (fallbackErr) {
+              console.warn('Location reverse-geocode failed on all providers:', fallbackErr)
+            }
           }
+          
+          setUserLocationCity(city)
+          setUserLocationCoords(coords)
+          try {
+            localStorage.setItem(LOCATION_PERMISSION_KEY, 'granted')
+            if (city) {
+              localStorage.setItem(LOCATION_CITY_KEY, city)
+            } else {
+              localStorage.removeItem(LOCATION_CITY_KEY)
+            }
+          } catch (_) {}
+          resolve({ permission: 'granted', city, coords })
         },
         (error) => {
           if (error?.code === 1) {

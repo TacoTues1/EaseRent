@@ -115,9 +115,22 @@ export default function Contact() {
         async (position) => {
           try {
             const { latitude, longitude } = position.coords
-            const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
-            const data = await response.json()
-            const detected = normalizeCityName(data?.city || data?.locality || data?.principalSubdivision || '')
+            let detected = ''
+            try {
+              const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`)
+              if (!response.ok) throw new Error('BigDataCloud failed')
+              const data = await response.json()
+              detected = normalizeCityName(data?.city || data?.locality || data?.principalSubdivision || '')
+            } catch (err) {
+              try {
+                const fallbackResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`)
+                if (!fallbackResponse.ok) throw new Error('Nominatim failed')
+                const fallbackData = await fallbackResponse.json()
+                detected = normalizeCityName(fallbackData?.address?.city || fallbackData?.address?.town || fallbackData?.address?.village || fallbackData?.address?.county || '')
+              } catch (fallbackErr) {
+                console.warn('Failed to detect city on all providers:', fallbackErr)
+              }
+            }
 
             if (detected && CONTACTS_BY_CITY[detected]?.length) {
               setSelectedCity(detected)
@@ -131,7 +144,7 @@ export default function Contact() {
               setLocationMessage(`No direct city match from your location. Showing default directory for ${CITY_LABELS[DEFAULT_CITY]}.`)
             }
           } catch (error) {
-            console.error('Failed to detect city:', error)
+            console.error('Failed to detect city outer:', error)
             setSelectedCity(DEFAULT_CITY)
             setLocationMessage(`Could not determine your city. Showing default directory for ${CITY_LABELS[DEFAULT_CITY]}.`)
           }

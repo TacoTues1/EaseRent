@@ -240,12 +240,13 @@ export default async function handler(req, res) {
       .limit(1);
 
     const alreadyRanToday = todayRun && todayRun.length > 0;
-    const isReminderTime = currentHour >= 7 && currentHour < 9; // 7:00 AM - 9:00 AM window
+    const isReminderTime = currentHour >= 6 && currentHour < 9; // 6:00 AM - 9:00 AM window
 
     console.log(`[Reminder Check] PH Time: ${phTime.toLocaleString()}, Hour: ${currentHour}, Is Reminder Time: ${isReminderTime}, Already Ran Today: ${alreadyRanToday}`);
 
     // Skip bill reminders if not in time window OR already ran today (Unless 'force' param is present)
     const forceRun = req.query.force === 'true';
+    const forceResend = req.query.resend === 'true';
     const shouldSendBillReminders = forceRun || (isReminderTime && !alreadyRanToday);
     const catchUpMissedBillReminders = req.query.catch_up !== 'false';
     const parsedCatchUpPastDueDays = parseInt(req.query.catch_up_past_due_days || '7', 10);
@@ -514,7 +515,7 @@ export default async function handler(req, res) {
 
       const shouldSendReminderForDueDate = (dueDate) => {
         const daysUntilDue = getDaysUntilDue(dueDate);
-        if (daysUntilDue >= 1 && daysUntilDue <= 3) return true;
+        if (daysUntilDue >= 0 && daysUntilDue <= 3) return true;
         if (!catchUpMissedBillReminders) return false;
 
         const autoSendDate = new Date(dueDate);
@@ -596,7 +597,7 @@ export default async function handler(req, res) {
             .lte('created_at', todayEnd.toISOString())
             .limit(1);
 
-          const alreadySentToday = todayNotification && todayNotification.length > 0;
+          const alreadySentToday = !forceResend && todayNotification && todayNotification.length > 0;
 
           console.log(`[Rent Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentToday}`);
 
@@ -788,7 +789,7 @@ export default async function handler(req, res) {
             .lte('created_at', todayEnd.toISOString())
             .limit(1);
 
-          const alreadySentToday = todayNotification && todayNotification.length > 0;
+          const alreadySentToday = !forceResend && todayNotification && todayNotification.length > 0;
 
           console.log(`[Wifi Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentToday}`);
 
@@ -863,7 +864,7 @@ export default async function handler(req, res) {
             .lte('created_at', todayEnd.toISOString())
             .limit(1);
 
-          const alreadySentToday = todayNotification && todayNotification.length > 0;
+          const alreadySentToday = !forceResend && todayNotification && todayNotification.length > 0;
 
           console.log(`[Electric Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentToday}`);
 
@@ -937,11 +938,11 @@ export default async function handler(req, res) {
             .lte('created_at', todayEndW.toISOString())
             .limit(1);
 
-          const alreadySentTodayW = todayNotificationW && todayNotificationW.length > 0;
+          const alreadySentToday = !forceResend && todayNotificationW && todayNotificationW.length > 0;
 
-          console.log(`[Water Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentTodayW}`);
+          console.log(`[Water Reminder] Processing ${occ.tenant?.first_name}: daysUntilDue=${daysUntilDue}, alreadySentToday=${alreadySentToday}`);
 
-          if (!alreadySentTodayW) {
+          if (!alreadySentToday) {
             const dueDate = new Date(currentMonthDueDate);
             const dueDateStr = formatOrdinalDueDate(waterDueDay, dueDate);
             const daysText = getReminderTimingText(daysUntilDue);

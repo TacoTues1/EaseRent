@@ -321,7 +321,7 @@ export default function AssignTenantPage() {
             // Create pending bill for unpaid items (if any)
             if (totalUnpaid > 0) {
                 const unpaidItems = [!paidRent && 'Rent', !paidAdvance && 'Advance', !paidDeposit && 'Deposit'].filter(Boolean).join(' + ')
-                const { error: billError } = await supabase.from('payment_requests').insert({
+                const { data: newBill, error: billError } = await supabase.from('payment_requests').insert({
                     landlord: session.user.id,
                     tenant: booking.tenant,
                     property_id: selectedPropertyId,
@@ -334,8 +334,8 @@ export default function AssignTenantPage() {
                     due_date: dueDate.toISOString(),
                     status: 'pending',
                     is_move_in_payment: true
-                })
-                if (!billError) {
+                }).select('id').single()
+                if (!billError && newBill) {
                     await createNotification({
                         recipient: booking.tenant,
                         actor: session.user.id,
@@ -343,9 +343,20 @@ export default function AssignTenantPage() {
                         message: `Move-in payment: ₱${Number(totalUnpaid).toLocaleString()} (${unpaidItems}). Due: ${dueDate.toLocaleDateString('en-US')}`,
                         link: '/payments'
                     })
+                    
+                    fetch('/api/notify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'payment_bill', recordId: newBill.id })
+                    }).catch(err => console.error('Bill notification error:', err))
                 }
             }
         } catch (err) { console.error('Bill creation exception:', err) }
+
+        // Trigger manual reminders in the background to instantly process utility bills
+        // and any due-today rent reminders for the newly created occupancy.
+        fetch('/api/manual-reminders?force=true', { method: 'GET' })
+            .catch(err => console.error('Immediate reminders trigger error:', err))
 
         toast('success', allPaid ? 'Tenant assigned! All move-in fees recorded as paid.' : somePaid ? 'Tenant assigned! Remaining balance billed to tenant.' : 'Tenant assigned! Move-in payment bill sent.')
         setTimeout(() => router.push('/bookings'), 1500)

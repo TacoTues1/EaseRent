@@ -9,6 +9,10 @@ export default async function handler(req, res) {
         // ─── GET PARENT OCCUPANCY FOR A FAMILY MEMBER ───
         if (member_id) {
             const isCheckOnly = check_only === '1' || check_only === 'true'
+            
+            const phTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+            const localDateStr = phTime.getFullYear() + '-' + String(phTime.getMonth() + 1).padStart(2, '0') + '-' + String(phTime.getDate()).padStart(2, '0');
+            const endOfTodayISO = localDateStr + 'T23:59:59.999Z';
 
             const { data: fmRecord, error: fmErr } = await supabaseAdmin
                 .from('family_members')
@@ -26,7 +30,7 @@ export default async function handler(req, res) {
                     .select('id, property:properties(title)')
                     .eq('id', fmRecord.parent_occupancy_id)
                     .in('status', ['active', 'pending_end'])
-                    .lte('start_date', new Date().toISOString())
+                    .lte('start_date', endOfTodayISO)
                     .maybeSingle()
 
                 if (liteErr) return res.status(500).json({ error: liteErr.message })
@@ -35,10 +39,10 @@ export default async function handler(req, res) {
 
             const { data: parentOcc, error: occErr } = await supabaseAdmin
                 .from('tenant_occupancies')
-                .select(`*, property:properties(id, title, address, city, images, price, terms_conditions), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name), tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, email, phone, avatar_url)`)
+                .select(`*, property:properties(id, title, address, city, images, price, terms_conditions, amenities), landlord:profiles!tenant_occupancies_landlord_id_fkey(id, first_name, middle_name, last_name), tenant:profiles!tenant_occupancies_tenant_id_fkey(id, first_name, middle_name, last_name, email, phone, avatar_url)`)
                 .eq('id', fmRecord.parent_occupancy_id)
                 .in('status', ['active', 'pending_end'])
-                .lte('start_date', new Date().toISOString())
+                .lte('start_date', endOfTodayISO)
                 .maybeSingle()
 
             if (occErr) return res.status(500).json({ error: occErr.message })
@@ -85,7 +89,7 @@ export default async function handler(req, res) {
                     .select('*')
                     .eq('occupancy_id', parentOcc.id)
                     .eq('status', 'paid')
-                    .gt('rent_amount', 0)
+                    .or('rent_amount.gt.0,advance_amount.gt.0')
                     .order('due_date', { ascending: false })
                     .limit(1)
                     .maybeSingle()
@@ -96,7 +100,7 @@ export default async function handler(req, res) {
                     .select('due_date, rent_amount, advance_amount, is_renewal_payment, is_advance_payment, is_move_in_payment, property_id, occupancy_id, status')
                     .eq('tenant', parentOcc.tenant_id)
                     .in('status', ['paid', 'pending_confirmation'])
-                    .gt('rent_amount', 0)
+                    .or('rent_amount.gt.0,advance_amount.gt.0')
                     .order('due_date', { ascending: false })
 
                 // Security deposit check

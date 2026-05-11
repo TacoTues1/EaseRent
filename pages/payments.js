@@ -2699,7 +2699,7 @@ export default function PaymentsPage() {
                                     <span className="text-xs font-bold text-gray-700">GrabPay</span>
                                   </div>
                                 </div>
-                                <p className="text-[10px] text-teal-600 text-center mb-3">Landlord receives ₱{(Math.round(parseFloat(customAmount || 0) * 0.99 * 100) / 100).toLocaleString()} to their e-wallet.</p>
+                                <p className="text-[10px] text-teal-600 text-center mb-3">Landlord receives ₱{Number(customAmount).toLocaleString()} to their e-wallet.</p>
                                 <button
                                   onClick={handlePayMongoPayment}
                                   disabled={uploadingProof}
