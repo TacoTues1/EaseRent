@@ -467,6 +467,19 @@ export default async function handler(req, res) {
       }
 
       console.log(`[Rent Reminder] Total active occupancies: ${allOccupancies?.length || 0}`);
+      
+      // Fetch all bills for these occupancies to calculate paid status correctly
+      const occupancyIds = allOccupancies?.map(o => o.id) || [];
+      const { data: allBills } = await supabaseAdmin
+        .from('payment_requests')
+        .select('id, occupancy_id, status, due_date, rent_amount, advance_amount')
+        .in('occupancy_id', occupancyIds);
+
+      const billsByOccupancy = {};
+      (allBills || []).forEach(bill => {
+        if (!billsByOccupancy[bill.occupancy_id]) billsByOccupancy[bill.occupancy_id] = [];
+        billsByOccupancy[bill.occupancy_id].push(bill);
+      });
 
       const isUtilityEnabled = (occ, utilityKey) => {
         const utilitySettings = occ?.landlord_profile?.accepted_payments?.utility_reminders || {};
@@ -561,8 +574,38 @@ export default async function handler(req, res) {
 
         // Calculate the next upcoming due date, matching the Billing Schedule UI.
         const currentMonthDueDate = getReminderDueDateForDay(dueDay);
-        const daysUntilDue = getDaysUntilDue(currentMonthDueDate);
-
+        
+        // --- SMART CHECK: Is this cycle already covered? ---
+        const bills = billsByOccupancy[occ.id] || [];
+        
+        // Find latest paid rent-like bill
+        const latestPaid = bills
+          .filter(b => (b.status === 'paid' || b.status === 'pending_confirmation') && (parseFloat(b.rent_amount) > 0 || parseFloat(b.advance_amount) > 0))
+          .sort((a, b) => new Date(b.due_date) - new Date(a.due_date))[0];
+        
+        if (latestPaid) {
+          const rentAmount = parseFloat(latestPaid.rent_amount || 0);
+          
+          // Sum advance across all bills with same due date (handles split move-in bills)
+          const lpDueTime = new Date(latestPaid.due_date).getTime();
+          const totalAdvance = bills
+            .filter(b => (b.status === 'paid' || b.status === 'pending_confirmation') && new Date(b.due_date).getTime() === lpDueTime)
+            .reduce((sum, b) => sum + parseFloat(b.advance_amount || 0), 0);
+            
+          let monthsCovered = 1;
+          if (rentAmount > 0 && totalAdvance > 0) {
+            monthsCovered = 1 + Math.floor(totalAdvance / rentAmount);
+          }
+          
+          const paidThroughDate = new Date(latestPaid.due_date);
+          paidThroughDate.setMonth(paidThroughDate.getMonth() + monthsCovered);
+          
+          // If the cycle we are checking is ALREADY PAID or covered by advance, skip it!
+          if (paidThroughDate > currentMonthDueDate) {
+            return false;
+          }
+        }
+        
         // Check if today is 1, 2, or 3 days before due date
         return shouldSendReminderForDueDate(currentMonthDueDate);
       });
@@ -618,7 +661,7 @@ export default async function handler(req, res) {
 
             // --- CREATE PAYMENT REQUEST (Rent Bill) - Only on day 3 (first day) ---
             if (daysUntilDue === 3 || catchUpMissedBillReminders) {
-              // Check if bill already exists for this month
+              // Check if bill already exists for this month (Pending or Paid)
               const { data: existingBill } = await supabaseAdmin
                 .from('payment_requests')
                 .select('id, rent_amount')
@@ -626,7 +669,7 @@ export default async function handler(req, res) {
                 .eq('property_id', occ.property?.id)
                 .gte('due_date', new Date(currentMonthDueDate.getFullYear(), currentMonthDueDate.getMonth(), 1).toISOString())
                 .lte('due_date', new Date(currentMonthDueDate.getFullYear(), currentMonthDueDate.getMonth() + 1, 0, 23, 59, 59, 999).toISOString())
-                .eq('status', 'pending')
+                .in('status', ['pending', 'paid', 'pending_confirmation'])
                 .limit(1);
 
               if (!existingBill || existingBill.length === 0) {

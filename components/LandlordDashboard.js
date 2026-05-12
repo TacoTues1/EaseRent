@@ -782,17 +782,23 @@ export default function LandlordDashboard({ session, profile }) {
       } else {
         // No pending bills - Project next date based on Last Paid or Start Date
         const lastPaid = bills
-          .filter(b => b.status === 'paid' && parseFloat(b.rent_amount) > 0)
+          .filter(b => b.status === 'paid' && (parseFloat(b.rent_amount) > 0 || parseFloat(b.advance_amount) > 0))
           .sort((a, b) => new Date(b.due_date) - new Date(a.due_date))[0]
 
         if (lastPaid) {
           // Calculate months covered including any advance payment
           const rentAmount = parseFloat(lastPaid.rent_amount || 0)
-          const advanceAmount = parseFloat(lastPaid.advance_amount || 0)
+          
+          // Sum advance_amount across all paid bills sharing the exact same due date
+          // to correctly handle split move-in bills (separate Rent and Advance bills)
+          const lastPaidDueTime = new Date(lastPaid.due_date).getTime()
+          const totalAdvanceAmount = bills
+            .filter(b => b.status === 'paid' && new Date(b.due_date).getTime() === lastPaidDueTime)
+            .reduce((sum, b) => sum + parseFloat(b.advance_amount || 0), 0)
 
           let monthsCovered = 1
-          if (rentAmount > 0 && advanceAmount > 0) {
-            monthsCovered = 1 + Math.floor(advanceAmount / rentAmount)
+          if (rentAmount > 0 && totalAdvanceAmount > 0) {
+            monthsCovered = 1 + Math.floor(totalAdvanceAmount / rentAmount)
           }
 
           // Next due is monthsCovered months after last paid bill
