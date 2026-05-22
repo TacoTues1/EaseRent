@@ -21,10 +21,55 @@ export default async function handler(req, res) {
   }
 
   const userId = user.id
+  
+  // Get user profile to check role
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role')
+    .eq('id', userId)
+    .single()
+
   const { action } = req.body
 
-  if (action !== 'send') {
+  if (action !== 'send' && req.method === 'POST') {
     return res.status(400).json({ error: 'Invalid action' })
+  }
+
+  // Support GET request for fetching messages (for Admin view)
+  if (req.method === 'GET') {
+    const { conversation_id } = req.query
+    if (!conversation_id) return res.status(400).json({ error: 'conversation_id is required' })
+
+    try {
+      const { data: conversation, error: conversationError } = await supabaseAdmin
+        .from('conversations')
+        .select('id, landlord_id, tenant_id')
+        .eq('id', conversation_id)
+        .maybeSingle()
+
+      if (conversationError) throw conversationError
+      if (!conversation) return res.status(404).json({ error: 'Conversation not found' })
+
+      const isParticipant = conversation.landlord_id === userId || conversation.tenant_id === userId
+      if (!isParticipant && profile?.role !== 'admin') {
+        return res.status(403).json({ error: 'You are not part of this conversation' })
+      }
+
+      const { data: messages, error: messageError } = await supabaseAdmin
+        .from('messages')
+        .select(`
+          *,
+          sender:profiles!messages_sender_id_fkey(id, first_name, last_name, role, avatar_url)
+        `)
+        .eq('conversation_id', conversation_id)
+        .order('created_at', { ascending: true })
+
+      if (messageError) throw messageError
+      return res.status(200).json({ messages })
+    } catch (err) {
+      console.error('Error fetching direct messages:', err)
+      return res.status(500).json({ error: 'Failed to fetch messages' })
+    }
   }
 
   const { conversation_id, message, files } = req.body
@@ -54,7 +99,7 @@ export default async function handler(req, res) {
     const isLandlord = conversation.landlord_id === userId
     const isTenant = conversation.tenant_id === userId
 
-    if (!isLandlord && !isTenant) {
+    if (!isLandlord && !isTenant && profile?.role !== 'admin') {
       return res.status(403).json({ error: 'You are not part of this conversation' })
     }
 

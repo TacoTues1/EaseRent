@@ -17,7 +17,21 @@ export default async function handler(req, res) {
 
         const { table, select, filters, order, pagination, includeCount } = req.body
 
-        const allowedTables = ['properties', 'bookings', 'payment_requests', 'profiles', 'applications', 'available_time_slots', 'tenant_occupancies', 'maintenance_requests']
+        const allowedTables = [
+            'properties',
+            'bookings',
+            'payment_requests',
+            'profiles',
+            'applications',
+            'available_time_slots',
+            'tenant_occupancies',
+            'maintenance_requests',
+            'conversations',
+            'messages',
+            'group_conversations',
+            'group_messages',
+            'group_conversation_members'
+        ]
         if (!allowedTables.includes(table)) {
             return res.status(400).json({ error: 'Invalid table' })
         }

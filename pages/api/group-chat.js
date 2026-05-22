@@ -323,7 +323,7 @@ export default async function handler(req, res) {
                     .maybeSingle()
 
                 if (memberError) throw memberError
-                if (!membership) {
+                if (!membership && profile.role !== 'admin') {
                     return res.status(403).json({ error: 'You are not a member of this group' })
                 }
 
@@ -443,29 +443,43 @@ export default async function handler(req, res) {
 
         // List group conversations for current user
         try {
-            const { data: memberships, error } = await supabaseAdmin
-                .from('group_conversation_members')
-                .select('group_conversation_id')
-                .eq('user_id', userId)
+            let memberships = []
+            if (profile.role !== 'admin') {
+                const { data, error } = await supabaseAdmin
+                    .from('group_conversation_members')
+                    .select('group_conversation_id')
+                    .eq('user_id', userId)
 
-            if (error) throw error
+                if (error) throw error
+                memberships = data || []
+            }
 
             const groupIds = (memberships || []).map(m => m.group_conversation_id)
-            if (groupIds.length === 0) {
+            if (profile.role !== 'admin' && groupIds.length === 0) {
                 return res.status(200).json({ groups: [] })
             }
 
             // Fetch groups and all members in parallel (no sync on list — sync runs on message load)
+            const groupsQuery = supabaseAdmin
+                .from('group_conversations')
+                .select('*')
+                .order('updated_at', { ascending: false })
+
+            if (profile.role !== 'admin') {
+                groupsQuery.in('id', groupIds)
+            }
+
+            const membersQuery = supabaseAdmin
+                .from('group_conversation_members')
+                .select('group_conversation_id, user_id, role, user:profiles!group_conversation_members_user_id_fkey(id, first_name, middle_name, last_name, role, avatar_url)')
+
+            if (profile.role !== 'admin') {
+                membersQuery.in('group_conversation_id', groupIds)
+            }
+
             const [groupsResult, allMembersResult] = await Promise.all([
-                supabaseAdmin
-                    .from('group_conversations')
-                    .select('*')
-                    .in('id', groupIds)
-                    .order('updated_at', { ascending: false }),
-                supabaseAdmin
-                    .from('group_conversation_members')
-                    .select('group_conversation_id, user_id, role, user:profiles!group_conversation_members_user_id_fkey(id, first_name, middle_name, last_name, role, avatar_url)')
-                    .in('group_conversation_id', groupIds)
+                groupsQuery,
+                membersQuery
             ])
 
             if (groupsResult.error) throw groupsResult.error

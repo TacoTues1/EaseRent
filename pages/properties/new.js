@@ -317,7 +317,7 @@ export default function NewProperty() {
       return
     }
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       notifyError('PDF size must be less than 2MB')
       return
     }
@@ -986,7 +986,7 @@ export default function NewProperty() {
                 Upload Multiple Photos
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handleMultipleImageUpload} />
               </label>
-              <p className="text-[10px] text-gray-400 text-center">Max 2MB per image. Up to 10 photos.</p>
+              <p className="text-[10px] text-gray-400 text-center">Max 10MB per image. Up to 10 photos.</p>
             </div>
           )}
         </div>
